@@ -121,11 +121,8 @@ export default function HalftoneGenerator() {
             {/* Upload Button */}
             <label 
               htmlFor="fileInput" 
-              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all cursor-pointer"
+              className="w-full px-3 py-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all cursor-pointer text-center"
             >
-              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
               {image ? 'Change image' : 'Upload image'}
             </label>
 
@@ -214,15 +211,15 @@ export default function HalftoneGenerator() {
       </div>
 
       {/* Main Content */}
-      <main className="flex-1 bg-[#E5E7EB] p-8">
+      <main className="flex-1 bg-white">
         <div 
-          className="w-full h-full rounded-lg bg-[#D1D5DB] flex items-center justify-center cursor-pointer"
+          className="w-full h-full flex items-center justify-center cursor-pointer"
           onDrop={handleDrop}
           onDragOver={handleDragOver}
         >
           {!image ? (
             <div className="text-center opacity-30 select-none">
-              <p className="text-[10px] text-gray-600 tracking-wide uppercase">
+              <p className="text-[10px] text-gray-500 tracking-wide uppercase">
                 Drop image here
               </p>
             </div>
@@ -230,7 +227,7 @@ export default function HalftoneGenerator() {
             <div className="relative max-w-full max-h-full">
               <canvas
                 ref={canvasRef}
-                className="max-w-full max-h-[80vh] rounded-lg shadow-lg"
+                className="max-w-full max-h-[80vh] rounded-lg"
               />
               <canvas
                 ref={hiddenCanvasRef}
