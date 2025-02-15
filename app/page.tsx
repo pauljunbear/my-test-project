@@ -100,59 +100,64 @@ export default function HalftoneGenerator() {
   return (
     <div className="h-screen flex">
       {/* Left Sidebar */}
-      <div className="sidebar w-[280px] flex flex-col">
-        {/* Sidebar Header */}
-        <div className="sidebar-section">
-          <h1 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
+      <div className="sidebar w-[240px] flex flex-col">
+        {/* App Title */}
+        <div className="px-4 py-3 border-b border-[var(--border-light)]">
+          <h1 className="text-sm font-medium text-[var(--text-primary)]">
             Halftone Generator
           </h1>
-          <div className="upload-zone">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleImageUpload}
-              className="hidden"
-              id="fileInput"
-            />
-            <label 
-              htmlFor="fileInput" 
-              className="flex flex-col items-center cursor-pointer"
-            >
-              <svg className="w-6 h-6 mb-3 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <span className="text-sm font-medium text-[var(--text-secondary)]">
-                {image ? 'Change image' : 'Drop image or click to upload'}
-              </span>
-            </label>
-          </div>
         </div>
 
-        {/* Grid Controls */}
-        <div className="sidebar-section">
-          <h2 className="section-title">Grid</h2>
-          <div className="control-group">
-            <div className="flex justify-between mb-2">
-              <label className="input-label">Size</label>
-              <span className="value-label">{gridSize}px</span>
+        {/* Controls */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Upload Section */}
+          <div className="sidebar-section">
+            <div className="upload-zone">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+                id="fileInput"
+              />
+              <label 
+                htmlFor="fileInput" 
+                className="flex flex-col items-center cursor-pointer"
+              >
+                <svg className="w-5 h-5 mb-2 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span className="text-xs font-medium text-[var(--text-secondary)]">
+                  {image ? 'Change image' : 'Drop image or click to upload'}
+                </span>
+              </label>
             </div>
-            <input
-              type="range"
-              min="4"
-              max="30"
-              value={gridSize}
-              onChange={(e) => setGridSize(Number(e.target.value))}
-              className="w-full"
-            />
           </div>
-        </div>
 
-        {/* Image Adjustments */}
-        <div className="sidebar-section">
-          <h2 className="section-title">Adjustments</h2>
-          <div className="space-y-3">
+          {/* Grid Controls */}
+          <div className="sidebar-section">
+            <h2 className="section-title">Grid</h2>
             <div className="control-group">
-              <div className="flex justify-between mb-2">
+              <div className="flex justify-between items-center mb-1">
+                <label className="input-label">Size</label>
+                <span className="value-label">{gridSize}px</span>
+              </div>
+              <input
+                type="range"
+                min="4"
+                max="30"
+                value={gridSize}
+                onChange={(e) => setGridSize(Number(e.target.value))}
+                className="w-full"
+              />
+            </div>
+          </div>
+
+          {/* Image Adjustments */}
+          <div className="sidebar-section">
+            <h2 className="section-title">Adjustments</h2>
+            <div className="control-group">
+              <div className="flex justify-between items-center mb-1">
                 <label className="input-label">Brightness</label>
                 <span className="value-label">{brightness}%</span>
               </div>
@@ -166,7 +171,7 @@ export default function HalftoneGenerator() {
               />
             </div>
             <div className="control-group">
-              <div className="flex justify-between mb-2">
+              <div className="flex justify-between items-center mb-1">
                 <label className="input-label">Contrast</label>
                 <span className="value-label">{contrast}%</span>
               </div>
@@ -180,28 +185,28 @@ export default function HalftoneGenerator() {
               />
             </div>
           </div>
-        </div>
 
-        {/* Dithering */}
-        <div className="sidebar-section">
-          <h2 className="section-title">Dithering</h2>
-          <div className="control-group">
-            <div className="select-container">
-              <select
-                value={dithering}
-                onChange={(e) => setDithering(e.target.value)}
-                className="w-full"
-              >
-                <option value="none">No Extra Texture</option>
-                <option value="floyd">Floyd-Steinberg</option>
-                <option value="ordered">Ordered</option>
-              </select>
+          {/* Dithering */}
+          <div className="sidebar-section">
+            <h2 className="section-title">Dithering</h2>
+            <div className="control-group">
+              <div className="select-container">
+                <select
+                  value={dithering}
+                  onChange={(e) => setDithering(e.target.value)}
+                  className="w-full"
+                >
+                  <option value="none">No Extra Texture</option>
+                  <option value="floyd">Floyd-Steinberg</option>
+                  <option value="ordered">Ordered</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="sidebar-section mt-auto">
+        <div className="p-3 border-t border-[var(--border-light)]">
           <div className="flex gap-2">
             <button
               onClick={handleReset}
@@ -225,10 +230,10 @@ export default function HalftoneGenerator() {
         <div className="h-full flex items-center justify-center">
           {!image ? (
             <div className="canvas-placeholder">
-              <svg className="w-12 h-12 mb-4 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-10 h-10 mb-3 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              <span className="text-sm font-medium">
+              <span className="text-sm font-medium text-[var(--text-tertiary)]">
                 Upload an image to begin
               </span>
             </div>
