@@ -221,9 +221,9 @@ export default function HalftoneGenerator() {
           onDragOver={handleDragOver}
         >
           {!image ? (
-            <div className="text-center">
-              <p className="text-gray-500 text-sm">
-                Drop an image here or click upload
+            <div className="text-center opacity-40">
+              <p className="text-xs text-gray-600">
+                Drop image or upload
               </p>
             </div>
           ) : (
