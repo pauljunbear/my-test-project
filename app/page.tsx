@@ -216,14 +216,14 @@ export default function HalftoneGenerator() {
       {/* Main Content */}
       <main className="flex-1 bg-[#E5E7EB] p-8">
         <div 
-          className="w-full h-full rounded-lg bg-[#D1D5DB] flex items-center justify-center"
+          className="w-full h-full rounded-lg bg-[#D1D5DB] flex items-center justify-center cursor-pointer"
           onDrop={handleDrop}
           onDragOver={handleDragOver}
         >
           {!image ? (
-            <div className="text-center opacity-40">
-              <p className="text-xs text-gray-600">
-                Drop image or upload
+            <div className="text-center opacity-30 select-none">
+              <p className="text-[10px] text-gray-600 tracking-wide uppercase">
+                Drop image here
               </p>
             </div>
           ) : (
