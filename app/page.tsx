@@ -4,14 +4,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 export default function HalftoneGenerator() {
   const [image, setImage] = useState<string | null>(null);
-  const [brightness, setBrightness] = useState(20);
+  const [brightness, setBrightness] = useState(100);
   const [contrast, setContrast] = useState(0);
-  const [gamma, setGamma] = useState(1);
   const [gridSize, setGridSize] = useState(11);
   const [dithering, setDithering] = useState('none');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
-  const dropZoneRef = useRef<HTMLDivElement>(null);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -55,7 +53,7 @@ export default function HalftoneGenerator() {
       hiddenCanvas.height = canvas.height;
 
       // Draw and process image
-      hiddenCtx.filter = `brightness(${brightness}%) contrast(${contrast}%) gamma(${gamma})`;
+      hiddenCtx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
       hiddenCtx.drawImage(img, 0, 0, canvas.width, canvas.height);
       
       // Get image data
@@ -78,7 +76,7 @@ export default function HalftoneGenerator() {
       }
     };
     img.src = image;
-  }, [image, brightness, contrast, gamma, gridSize]);
+  }, [image, brightness, contrast, gridSize]);
 
   useEffect(() => {
     applyHalftone();
@@ -93,127 +91,143 @@ export default function HalftoneGenerator() {
   };
 
   const handleReset = () => {
-    setBrightness(20);
+    setBrightness(100);
     setContrast(0);
-    setGamma(1);
     setGridSize(11);
     setDithering('none');
   };
 
   return (
-    <div className="min-h-screen bg-[#1E1E1E] text-white">
-      <div className="flex h-screen">
+    <div className="h-screen bg-[var(--background)] flex">
+      {/* Header */}
+      <header className="fixed top-0 left-0 right-0 h-14 bg-white border-b border-[var(--border)] px-4 flex items-center justify-between z-10">
+        <div className="flex items-center space-x-4">
+          <h1 className="text-lg font-medium text-[var(--text-primary)]">Halftone Generator</h1>
+        </div>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handleReset}
+            className="btn btn-secondary"
+          >
+            Reset
+          </button>
+          <button
+            onClick={handleExport}
+            disabled={!image}
+            className="btn btn-primary disabled:opacity-50"
+          >
+            Export PNG
+          </button>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="flex mt-14 h-[calc(100vh-3.5rem)]">
         {/* Left Sidebar */}
-        <div className="w-[280px] bg-[#252526] p-5 overflow-y-auto">
-          {/* Upload Button */}
+        <div className="sidebar w-[280px] p-6">
+          {/* Upload Section */}
           <div className="mb-8">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleImageUpload}
-              className="hidden"
-              id="fileInput"
-            />
-            <label 
-              htmlFor="fileInput" 
-              className="block w-full py-2 px-4 bg-[#2D2D2D] hover:bg-[#3E3E3E] text-center rounded-[4px] cursor-pointer text-sm transition-colors"
-            >
-              Upload Image
-            </label>
+            <h2 className="section-header">Image</h2>
+            <div className="upload-area">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+                id="fileInput"
+              />
+              <label 
+                htmlFor="fileInput" 
+                className="flex flex-col items-center cursor-pointer"
+              >
+                <svg className="w-8 h-8 mb-2 text-[var(--text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span className="text-sm text-[var(--text-secondary)]">
+                  {image ? 'Change image' : 'Drop image or click to upload'}
+                </span>
+              </label>
+            </div>
           </div>
 
           {/* Grid Size */}
-          <div className="mb-6">
-            <label className="text-xs text-[#CCCCCC] mb-2 block">Grid Size</label>
-            <div className="flex items-center gap-2">
+          <div className="mb-8">
+            <h2 className="section-header">Grid</h2>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <label className="control-label">Size</label>
+                <span className="value-display">{gridSize}</span>
+              </div>
               <input
                 type="range"
                 min="4"
                 max="30"
                 value={gridSize}
                 onChange={(e) => setGridSize(Number(e.target.value))}
-                className="flex-1"
+                className="w-full"
               />
-              <span className="text-xs text-[#CCCCCC] w-8 text-right">{gridSize}</span>
             </div>
           </div>
 
           {/* Image Adjustments */}
-          <div className="mb-6">
-            <h3 className="text-xs font-medium text-[#CCCCCC] mb-4">ADJUSTMENTS</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs text-[#CCCCCC] mb-2 block">Brightness</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max="200"
-                    value={brightness}
-                    onChange={(e) => setBrightness(Number(e.target.value))}
-                    className="flex-1"
-                  />
-                  <span className="text-xs text-[#CCCCCC] w-8 text-right">{brightness}</span>
+          <div className="mb-8">
+            <h2 className="section-header">Adjustments</h2>
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <label className="control-label">Brightness</label>
+                  <span className="value-display">{brightness}%</span>
                 </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="200"
+                  value={brightness}
+                  onChange={(e) => setBrightness(Number(e.target.value))}
+                  className="w-full"
+                />
               </div>
 
-              <div>
-                <label className="text-xs text-[#CCCCCC] mb-2 block">Contrast</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="-100"
-                    max="100"
-                    value={contrast}
-                    onChange={(e) => setContrast(Number(e.target.value))}
-                    className="flex-1"
-                  />
-                  <span className="text-xs text-[#CCCCCC] w-8 text-right">{contrast}</span>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <label className="control-label">Contrast</label>
+                  <span className="value-display">{contrast}%</span>
                 </div>
+                <input
+                  type="range"
+                  min="-100"
+                  max="100"
+                  value={contrast}
+                  onChange={(e) => setContrast(Number(e.target.value))}
+                  className="w-full"
+                />
               </div>
             </div>
           </div>
 
           {/* Dithering */}
           <div className="mb-8">
-            <h3 className="text-xs font-medium text-[#CCCCCC] mb-2">DITHERING</h3>
+            <h2 className="section-header">Dithering</h2>
             <select
               value={dithering}
               onChange={(e) => setDithering(e.target.value)}
-              className="w-full p-2 text-sm bg-[#2D2D2D] text-white border-none rounded-[4px]"
+              className="w-full"
             >
               <option value="none">No Extra Texture</option>
               <option value="floyd">Floyd-Steinberg</option>
               <option value="ordered">Ordered</option>
             </select>
           </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-2">
-            <button
-              onClick={handleReset}
-              className="flex-1 px-4 py-2 bg-[#2D2D2D] hover:bg-[#3E3E3E] text-[#CCCCCC] rounded-[4px] text-sm transition-colors"
-            >
-              Reset
-            </button>
-            <button
-              onClick={handleExport}
-              disabled={!image}
-              className="flex-1 px-4 py-2 bg-[#007AFF] hover:bg-[#0066CC] text-white rounded-[4px] text-sm transition-colors disabled:opacity-50 disabled:hover:bg-[#007AFF]"
-            >
-              Export
-            </button>
-          </div>
         </div>
 
-        {/* Main Content */}
-        <div className="flex-1 bg-[#1E1E1E] p-8 flex items-center justify-center">
+        {/* Main Canvas Area */}
+        <div className="flex-1 bg-[var(--content)] p-8 flex items-center justify-center">
           {!image ? (
-            <div className="text-[#CCCCCC] text-sm">
+            <div className="text-[var(--text-tertiary)] text-sm">
               Upload an image to begin
             </div>
           ) : (
-            <div className="max-w-full max-h-full">
+            <div className="canvas-container max-w-full max-h-full">
               <canvas
                 ref={canvasRef}
                 className="max-w-full max-h-full"
