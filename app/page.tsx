@@ -3,42 +3,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export default function HalftoneGenerator() {
+  // State
   const [image, setImage] = useState<string | null>(null);
-  const [brightness, setBrightness] = useState(20);
-  const [contrast, setContrast] = useState(0);
-  const [gamma, setGamma] = useState(1);
-  const [gridSize, setGridSize] = useState(25);
-  const [dithering, setDithering] = useState('none');
+  const [brightness, setBrightness] = useState(100);
+  const [contrast, setContrast] = useState(100);
+  const [dotColor, setDotColor] = useState('#000000');
+  const [bgColor, setBgColor] = useState('#ffffff');
+  const [gridSize, setGridSize] = useState(8);
+  const [activeTab, setActiveTab] = useState('html');
+  
+  // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
-  const dropZoneRef = useRef<HTMLDivElement>(null);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (e) => {
-        setImage(e.target?.result as string);
-      };
+      reader.onload = (e) => setImage(e.target?.result as string);
       reader.readAsDataURL(file);
     }
   };
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setImage(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-  }, []);
 
   const applyHalftone = useCallback(() => {
     if (!image || !canvasRef.current || !hiddenCanvasRef.current) return;
@@ -59,12 +44,12 @@ export default function HalftoneGenerator() {
       hiddenCanvas.height = canvas.height;
 
       // Draw and process image
-      hiddenCtx.filter = `brightness(${brightness}%) contrast(${contrast}%) gamma(${gamma})`;
+      hiddenCtx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
       hiddenCtx.drawImage(img, 0, 0, canvas.width, canvas.height);
       
       // Get image data
       const imageData = hiddenCtx.getImageData(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'white';
+      ctx.fillStyle = bgColor;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
       // Apply halftone effect
@@ -76,13 +61,13 @@ export default function HalftoneGenerator() {
           
           ctx.beginPath();
           ctx.arc(x + gridSize / 2, y + gridSize / 2, radius, 0, Math.PI * 2);
-          ctx.fillStyle = 'black';
+          ctx.fillStyle = dotColor;
           ctx.fill();
         }
       }
     };
     img.src = image;
-  }, [image, brightness, contrast, gamma, gridSize]);
+  }, [image, brightness, contrast, gridSize, dotColor, bgColor]);
 
   useEffect(() => {
     applyHalftone();
@@ -96,158 +81,130 @@ export default function HalftoneGenerator() {
     link.click();
   };
 
-  const handleReset = () => {
-    setBrightness(20);
-    setContrast(0);
-    setGamma(1);
-    setGridSize(25);
-    setDithering('none');
-  };
-
   return (
-    <main className="min-h-screen flex">
-      {/* Left Panel - Controls */}
-      <div className="w-80 bg-white p-6 border-r border-gray-200">
-        {/* Drop Zone */}
-        <div
-          ref={dropZoneRef}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          className="border-2 border-dashed border-gray-300 rounded-lg p-4 mb-8 text-center cursor-pointer"
-        >
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleImageUpload}
-            className="hidden"
-            id="fileInput"
-          />
-          <label htmlFor="fileInput" className="cursor-pointer">
-            <div className="text-gray-500 mb-2">
-              <svg className="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              Drop image/video or click to upload
-            </div>
-          </label>
-        </div>
-
-        {/* Grid Size */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Grid Size
-          </label>
-          <div className="flex items-center gap-4">
-            <input
-              type="range"
-              min="5"
-              max="50"
-              value={gridSize}
-              onChange={(e) => setGridSize(Number(e.target.value))}
-              className="flex-1"
-            />
-            <span className="text-sm text-gray-500 w-8">{gridSize}</span>
-          </div>
-        </div>
-
-        {/* Image Adjustments */}
-        <div className="mb-6">
-          <h3 className="text-sm font-medium text-gray-700 mb-4">IMAGE ADJUSTMENTS</h3>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Brightness</label>
-              <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  min="0"
-                  max="200"
-                  value={brightness}
-                  onChange={(e) => setBrightness(Number(e.target.value))}
-                  className="flex-1"
-                />
-                <span className="text-sm text-gray-500 w-8">{brightness}</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Contrast</label>
-              <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  min="-100"
-                  max="100"
-                  value={contrast}
-                  onChange={(e) => setContrast(Number(e.target.value))}
-                  className="flex-1"
-                />
-                <span className="text-sm text-gray-500 w-8">{contrast}</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Gamma</label>
-              <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  min="0.1"
-                  max="2"
-                  step="0.1"
-                  value={gamma}
-                  onChange={(e) => setGamma(Number(e.target.value))}
-                  className="flex-1"
-                />
-                <span className="text-sm text-gray-500 w-8">{gamma}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Dithering */}
-        <div className="mb-8">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">DITHERING</h3>
-          <select
-            value={dithering}
-            onChange={(e) => setDithering(e.target.value)}
-            className="w-full p-2 border border-gray-300 rounded-md text-sm"
-          >
-            <option value="none">No Extra Texture</option>
-            <option value="floyd">Floyd-Steinberg</option>
-            <option value="ordered">Ordered</option>
-          </select>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex gap-3">
-          <button
-            onClick={handleReset}
-            className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-md text-sm hover:bg-gray-200"
-          >
-            Reset All
-          </button>
+    <div className="min-h-screen bg-gray-900 text-gray-100">
+      {/* Header */}
+      <header className="border-b border-gray-800 p-4">
+        <div className="max-w-screen-xl mx-auto flex justify-between items-center">
+          <h1 className="text-xl font-medium">Halftone Generator</h1>
           <button
             onClick={handleExport}
             disabled={!image}
-            className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 disabled:opacity-50"
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Export PNG
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Right Panel - Canvas */}
-      <div className="flex-1 bg-gray-50 p-8 flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow-sm p-4 max-w-full max-h-full overflow-auto">
-          <canvas
-            ref={canvasRef}
-            className="max-w-full h-auto"
-          />
-          <canvas
-            ref={hiddenCanvasRef}
-            className="hidden"
-          />
+      <div className="max-w-screen-xl mx-auto p-4 flex gap-4">
+        {/* Left Panel - Editor */}
+        <div className="w-1/2 bg-gray-800 rounded-lg overflow-hidden">
+          {/* Tabs */}
+          <div className="flex border-b border-gray-700">
+            {['html', 'css', 'js'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 text-sm ${
+                  activeTab === tab ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                {tab.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          {/* Controls */}
+          <div className="p-6 space-y-6">
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Upload Image</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="w-full p-2 bg-gray-700 rounded text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Dot Color</label>
+              <input
+                type="color"
+                value={dotColor}
+                onChange={(e) => setDotColor(e.target.value)}
+                className="w-full h-10 bg-gray-700 rounded cursor-pointer"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Background Color</label>
+              <input
+                type="color"
+                value={bgColor}
+                onChange={(e) => setBgColor(e.target.value)}
+                className="w-full h-10 bg-gray-700 rounded cursor-pointer"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                Brightness: {brightness}%
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="200"
+                value={brightness}
+                onChange={(e) => setBrightness(Number(e.target.value))}
+                className="w-full"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                Contrast: {contrast}%
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="200"
+                value={contrast}
+                onChange={(e) => setContrast(Number(e.target.value))}
+                className="w-full"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                Grid Size: {gridSize}px
+              </label>
+              <input
+                type="range"
+                min="4"
+                max="20"
+                value={gridSize}
+                onChange={(e) => setGridSize(Number(e.target.value))}
+                className="w-full"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel - Preview */}
+        <div className="w-1/2 bg-gray-800 rounded-lg p-4">
+          <div className="bg-white rounded-lg shadow-lg p-4 w-full h-full flex items-center justify-center">
+            <canvas
+              ref={canvasRef}
+              className="max-w-full max-h-full"
+            />
+            <canvas
+              ref={hiddenCanvasRef}
+              className="hidden"
+            />
+          </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
