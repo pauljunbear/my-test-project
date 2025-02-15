@@ -101,17 +101,12 @@ export default function HalftoneGenerator() {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-[#1E1E1E] text-white">
       <div className="flex h-screen">
         {/* Left Sidebar */}
-        <div className="w-[280px] bg-white border-r border-[#eaeaea] p-5 overflow-y-auto">
-          {/* Drop Zone */}
-          <div
-            ref={dropZoneRef}
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            className="dropzone mb-8 p-4 text-center cursor-pointer"
-          >
+        <div className="w-[280px] bg-[#252526] p-5 overflow-y-auto">
+          {/* Upload Button */}
+          <div className="mb-8">
             <input
               type="file"
               accept="image/*"
@@ -119,19 +114,17 @@ export default function HalftoneGenerator() {
               className="hidden"
               id="fileInput"
             />
-            <label htmlFor="fileInput" className="cursor-pointer">
-              <div className="text-[#666]">
-                <svg className="w-5 h-5 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                Drop image/video or click to upload
-              </div>
+            <label 
+              htmlFor="fileInput" 
+              className="block w-full py-2 px-4 bg-[#2D2D2D] hover:bg-[#3E3E3E] text-center rounded-[4px] cursor-pointer text-sm transition-colors"
+            >
+              Upload Image
             </label>
           </div>
 
           {/* Grid Size */}
           <div className="mb-6">
-            <label className="control-label block">Grid Size</label>
+            <label className="text-xs text-[#CCCCCC] mb-2 block">Grid Size</label>
             <div className="flex items-center gap-2">
               <input
                 type="range"
@@ -141,16 +134,16 @@ export default function HalftoneGenerator() {
                 onChange={(e) => setGridSize(Number(e.target.value))}
                 className="flex-1"
               />
-              <span className="value-label">{gridSize}</span>
+              <span className="text-xs text-[#CCCCCC] w-8 text-right">{gridSize}</span>
             </div>
           </div>
 
           {/* Image Adjustments */}
           <div className="mb-6">
-            <h3 className="section-title">IMAGE ADJUSTMENTS</h3>
+            <h3 className="text-xs font-medium text-[#CCCCCC] mb-4">ADJUSTMENTS</h3>
             <div className="space-y-4">
               <div>
-                <label className="control-label block">Brightness</label>
+                <label className="text-xs text-[#CCCCCC] mb-2 block">Brightness</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="range"
@@ -160,12 +153,12 @@ export default function HalftoneGenerator() {
                     onChange={(e) => setBrightness(Number(e.target.value))}
                     className="flex-1"
                   />
-                  <span className="value-label">{brightness}</span>
+                  <span className="text-xs text-[#CCCCCC] w-8 text-right">{brightness}</span>
                 </div>
               </div>
 
               <div>
-                <label className="control-label block">Contrast</label>
+                <label className="text-xs text-[#CCCCCC] mb-2 block">Contrast</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="range"
@@ -175,23 +168,7 @@ export default function HalftoneGenerator() {
                     onChange={(e) => setContrast(Number(e.target.value))}
                     className="flex-1"
                   />
-                  <span className="value-label">{contrast}</span>
-                </div>
-              </div>
-
-              <div>
-                <label className="control-label block">Gamma</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="2"
-                    step="0.1"
-                    value={gamma}
-                    onChange={(e) => setGamma(Number(e.target.value))}
-                    className="flex-1"
-                  />
-                  <span className="value-label">{gamma}</span>
+                  <span className="text-xs text-[#CCCCCC] w-8 text-right">{contrast}</span>
                 </div>
               </div>
             </div>
@@ -199,11 +176,11 @@ export default function HalftoneGenerator() {
 
           {/* Dithering */}
           <div className="mb-8">
-            <h3 className="section-title">DITHERING</h3>
+            <h3 className="text-xs font-medium text-[#CCCCCC] mb-2">DITHERING</h3>
             <select
               value={dithering}
               onChange={(e) => setDithering(e.target.value)}
-              className="w-full p-2 text-sm border border-[#eaeaea] rounded-md"
+              className="w-full p-2 text-sm bg-[#2D2D2D] text-white border-none rounded-[4px]"
             >
               <option value="none">No Extra Texture</option>
               <option value="floyd">Floyd-Steinberg</option>
@@ -215,32 +192,38 @@ export default function HalftoneGenerator() {
           <div className="flex gap-2">
             <button
               onClick={handleReset}
-              className="btn-reset flex-1 px-4 py-2 rounded-md text-sm"
+              className="flex-1 px-4 py-2 bg-[#2D2D2D] hover:bg-[#3E3E3E] text-[#CCCCCC] rounded-[4px] text-sm transition-colors"
             >
-              Reset All
+              Reset
             </button>
             <button
               onClick={handleExport}
               disabled={!image}
-              className="btn-export flex-1 px-4 py-2 rounded-md text-sm disabled:opacity-50"
+              className="flex-1 px-4 py-2 bg-[#007AFF] hover:bg-[#0066CC] text-white rounded-[4px] text-sm transition-colors disabled:opacity-50 disabled:hover:bg-[#007AFF]"
             >
-              Export PNG
+              Export
             </button>
           </div>
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 bg-[#fafafa] p-8 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-sm max-w-full max-h-full overflow-hidden">
-            <canvas
-              ref={canvasRef}
-              className="max-w-full max-h-full"
-            />
-            <canvas
-              ref={hiddenCanvasRef}
-              className="hidden"
-            />
-          </div>
+        <div className="flex-1 bg-[#1E1E1E] p-8 flex items-center justify-center">
+          {!image ? (
+            <div className="text-[#CCCCCC] text-sm">
+              Upload an image to begin
+            </div>
+          ) : (
+            <div className="max-w-full max-h-full">
+              <canvas
+                ref={canvasRef}
+                className="max-w-full max-h-full"
+              />
+              <canvas
+                ref={hiddenCanvasRef}
+                className="hidden"
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
