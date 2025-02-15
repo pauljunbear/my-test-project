@@ -101,144 +101,147 @@ export default function HalftoneGenerator() {
   };
 
   return (
-    <div className="min-h-screen bg-white flex">
-      {/* Left Sidebar */}
-      <div className="w-80 bg-gray-50 p-6 border-r border-gray-200">
-        {/* Drop Zone */}
-        <div
-          ref={dropZoneRef}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          className="border border-dashed border-gray-300 rounded-lg p-4 mb-8 text-center cursor-pointer bg-white"
-        >
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleImageUpload}
-            className="hidden"
-            id="fileInput"
-          />
-          <label htmlFor="fileInput" className="cursor-pointer">
-            <div className="text-gray-500">
-              <svg className="w-6 h-6 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              Drop image/video or click to upload
-            </div>
-          </label>
-        </div>
-
-        {/* Grid Size */}
-        <div className="mb-8">
-          <label className="block text-sm text-gray-600 mb-2">Grid Size</label>
-          <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-white">
+      <div className="flex h-screen">
+        {/* Left Sidebar */}
+        <div className="w-[280px] bg-white border-r border-[#eaeaea] p-5 overflow-y-auto">
+          {/* Drop Zone */}
+          <div
+            ref={dropZoneRef}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            className="dropzone mb-8 p-4 text-center cursor-pointer"
+          >
             <input
-              type="range"
-              min="4"
-              max="30"
-              value={gridSize}
-              onChange={(e) => setGridSize(Number(e.target.value))}
-              className="flex-1"
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+              id="fileInput"
             />
-            <span className="text-sm text-gray-500 w-8">{gridSize}</span>
+            <label htmlFor="fileInput" className="cursor-pointer">
+              <div className="text-[#666]">
+                <svg className="w-5 h-5 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Drop image/video or click to upload
+              </div>
+            </label>
+          </div>
+
+          {/* Grid Size */}
+          <div className="mb-6">
+            <label className="control-label block">Grid Size</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="4"
+                max="30"
+                value={gridSize}
+                onChange={(e) => setGridSize(Number(e.target.value))}
+                className="flex-1"
+              />
+              <span className="value-label">{gridSize}</span>
+            </div>
+          </div>
+
+          {/* Image Adjustments */}
+          <div className="mb-6">
+            <h3 className="section-title">IMAGE ADJUSTMENTS</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="control-label block">Brightness</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max="200"
+                    value={brightness}
+                    onChange={(e) => setBrightness(Number(e.target.value))}
+                    className="flex-1"
+                  />
+                  <span className="value-label">{brightness}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="control-label block">Contrast</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="-100"
+                    max="100"
+                    value={contrast}
+                    onChange={(e) => setContrast(Number(e.target.value))}
+                    className="flex-1"
+                  />
+                  <span className="value-label">{contrast}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="control-label block">Gamma</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="2"
+                    step="0.1"
+                    value={gamma}
+                    onChange={(e) => setGamma(Number(e.target.value))}
+                    className="flex-1"
+                  />
+                  <span className="value-label">{gamma}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Dithering */}
+          <div className="mb-8">
+            <h3 className="section-title">DITHERING</h3>
+            <select
+              value={dithering}
+              onChange={(e) => setDithering(e.target.value)}
+              className="w-full p-2 text-sm border border-[#eaeaea] rounded-md"
+            >
+              <option value="none">No Extra Texture</option>
+              <option value="floyd">Floyd-Steinberg</option>
+              <option value="ordered">Ordered</option>
+            </select>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={handleReset}
+              className="btn-reset flex-1 px-4 py-2 rounded-md text-sm"
+            >
+              Reset All
+            </button>
+            <button
+              onClick={handleExport}
+              disabled={!image}
+              className="btn-export flex-1 px-4 py-2 rounded-md text-sm disabled:opacity-50"
+            >
+              Export PNG
+            </button>
           </div>
         </div>
 
-        {/* Image Adjustments */}
-        <div className="mb-8">
-          <h3 className="text-sm font-medium text-gray-900 mb-4">IMAGE ADJUSTMENTS</h3>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Brightness</label>
-              <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  min="0"
-                  max="200"
-                  value={brightness}
-                  onChange={(e) => setBrightness(Number(e.target.value))}
-                  className="flex-1"
-                />
-                <span className="text-sm text-gray-500 w-8">{brightness}</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Contrast</label>
-              <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  min="-100"
-                  max="100"
-                  value={contrast}
-                  onChange={(e) => setContrast(Number(e.target.value))}
-                  className="flex-1"
-                />
-                <span className="text-sm text-gray-500 w-8">{contrast}</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Gamma</label>
-              <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  min="0.1"
-                  max="2"
-                  step="0.1"
-                  value={gamma}
-                  onChange={(e) => setGamma(Number(e.target.value))}
-                  className="flex-1"
-                />
-                <span className="text-sm text-gray-500 w-8">{gamma}</span>
-              </div>
-            </div>
+        {/* Main Content */}
+        <div className="flex-1 bg-[#fafafa] p-8 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-sm max-w-full max-h-full overflow-hidden">
+            <canvas
+              ref={canvasRef}
+              className="max-w-full max-h-full"
+            />
+            <canvas
+              ref={hiddenCanvasRef}
+              className="hidden"
+            />
           </div>
         </div>
-
-        {/* Dithering */}
-        <div className="mb-8">
-          <h3 className="text-sm font-medium text-gray-900 mb-2">DITHERING</h3>
-          <select
-            value={dithering}
-            onChange={(e) => setDithering(e.target.value)}
-            className="w-full p-2 border border-gray-200 rounded-md text-sm bg-white"
-          >
-            <option value="none">No Extra Texture</option>
-            <option value="floyd">Floyd-Steinberg</option>
-            <option value="ordered">Ordered</option>
-          </select>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex gap-2">
-          <button
-            onClick={handleReset}
-            className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-md text-sm hover:bg-gray-200"
-          >
-            Reset All
-          </button>
-          <button
-            onClick={handleExport}
-            disabled={!image}
-            className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 disabled:opacity-50"
-          >
-            Export PNG
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 bg-white p-8 flex items-center justify-center">
-        <canvas
-          ref={canvasRef}
-          className="max-w-full max-h-full"
-        />
-        <canvas
-          ref={hiddenCanvasRef}
-          className="hidden"
-        />
       </div>
     </div>
   );
