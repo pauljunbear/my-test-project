@@ -98,20 +98,19 @@ export default function HalftoneGenerator() {
   };
 
   return (
-    <div className="relative min-h-screen">
-      {/* Left Navigation Bar */}
-      <aside className="fixed inset-y-0 left-0 z-20 flex w-64 flex-col bg-[#0A0A0B] border-r border-[#1F2937]/10">
-        {/* App Title */}
-        <div className="flex h-14 items-center border-b border-[#1F2937]/10 px-4">
-          <h1 className="text-sm font-semibold text-white">Halftone Generator</h1>
-        </div>
+    <div className="flex min-h-screen bg-[#0A0A0B]">
+      {/* Left Navigation */}
+      <nav className="w-64 min-w-64 border-r border-[#1F2937]/10">
+        <div className="fixed top-0 bottom-0 left-0 w-64 bg-[#0A0A0B] flex flex-col">
+          {/* Header */}
+          <div className="h-14 px-4 flex items-center border-b border-[#1F2937]/10">
+            <h1 className="text-sm font-semibold text-white">Halftone Generator</h1>
+          </div>
 
-        {/* Settings Navigation */}
-        <div className="flex-1 overflow-y-auto">
-          {/* Controls */}
-          <div className="p-4 space-y-6">
-            {/* Upload Section */}
-            <div>
+          {/* Settings */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-4 space-y-6">
+              {/* Hidden File Input */}
               <input
                 type="file"
                 accept="image/*"
@@ -119,6 +118,8 @@ export default function HalftoneGenerator() {
                 className="hidden"
                 id="fileInput"
               />
+
+              {/* Upload Button */}
               <label 
                 htmlFor="fileInput" 
                 className="flex items-center gap-2 w-full px-3 py-2 text-sm text-[#E5E7EB] bg-[#1F2937]/5 border border-[#1F2937]/10 rounded-md hover:bg-[#1F2937]/10 hover:border-[#1F2937]/20 transition-all cursor-pointer"
@@ -128,107 +129,105 @@ export default function HalftoneGenerator() {
                 </svg>
                 {image ? 'Change image' : 'Upload image'}
               </label>
-            </div>
 
-            {/* Grid Size */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-[#E5E7EB]">Grid Size</span>
-                <span className="text-xs text-[#9CA3AF]">{gridSize}px</span>
+              {/* Grid Size */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-[#E5E7EB]">Grid Size</span>
+                  <span className="text-xs text-[#9CA3AF]">{gridSize}px</span>
+                </div>
+                <input
+                  type="range"
+                  min="4"
+                  max="30"
+                  value={gridSize}
+                  onChange={(e) => setGridSize(Number(e.target.value))}
+                  className="w-full accent-[#2563EB] bg-[#1F2937]/10 rounded-full"
+                />
               </div>
-              <input
-                type="range"
-                min="4"
-                max="30"
-                value={gridSize}
-                onChange={(e) => setGridSize(Number(e.target.value))}
-                className="w-full accent-[#2563EB] bg-[#1F2937]/10 rounded-full"
-              />
-            </div>
 
-            {/* Brightness */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-[#E5E7EB]">Brightness</span>
-                <span className="text-xs text-[#9CA3AF]">{brightness}%</span>
+              {/* Brightness */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-[#E5E7EB]">Brightness</span>
+                  <span className="text-xs text-[#9CA3AF]">{brightness}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="200"
+                  value={brightness}
+                  onChange={(e) => setBrightness(Number(e.target.value))}
+                  className="w-full accent-[#2563EB] bg-[#1F2937]/10 rounded-full"
+                />
               </div>
-              <input
-                type="range"
-                min="0"
-                max="200"
-                value={brightness}
-                onChange={(e) => setBrightness(Number(e.target.value))}
-                className="w-full accent-[#2563EB] bg-[#1F2937]/10 rounded-full"
-              />
-            </div>
 
-            {/* Contrast */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-[#E5E7EB]">Contrast</span>
-                <span className="text-xs text-[#9CA3AF]">{contrast}%</span>
+              {/* Contrast */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-[#E5E7EB]">Contrast</span>
+                  <span className="text-xs text-[#9CA3AF]">{contrast}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="-100"
+                  max="100"
+                  value={contrast}
+                  onChange={(e) => setContrast(Number(e.target.value))}
+                  className="w-full accent-[#2563EB] bg-[#1F2937]/10 rounded-full"
+                />
               </div>
-              <input
-                type="range"
-                min="-100"
-                max="100"
-                value={contrast}
-                onChange={(e) => setContrast(Number(e.target.value))}
-                className="w-full accent-[#2563EB] bg-[#1F2937]/10 rounded-full"
-              />
-            </div>
 
-            {/* Dithering */}
-            <div className="space-y-2">
-              <span className="text-sm font-medium text-[#E5E7EB]">Dithering</span>
-              <select
-                value={dithering}
-                onChange={(e) => setDithering(e.target.value)}
-                className="w-full px-3 py-2 text-sm text-[#E5E7EB] bg-[#1F2937]/5 border border-[#1F2937]/10 rounded-md hover:bg-[#1F2937]/10 hover:border-[#1F2937]/20 transition-all cursor-pointer"
+              {/* Dithering */}
+              <div className="space-y-2">
+                <span className="text-sm font-medium text-[#E5E7EB]">Dithering</span>
+                <select
+                  value={dithering}
+                  onChange={(e) => setDithering(e.target.value)}
+                  className="w-full px-3 py-2 text-sm text-[#E5E7EB] bg-[#1F2937]/5 border border-[#1F2937]/10 rounded-md hover:bg-[#1F2937]/10 hover:border-[#1F2937]/20 transition-all cursor-pointer"
+                >
+                  <option value="none">No Extra Texture</option>
+                  <option value="floyd">Floyd-Steinberg</option>
+                  <option value="ordered">Ordered</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="p-4 border-t border-[#1F2937]/10">
+            <div className="flex gap-2">
+              <button
+                onClick={handleReset}
+                className="flex-1 px-3 py-2 text-sm font-medium text-[#E5E7EB] bg-[#1F2937]/5 border border-[#1F2937]/10 rounded-md hover:bg-[#1F2937]/10 transition-all"
               >
-                <option value="none">No Extra Texture</option>
-                <option value="floyd">Floyd-Steinberg</option>
-                <option value="ordered">Ordered</option>
-              </select>
+                Reset
+              </button>
+              <button
+                onClick={handleExport}
+                disabled={!image}
+                className="flex-1 px-3 py-2 text-sm font-medium text-white bg-[#2563EB] rounded-md hover:bg-[#1D4ED8] disabled:opacity-50 disabled:hover:bg-[#2563EB] transition-all"
+              >
+                Export
+              </button>
             </div>
           </div>
         </div>
+      </nav>
 
-        {/* Bottom Actions */}
-        <div className="p-4 border-t border-[#1F2937]/10">
-          <div className="flex gap-2">
-            <button
-              onClick={handleReset}
-              className="flex-1 px-3 py-2 text-sm font-medium text-[#E5E7EB] bg-[#1F2937]/5 border border-[#1F2937]/10 rounded-md hover:bg-[#1F2937]/10 transition-all"
-            >
-              Reset
-            </button>
-            <button
-              onClick={handleExport}
-              disabled={!image}
-              className="flex-1 px-3 py-2 text-sm font-medium text-white bg-[#2563EB] rounded-md hover:bg-[#1D4ED8] disabled:opacity-50 disabled:hover:bg-[#2563EB] transition-all"
-            >
-              Export
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <main className="pl-64 min-h-screen bg-[#0A0A0B]">
-        <div className="h-screen flex items-center justify-center p-8">
-          <div className="relative max-w-full max-h-full">
-            <canvas
-              ref={canvasRef}
-              className="max-w-full max-h-[80vh] rounded-lg"
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-            />
-            <canvas
-              ref={hiddenCanvasRef}
-              className="hidden"
-            />
-          </div>
+      {/* Main Content */}
+      <main className="flex-1 flex items-center justify-center p-8">
+        <div className="relative max-w-full max-h-full">
+          <canvas
+            ref={canvasRef}
+            className="max-w-full max-h-[80vh] rounded-lg"
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+          />
+          <canvas
+            ref={hiddenCanvasRef}
+            className="hidden"
+          />
         </div>
       </main>
     </div>
