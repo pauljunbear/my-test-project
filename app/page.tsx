@@ -100,9 +100,9 @@ export default function HalftoneGenerator() {
   return (
     <div className="h-screen flex">
       {/* Left Sidebar */}
-      <div className="sidebar w-[240px] flex flex-col">
+      <div className="sidebar w-[200px] flex flex-col">
         {/* App Title */}
-        <div className="px-4 py-3 border-b border-[var(--border-light)]">
+        <div className="px-3 py-2 border-b border-[var(--border-light)]">
           <h1 className="text-sm font-medium text-[var(--text-primary)]">
             Halftone Generator
           </h1>
@@ -112,7 +112,8 @@ export default function HalftoneGenerator() {
         <div className="flex-1 overflow-y-auto">
           {/* Upload Section */}
           <div className="sidebar-section">
-            <div className="upload-zone">
+            <h2 className="section-title">Image</h2>
+            <div className="px-3">
               <input
                 type="file"
                 accept="image/*"
@@ -122,14 +123,12 @@ export default function HalftoneGenerator() {
               />
               <label 
                 htmlFor="fileInput" 
-                className="flex flex-col items-center cursor-pointer"
+                className="upload-button"
               >
-                <svg className="w-5 h-5 mb-2 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <span className="text-xs font-medium text-[var(--text-secondary)]">
-                  {image ? 'Change image' : 'Drop image or click to upload'}
-                </span>
+                <span>{image ? 'Change image' : 'Upload image'}</span>
               </label>
             </div>
           </div>
@@ -226,30 +225,28 @@ export default function HalftoneGenerator() {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 bg-[var(--content)] p-8">
-        <div className="h-full flex items-center justify-center">
-          {!image ? (
-            <div className="canvas-placeholder">
-              <svg className="w-10 h-10 mb-3 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <span className="text-sm font-medium text-[var(--text-tertiary)]">
-                Upload an image to begin
-              </span>
-            </div>
-          ) : (
-            <div className="canvas-area">
-              <canvas
-                ref={canvasRef}
-                className="max-w-full max-h-full"
-              />
-              <canvas
-                ref={hiddenCanvasRef}
-                className="hidden"
-              />
-            </div>
-          )}
-        </div>
+      <div className="canvas-container">
+        {!image ? (
+          <div className="canvas-placeholder">
+            <svg className="w-8 h-8 mb-3 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className="text-sm font-medium text-[var(--text-tertiary)]">
+              Upload an image to begin
+            </span>
+          </div>
+        ) : (
+          <div className="canvas-area">
+            <canvas
+              ref={canvasRef}
+              className="max-w-full max-h-full"
+            />
+            <canvas
+              ref={hiddenCanvasRef}
+              className="hidden"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
