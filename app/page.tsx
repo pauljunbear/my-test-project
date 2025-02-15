@@ -98,136 +98,142 @@ export default function HalftoneGenerator() {
   };
 
   return (
-    <div className="h-screen bg-[var(--background)] flex">
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 h-14 bg-white border-b border-[var(--border)] px-4 flex items-center justify-between z-10">
-        <div className="flex items-center space-x-4">
-          <h1 className="text-lg font-medium text-[var(--text-primary)]">Halftone Generator</h1>
-        </div>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={handleReset}
-            className="btn btn-secondary"
-          >
-            Reset
-          </button>
-          <button
-            onClick={handleExport}
-            disabled={!image}
-            className="btn btn-primary disabled:opacity-50"
-          >
-            Export PNG
-          </button>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <div className="flex mt-14 h-[calc(100vh-3.5rem)]">
-        {/* Left Sidebar */}
-        <div className="sidebar w-[280px] p-6">
-          {/* Upload Section */}
-          <div className="mb-8">
-            <h2 className="section-header">Image</h2>
-            <div className="upload-area">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-                id="fileInput"
-              />
-              <label 
-                htmlFor="fileInput" 
-                className="flex flex-col items-center cursor-pointer"
-              >
-                <svg className="w-8 h-8 mb-2 text-[var(--text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span className="text-sm text-[var(--text-secondary)]">
-                  {image ? 'Change image' : 'Drop image or click to upload'}
-                </span>
-              </label>
-            </div>
+    <div className="h-screen flex">
+      {/* Left Sidebar */}
+      <div className="sidebar w-[280px] flex flex-col">
+        {/* Sidebar Header */}
+        <div className="sidebar-section">
+          <h1 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
+            Halftone Generator
+          </h1>
+          <div className="upload-zone">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+              id="fileInput"
+            />
+            <label 
+              htmlFor="fileInput" 
+              className="flex flex-col items-center cursor-pointer"
+            >
+              <svg className="w-6 h-6 mb-3 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span className="text-sm font-medium text-[var(--text-secondary)]">
+                {image ? 'Change image' : 'Drop image or click to upload'}
+              </span>
+            </label>
           </div>
+        </div>
 
-          {/* Grid Size */}
-          <div className="mb-8">
-            <h2 className="section-header">Grid</h2>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <label className="control-label">Size</label>
-                <span className="value-display">{gridSize}</span>
+        {/* Grid Controls */}
+        <div className="sidebar-section">
+          <h2 className="section-title">Grid</h2>
+          <div className="control-group">
+            <div className="flex justify-between mb-2">
+              <label className="input-label">Size</label>
+              <span className="value-label">{gridSize}px</span>
+            </div>
+            <input
+              type="range"
+              min="4"
+              max="30"
+              value={gridSize}
+              onChange={(e) => setGridSize(Number(e.target.value))}
+              className="w-full"
+            />
+          </div>
+        </div>
+
+        {/* Image Adjustments */}
+        <div className="sidebar-section">
+          <h2 className="section-title">Adjustments</h2>
+          <div className="space-y-3">
+            <div className="control-group">
+              <div className="flex justify-between mb-2">
+                <label className="input-label">Brightness</label>
+                <span className="value-label">{brightness}%</span>
               </div>
               <input
                 type="range"
-                min="4"
-                max="30"
-                value={gridSize}
-                onChange={(e) => setGridSize(Number(e.target.value))}
+                min="0"
+                max="200"
+                value={brightness}
+                onChange={(e) => setBrightness(Number(e.target.value))}
+                className="w-full"
+              />
+            </div>
+            <div className="control-group">
+              <div className="flex justify-between mb-2">
+                <label className="input-label">Contrast</label>
+                <span className="value-label">{contrast}%</span>
+              </div>
+              <input
+                type="range"
+                min="-100"
+                max="100"
+                value={contrast}
+                onChange={(e) => setContrast(Number(e.target.value))}
                 className="w-full"
               />
             </div>
           </div>
+        </div>
 
-          {/* Image Adjustments */}
-          <div className="mb-8">
-            <h2 className="section-header">Adjustments</h2>
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <label className="control-label">Brightness</label>
-                  <span className="value-display">{brightness}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="200"
-                  value={brightness}
-                  onChange={(e) => setBrightness(Number(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <label className="control-label">Contrast</label>
-                  <span className="value-display">{contrast}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="-100"
-                  max="100"
-                  value={contrast}
-                  onChange={(e) => setContrast(Number(e.target.value))}
-                  className="w-full"
-                />
-              </div>
+        {/* Dithering */}
+        <div className="sidebar-section">
+          <h2 className="section-title">Dithering</h2>
+          <div className="control-group">
+            <div className="select-container">
+              <select
+                value={dithering}
+                onChange={(e) => setDithering(e.target.value)}
+                className="w-full"
+              >
+                <option value="none">No Extra Texture</option>
+                <option value="floyd">Floyd-Steinberg</option>
+                <option value="ordered">Ordered</option>
+              </select>
             </div>
-          </div>
-
-          {/* Dithering */}
-          <div className="mb-8">
-            <h2 className="section-header">Dithering</h2>
-            <select
-              value={dithering}
-              onChange={(e) => setDithering(e.target.value)}
-              className="w-full"
-            >
-              <option value="none">No Extra Texture</option>
-              <option value="floyd">Floyd-Steinberg</option>
-              <option value="ordered">Ordered</option>
-            </select>
           </div>
         </div>
 
-        {/* Main Canvas Area */}
-        <div className="flex-1 bg-[var(--content)] p-8 flex items-center justify-center">
+        {/* Action Buttons */}
+        <div className="sidebar-section mt-auto">
+          <div className="flex gap-2">
+            <button
+              onClick={handleReset}
+              className="btn btn-secondary flex-1"
+            >
+              Reset
+            </button>
+            <button
+              onClick={handleExport}
+              disabled={!image}
+              className="btn btn-primary flex-1 disabled:opacity-50"
+            >
+              Export
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 bg-[var(--content)] p-8">
+        <div className="h-full flex items-center justify-center">
           {!image ? (
-            <div className="text-[var(--text-tertiary)] text-sm">
-              Upload an image to begin
+            <div className="canvas-placeholder">
+              <svg className="w-12 h-12 mb-4 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span className="text-sm font-medium">
+                Upload an image to begin
+              </span>
             </div>
           ) : (
-            <div className="canvas-container max-w-full max-h-full">
+            <div className="canvas-area">
               <canvas
                 ref={canvasRef}
                 className="max-w-full max-h-full"
