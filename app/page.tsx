@@ -4,11 +4,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 export default function HalftoneGenerator() {
   const [image, setImage] = useState<string | null>(null);
-  const [brightness, setBrightness] = useState(100);
-  const [contrast, setContrast] = useState(100);
-  const [gridSize, setGridSize] = useState(8);
+  const [brightness, setBrightness] = useState(20);
+  const [contrast, setContrast] = useState(0);
+  const [gamma, setGamma] = useState(1);
+  const [gridSize, setGridSize] = useState(25);
+  const [dithering, setDithering] = useState('none');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -20,6 +23,22 @@ export default function HalftoneGenerator() {
       reader.readAsDataURL(file);
     }
   };
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImage(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
 
   const applyHalftone = useCallback(() => {
     if (!image || !canvasRef.current || !hiddenCanvasRef.current) return;
@@ -40,7 +59,7 @@ export default function HalftoneGenerator() {
       hiddenCanvas.height = canvas.height;
 
       // Draw and process image
-      hiddenCtx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
+      hiddenCtx.filter = `brightness(${brightness}%) contrast(${contrast}%) gamma(${gamma})`;
       hiddenCtx.drawImage(img, 0, 0, canvas.width, canvas.height);
       
       // Get image data
@@ -63,7 +82,7 @@ export default function HalftoneGenerator() {
       }
     };
     img.src = image;
-  }, [image, brightness, contrast, gridSize]);
+  }, [image, brightness, contrast, gamma, gridSize]);
 
   useEffect(() => {
     applyHalftone();
@@ -77,86 +96,156 @@ export default function HalftoneGenerator() {
     link.click();
   };
 
+  const handleReset = () => {
+    setBrightness(20);
+    setContrast(0);
+    setGamma(1);
+    setGridSize(25);
+    setDithering('none');
+  };
+
   return (
-    <main className="min-h-screen p-8 bg-gray-50">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Halftone Generator</h1>
-        
-        <div className="space-y-6">
-          {/* Controls */}
-          <div className="space-y-4 p-6 bg-white rounded-lg shadow-sm">
-            <div>
-              <label className="block text-sm font-medium mb-2">Upload Image</label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="w-full p-2 border rounded"
-              />
+    <main className="min-h-screen flex">
+      {/* Left Panel - Controls */}
+      <div className="w-80 bg-white p-6 border-r border-gray-200">
+        {/* Drop Zone */}
+        <div
+          ref={dropZoneRef}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          className="border-2 border-dashed border-gray-300 rounded-lg p-4 mb-8 text-center cursor-pointer"
+        >
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleImageUpload}
+            className="hidden"
+            id="fileInput"
+          />
+          <label htmlFor="fileInput" className="cursor-pointer">
+            <div className="text-gray-500 mb-2">
+              <svg className="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Drop image/video or click to upload
             </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Brightness: {brightness}%
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="200"
-                value={brightness}
-                onChange={(e) => setBrightness(Number(e.target.value))}
-                className="w-full"
-              />
-            </div>
+          </label>
+        </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Contrast: {contrast}%
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="200"
-                value={contrast}
-                onChange={(e) => setContrast(Number(e.target.value))}
-                className="w-full"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Grid Size: {gridSize}px
-              </label>
-              <input
-                type="range"
-                min="4"
-                max="20"
-                value={gridSize}
-                onChange={(e) => setGridSize(Number(e.target.value))}
-                className="w-full"
-              />
-            </div>
-
-            <button
-              onClick={handleExport}
-              disabled={!image}
-              className="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50"
-            >
-              Export as PNG
-            </button>
-          </div>
-
-          {/* Canvas Display */}
-          <div className="relative bg-white p-4 rounded-lg shadow-sm">
-            <canvas
-              ref={canvasRef}
-              className="max-w-full h-auto mx-auto border"
+        {/* Grid Size */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Grid Size
+          </label>
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min="5"
+              max="50"
+              value={gridSize}
+              onChange={(e) => setGridSize(Number(e.target.value))}
+              className="flex-1"
             />
-            <canvas
-              ref={hiddenCanvasRef}
-              className="hidden"
-            />
+            <span className="text-sm text-gray-500 w-8">{gridSize}</span>
           </div>
+        </div>
+
+        {/* Image Adjustments */}
+        <div className="mb-6">
+          <h3 className="text-sm font-medium text-gray-700 mb-4">IMAGE ADJUSTMENTS</h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-gray-600 mb-2">Brightness</label>
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min="0"
+                  max="200"
+                  value={brightness}
+                  onChange={(e) => setBrightness(Number(e.target.value))}
+                  className="flex-1"
+                />
+                <span className="text-sm text-gray-500 w-8">{brightness}</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-600 mb-2">Contrast</label>
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min="-100"
+                  max="100"
+                  value={contrast}
+                  onChange={(e) => setContrast(Number(e.target.value))}
+                  className="flex-1"
+                />
+                <span className="text-sm text-gray-500 w-8">{contrast}</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-600 mb-2">Gamma</label>
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min="0.1"
+                  max="2"
+                  step="0.1"
+                  value={gamma}
+                  onChange={(e) => setGamma(Number(e.target.value))}
+                  className="flex-1"
+                />
+                <span className="text-sm text-gray-500 w-8">{gamma}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Dithering */}
+        <div className="mb-8">
+          <h3 className="text-sm font-medium text-gray-700 mb-2">DITHERING</h3>
+          <select
+            value={dithering}
+            onChange={(e) => setDithering(e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded-md text-sm"
+          >
+            <option value="none">No Extra Texture</option>
+            <option value="floyd">Floyd-Steinberg</option>
+            <option value="ordered">Ordered</option>
+          </select>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-3">
+          <button
+            onClick={handleReset}
+            className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-md text-sm hover:bg-gray-200"
+          >
+            Reset All
+          </button>
+          <button
+            onClick={handleExport}
+            disabled={!image}
+            className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 disabled:opacity-50"
+          >
+            Export PNG
+          </button>
+        </div>
+      </div>
+
+      {/* Right Panel - Canvas */}
+      <div className="flex-1 bg-gray-50 p-8 flex items-center justify-center">
+        <div className="bg-white rounded-lg shadow-sm p-4 max-w-full max-h-full overflow-auto">
+          <canvas
+            ref={canvasRef}
+            className="max-w-full h-auto"
+          />
+          <canvas
+            ref={hiddenCanvasRef}
+            className="hidden"
+          />
         </div>
       </div>
     </main>
