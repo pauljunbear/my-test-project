@@ -129,7 +129,8 @@ export default function HalftoneGenerator() {
               {image && (
                 <p className="text-xs text-gray-500 truncate">
                   {/* Show filename if available */}
-                  {typeof window !== 'undefined' && document.getElementById('fileInput')?.files?.[0]?.name || 'Image loaded'}
+                  {typeof window !== 'undefined' && 
+                    ((document.getElementById('fileInput') as HTMLInputElement)?.files?.[0]?.name || 'Image loaded')}
                 </p>
               )}
             </div>
