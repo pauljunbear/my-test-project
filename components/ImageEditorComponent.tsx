@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChromePicker } from 'react-color';
 import { Select } from '@tremor/react';
-import { Canvas, Image as FabricImage, filters } from 'fabric';
+import { Canvas, Image as FabricImage, filters, BaseFilter } from 'fabric';
 import type { IBaseFilter } from 'fabric/fabric-impl';
 
 type Effect = 'none' | 'grayscale' | 'duotone';
@@ -57,13 +57,13 @@ export default function ImageEditorComponent() {
   // Custom Duotone Filter
   const createDuotoneFilter = (color1: string, color2: string) => {
     // Create a grayscale filter first
-    const grayscale = new filters.Grayscale() as unknown as IBaseFilter;
+    const grayscale = new filters.Grayscale();
     
     // Then blend with the chosen color
     const blend = new filters.BlendColor({
       color: color1,
       mode: 'multiply'
-    }) as unknown as IBaseFilter;
+    });
 
     return [grayscale, blend];
   };
@@ -128,7 +128,7 @@ export default function ImageEditorComponent() {
 
     switch (effectType) {
       case 'grayscale':
-        image.filters.push(new filters.Grayscale() as unknown as IBaseFilter);
+        image.filters.push(new filters.Grayscale());
         break;
       case 'duotone':
         image.filters.push(...createDuotoneFilter(duotoneColors.color1, duotoneColors.color2));
