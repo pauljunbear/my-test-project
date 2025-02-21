@@ -1,15 +1,24 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fabric } from 'fabric';
+import { Canvas, Image as FabricImage } from 'fabric';
 import { ChromePicker } from 'react-color';
 import { Select, SelectItem } from '@tremor/react';
 
 type Effect = 'none' | 'grayscale' | 'duotone';
 type DuotoneColors = { color1: string; color2: string };
 
+// Ensure fabric.js is only loaded on client side
+const initCanvas = (canvas: HTMLCanvasElement): Canvas => {
+  return new Canvas(canvas, {
+    width: 800,
+    height: 600,
+    backgroundColor: '#f8f9fa'
+  });
+};
+
 export default function ImageEditor() {
-  const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
+  const [canvas, setCanvas] = useState<Canvas | null>(null);
   const [effect, setEffect] = useState<Effect>('none');
   const [duotoneColors, setDuotoneColors] = useState<DuotoneColors>({
     color1: '#000000',
@@ -22,14 +31,15 @@ export default function ImageEditor() {
 
   // Initialize fabric.js canvas
   useEffect(() => {
-    if (canvasRef.current && !canvas) {
-      const fabricCanvas = new fabric.Canvas(canvasRef.current, {
-        width: 800,
-        height: 600,
-        backgroundColor: '#f8f9fa'
-      });
+    if (canvasRef.current && !canvas && typeof window !== 'undefined') {
+      const fabricCanvas = initCanvas(canvasRef.current);
       setCanvas(fabricCanvas);
     }
+
+    // Cleanup
+    return () => {
+      canvas?.dispose();
+    };
   }, [canvas]);
 
   const handleImageUpload = useCallback((file: File) => {
@@ -37,7 +47,10 @@ export default function ImageEditor() {
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      fabric.Image.fromURL(e.target?.result as string, (img) => {
+      const result = e.target?.result;
+      if (typeof result !== 'string') return;
+
+      FabricImage.fromURL(result, (img) => {
         canvas.clear();
         
         // Scale image to fit canvas while maintaining aspect ratio
@@ -72,9 +85,9 @@ export default function ImageEditor() {
     e.preventDefault();
   }, []);
 
-  const applyEffect = useCallback((effectType: Effect, image?: fabric.Image) => {
+  const applyEffect = useCallback((effectType: Effect, image?: FabricImage) => {
     if (!canvas) return;
-    const targetImage = image || canvas.getObjects()[0] as fabric.Image;
+    const targetImage = image || canvas.getObjects()[0] as FabricImage;
     if (!targetImage) return;
 
     // Reset filters
@@ -82,16 +95,16 @@ export default function ImageEditor() {
 
     switch (effectType) {
       case 'grayscale':
-        targetImage.filters.push(new fabric.Image.filters.Grayscale());
+        targetImage.filters.push(new FabricImage.filters.Grayscale());
         break;
       case 'duotone':
         // Custom duotone filter implementation
         targetImage.filters.push(
-          new fabric.Image.filters.BlendColor({
+          new FabricImage.filters.BlendColor({
             color: duotoneColors.color1,
             mode: 'tint'
           }),
-          new fabric.Image.filters.Contrast({
+          new FabricImage.filters.Contrast({
             contrast: 0.5
           })
         );
@@ -103,7 +116,7 @@ export default function ImageEditor() {
   }, [canvas, duotoneColors]);
 
   useEffect(() => {
-    const activeObject = canvas?.getObjects()[0] as fabric.Image;
+    const activeObject = canvas?.getObjects()[0] as FabricImage;
     if (activeObject) {
       applyEffect(effect, activeObject);
     }
