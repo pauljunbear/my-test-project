@@ -102,21 +102,18 @@ export default function ImageEditor() {
 
     switch (effectType) {
       case 'grayscale':
-        const GrayscaleFilter = fabricInstance.util.getFilterBackend('Grayscale');
-        if (GrayscaleFilter) {
-          const filter = new GrayscaleFilter();
+        if (fabricInstance.Image.filters) {
+          const filter = new fabricInstance.Image.filters.Grayscale();
           image.filters.push(filter as unknown as IBaseFilter);
         }
         break;
       case 'duotone':
-        const BlendColorFilter = fabricInstance.util.getFilterBackend('BlendColor');
-        const ContrastFilter = fabricInstance.util.getFilterBackend('Contrast');
-        if (BlendColorFilter && ContrastFilter) {
-          const blendFilter = new BlendColorFilter({
+        if (fabricInstance.Image.filters) {
+          const blendFilter = new fabricInstance.Image.filters.BlendColor({
             color: duotoneColors.color1,
             mode: 'tint'
           });
-          const contrastFilter = new ContrastFilter({
+          const contrastFilter = new fabricInstance.Image.filters.Contrast({
             contrast: 0.5
           });
           image.filters.push(
