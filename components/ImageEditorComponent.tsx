@@ -3,7 +3,7 @@ import { ChromePicker } from 'react-color';
 import { Select } from '@tremor/react';
 import { Canvas, Image as FabricImage, filters } from 'fabric';
 
-type Effect = 'none' | 'grayscale' | 'duotone' | 'halftone';
+type Effect = 'none' | 'grayscale' | 'duotone' | 'halftone' | 'sepia' | 'invert' | 'blur' | 'sharpen' | 'edge' | 'pixelate' | 'emboss';
 
 // Custom Duotone Shader
 const duotoneShader = `
@@ -49,8 +49,66 @@ const halftoneShader = `
   }
 `;
 
+// Custom Sepia Shader
+const sepiaShader = `
+  precision highp float;
+  uniform sampler2D uTexture;
+  uniform float uIntensity;
+  varying vec2 vTexCoord;
+
+  void main() {
+    vec4 color = texture2D(uTexture, vTexCoord);
+    float r = color.r * 0.393 + color.g * 0.769 + color.b * 0.189;
+    float g = color.r * 0.349 + color.g * 0.686 + color.b * 0.168;
+    float b = color.r * 0.272 + color.g * 0.534 + color.b * 0.131;
+    vec3 sepia = vec3(r, g, b);
+    gl_FragColor = vec4(mix(color.rgb, sepia, uIntensity), color.a);
+  }
+`;
+
+// Custom Edge Detection Shader
+const edgeShader = `
+  precision highp float;
+  uniform sampler2D uTexture;
+  uniform vec2 uTexSize;
+  uniform float uThreshold;
+  varying vec2 vTexCoord;
+
+  void main() {
+    vec2 onePixel = vec2(1.0, 1.0) / uTexSize;
+    vec4 color = texture2D(uTexture, vTexCoord);
+    vec4 colorRight = texture2D(uTexture, vTexCoord + vec2(onePixel.x, 0.0));
+    vec4 colorBottom = texture2D(uTexture, vTexCoord + vec2(0.0, onePixel.y));
+    
+    float dx = length(color.rgb - colorRight.rgb);
+    float dy = length(color.rgb - colorBottom.rgb);
+    float edge = length(vec2(dx, dy));
+    
+    edge = smoothstep(0.0, uThreshold, edge);
+    gl_FragColor = vec4(vec3(edge), 1.0);
+  }
+`;
+
+// Custom Emboss Shader
+const embossShader = `
+  precision highp float;
+  uniform sampler2D uTexture;
+  uniform vec2 uTexSize;
+  uniform float uStrength;
+  varying vec2 vTexCoord;
+
+  void main() {
+    vec2 onePixel = vec2(1.0, 1.0) / uTexSize;
+    vec4 color = texture2D(uTexture, vTexCoord);
+    vec4 colorTopLeft = texture2D(uTexture, vTexCoord - onePixel);
+    
+    vec3 emboss = (color.rgb - colorTopLeft.rgb) * uStrength + vec3(0.5);
+    gl_FragColor = vec4(emboss, color.a);
+  }
+`;
+
 // Create custom filter classes
-class DuotoneFilter extends filters.BaseFilter {
+class DuotoneFilter extends filters.BaseFilter<'Duotone', { color1: string; color2: string }> {
   static type = 'Duotone';
   static fragmentSource = duotoneShader;
 
@@ -89,7 +147,7 @@ class DuotoneFilter extends filters.BaseFilter {
   }
 }
 
-class HalftoneFilter extends filters.BaseFilter {
+class HalftoneFilter extends filters.BaseFilter<'Halftone', { dotSize: number; angle: number }> {
   static type = 'Halftone';
   static fragmentSource = halftoneShader;
 
@@ -159,9 +217,120 @@ class HalftoneFilter extends filters.BaseFilter {
   }
 }
 
+class SepiaFilter extends filters.BaseFilter<'Sepia', { intensity: number }> {
+  static type = 'Sepia';
+  static fragmentSource = sepiaShader;
+
+  intensity: number;
+
+  constructor({ intensity = 1.0 } = {}) {
+    super();
+    this.intensity = intensity;
+  }
+
+  applyTo2d(options: any) {
+    const imageData = options.imageData;
+    const data = imageData.data;
+    
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      
+      data[i] = Math.min(255, r * 0.393 + g * 0.769 + b * 0.189);
+      data[i + 1] = Math.min(255, r * 0.349 + g * 0.686 + b * 0.168);
+      data[i + 2] = Math.min(255, r * 0.272 + g * 0.534 + b * 0.131);
+    }
+  }
+}
+
+class EdgeDetectionFilter extends filters.BaseFilter<'EdgeDetection', { threshold: number }> {
+  static type = 'EdgeDetection';
+  static fragmentSource = edgeShader;
+
+  threshold: number;
+
+  constructor({ threshold = 0.5 } = {}) {
+    super();
+    this.threshold = threshold;
+  }
+
+  applyTo2d(options: any) {
+    const imageData = options.imageData;
+    const data = imageData.data;
+    const width = imageData.width;
+    const height = imageData.height;
+    const output = new Uint8ClampedArray(data.length);
+    
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const right = ((y * width + Math.min(x + 1, width - 1)) * 4);
+        const bottom = ((Math.min(y + 1, height - 1) * width + x) * 4);
+        
+        const dx = Math.abs(data[i] - data[right]) +
+                  Math.abs(data[i + 1] - data[right + 1]) +
+                  Math.abs(data[i + 2] - data[right + 2]);
+                  
+        const dy = Math.abs(data[i] - data[bottom]) +
+                  Math.abs(data[i + 1] - data[bottom + 1]) +
+                  Math.abs(data[i + 2] - data[bottom + 2]);
+        
+        const edge = Math.min(255, Math.sqrt(dx * dx + dy * dy) * this.threshold);
+        output[i] = output[i + 1] = output[i + 2] = edge;
+        output[i + 3] = 255;
+      }
+    }
+    
+    for (let i = 0; i < data.length; i++) {
+      data[i] = output[i];
+    }
+  }
+}
+
+class EmbossFilter extends filters.BaseFilter<'Emboss', { strength: number }> {
+  static type = 'Emboss';
+  static fragmentSource = embossShader;
+
+  strength: number;
+
+  constructor({ strength = 1.0 } = {}) {
+    super();
+    this.strength = strength;
+  }
+
+  applyTo2d(options: any) {
+    const imageData = options.imageData;
+    const data = imageData.data;
+    const width = imageData.width;
+    const height = imageData.height;
+    const output = new Uint8ClampedArray(data.length);
+    
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const topLeft = (((y > 0 ? y - 1 : y) * width + (x > 0 ? x - 1 : x)) * 4);
+        
+        for (let c = 0; c < 3; c++) {
+          const diff = (data[i + c] - data[topLeft + c]) * this.strength;
+          output[i + c] = Math.min(255, Math.max(0, 128 + diff));
+        }
+        output[i + 3] = 255;
+      }
+    }
+    
+    for (let i = 0; i < data.length; i++) {
+      data[i] = output[i];
+    }
+  }
+}
+
 // Register custom filters
 filters.DuotoneFilter = DuotoneFilter;
 filters.HalftoneFilter = HalftoneFilter;
+filters.SepiaFilter = SepiaFilter;
+filters.EdgeDetectionFilter = EdgeDetectionFilter;
+filters.EmbossFilter = EmbossFilter;
 
 export default function ImageEditorComponent() {
   const [canvas, setCanvas] = useState<Canvas | null>(null);
@@ -176,6 +345,15 @@ export default function ImageEditorComponent() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dotSize, setDotSize] = useState(10);
+  const [sepiaIntensity, setSepiaIntensity] = useState(1.0);
+  const [blurRadius, setBlurRadius] = useState(10);
+  const [sharpenStrength, setSharpenStrength] = useState(0.5);
+  const [edgeThreshold, setEdgeThreshold] = useState(0.5);
+  const [pixelSize, setPixelSize] = useState(10);
+  const [embossStrength, setEmbossStrength] = useState(1.0);
+  const [halftoneSpacing, setHalftoneSpacing] = useState(10);
+  const [halftoneAngle, setHalftoneAngle] = useState(45);
+  const [halftoneMode, setHalftoneMode] = useState<'CMYK' | 'RGB'>('CMYK');
 
   // Initialize fabric.js canvas
   useEffect(() => {
@@ -269,6 +447,43 @@ export default function ImageEditorComponent() {
       case 'grayscale':
         image.filters.push(new filters.Grayscale());
         break;
+      case 'sepia':
+        image.filters.push(new (filters as any).SepiaFilter({
+          intensity: sepiaIntensity
+        }));
+        break;
+      case 'invert':
+        image.filters.push(new filters.Invert());
+        break;
+      case 'blur':
+        image.filters.push(new filters.Blur({
+          blur: blurRadius
+        }));
+        break;
+      case 'sharpen':
+        image.filters.push(new filters.Convolute({
+          matrix: [
+            0, -1 * sharpenStrength, 0,
+            -1 * sharpenStrength, 4 * sharpenStrength + 1, -1 * sharpenStrength,
+            0, -1 * sharpenStrength, 0
+          ]
+        }));
+        break;
+      case 'edge':
+        image.filters.push(new (filters as any).EdgeDetectionFilter({
+          threshold: edgeThreshold
+        }));
+        break;
+      case 'pixelate':
+        image.filters.push(new filters.Pixelate({
+          blocksize: pixelSize
+        }));
+        break;
+      case 'emboss':
+        image.filters.push(new (filters as any).EmbossFilter({
+          strength: embossStrength
+        }));
+        break;
       case 'duotone':
         image.filters.push(new (filters as any).DuotoneFilter({
           color1: duotoneColors.color1,
@@ -278,14 +493,17 @@ export default function ImageEditorComponent() {
       case 'halftone':
         image.filters.push(new (filters as any).HalftoneFilter({
           dotSize,
-          angle: Math.PI / 4
+          spacing: halftoneSpacing,
+          angle: (halftoneAngle * Math.PI) / 180,
+          mode: halftoneMode
         }));
         break;
     }
 
     image.applyFilters();
     canvas.renderAll();
-  }, [canvas, duotoneColors, dotSize]);
+  }, [canvas, duotoneColors, dotSize, sepiaIntensity, blurRadius, sharpenStrength,
+      edgeThreshold, pixelSize, embossStrength, halftoneSpacing, halftoneAngle, halftoneMode]);
 
   useEffect(() => {
     if (!canvas) return;
@@ -331,6 +549,13 @@ export default function ImageEditorComponent() {
             >
               <option value="none">No Effect</option>
               <option value="grayscale">Grayscale</option>
+              <option value="sepia">Sepia</option>
+              <option value="invert">Invert Colors</option>
+              <option value="blur">Blur</option>
+              <option value="sharpen">Sharpen</option>
+              <option value="edge">Edge Detection</option>
+              <option value="pixelate">Pixelate</option>
+              <option value="emboss">Emboss</option>
               <option value="duotone">Duotone</option>
               <option value="halftone">Halftone</option>
             </Select>
@@ -402,6 +627,139 @@ export default function ImageEditorComponent() {
                   max="20"
                   value={dotSize}
                   onChange={(e) => setDotSize(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Spacing</label>
+                <input
+                  type="range"
+                  min="4"
+                  max="20"
+                  value={halftoneSpacing}
+                  onChange={(e) => setHalftoneSpacing(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Angle</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="360"
+                  value={halftoneAngle}
+                  onChange={(e) => setHalftoneAngle(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Mode</label>
+                <Select
+                  value={halftoneMode}
+                  onValueChange={(value) => setHalftoneMode(value as 'CMYK' | 'RGB')}
+                  className="w-full bg-[#2a2a2c] border-[#3a3a3c]"
+                >
+                  <option value="CMYK">CMYK</option>
+                  <option value="RGB">RGB</option>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          {effect === 'sepia' && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Intensity</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={sepiaIntensity}
+                  onChange={(e) => setSepiaIntensity(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+            </div>
+          )}
+
+          {effect === 'blur' && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Radius</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={blurRadius}
+                  onChange={(e) => setBlurRadius(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+            </div>
+          )}
+
+          {effect === 'sharpen' && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Strength</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  value={sharpenStrength}
+                  onChange={(e) => setSharpenStrength(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+            </div>
+          )}
+
+          {effect === 'edge' && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Threshold</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={edgeThreshold}
+                  onChange={(e) => setEdgeThreshold(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+            </div>
+          )}
+
+          {effect === 'pixelate' && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Pixel Size</label>
+                <input
+                  type="range"
+                  min="2"
+                  max="50"
+                  value={pixelSize}
+                  onChange={(e) => setPixelSize(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+            </div>
+          )}
+
+          {effect === 'emboss' && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Strength</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  value={embossStrength}
+                  onChange={(e) => setEmbossStrength(Number(e.target.value))}
                   className="w-full"
                 />
               </div>
