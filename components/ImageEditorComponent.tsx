@@ -3,7 +3,165 @@ import { ChromePicker } from 'react-color';
 import { Select } from '@tremor/react';
 import { Canvas, Image as FabricImage, filters } from 'fabric';
 
-type Effect = 'none' | 'grayscale' | 'duotone';
+type Effect = 'none' | 'grayscale' | 'duotone' | 'halftone';
+
+// Custom Duotone Shader
+const duotoneShader = `
+  precision highp float;
+  uniform sampler2D uTexture;
+  uniform vec3 uColor1;
+  uniform vec3 uColor2;
+  uniform vec2 uResolution;
+  varying vec2 vTexCoord;
+
+  void main() {
+    vec4 color = texture2D(uTexture, vTexCoord);
+    float luminance = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
+    vec3 duotone = mix(uColor1, uColor2, luminance);
+    gl_FragColor = vec4(duotone, color.a);
+  }
+`;
+
+// Custom Halftone Shader
+const halftoneShader = `
+  precision highp float;
+  uniform sampler2D uTexture;
+  uniform vec2 uResolution;
+  uniform float uDotSize;
+  uniform float uAngle;
+  varying vec2 vTexCoord;
+
+  void main() {
+    vec2 tex = vTexCoord * uResolution;
+    float s = sin(uAngle);
+    float c = cos(uAngle);
+    vec2 tex2 = vec2(
+      c * tex.x - s * tex.y,
+      s * tex.x + c * tex.y
+    );
+    vec2 p = mod(tex2, uDotSize) - vec2(uDotSize/2.0);
+    vec4 color = texture2D(uTexture, vTexCoord);
+    float luminance = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float d = length(p);
+    float r = (uDotSize/2.0) * sqrt(luminance);
+    float alpha = step(d, r);
+    gl_FragColor = vec4(vec3(alpha), 1.0);
+  }
+`;
+
+// Create custom filter classes
+class DuotoneFilter extends filters.BaseFilter {
+  static type = 'Duotone';
+  static fragmentSource = duotoneShader;
+
+  color1: string;
+  color2: string;
+
+  constructor({ color1 = '#000000', color2 = '#ffffff' } = {}) {
+    super();
+    this.color1 = color1;
+    this.color2 = color2;
+  }
+
+  applyTo2d(options: any) {
+    const imageData = options.imageData;
+    const data = imageData.data;
+    
+    const c1 = this.hexToRgb(this.color1);
+    const c2 = this.hexToRgb(this.color2);
+
+    for (let i = 0; i < data.length; i += 4) {
+      const luminance = (data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722) / 255;
+      
+      data[i] = Math.round(c1.r * (1 - luminance) + c2.r * luminance);
+      data[i + 1] = Math.round(c1.g * (1 - luminance) + c2.g * luminance);
+      data[i + 2] = Math.round(c1.b * (1 - luminance) + c2.b * luminance);
+    }
+  }
+
+  private hexToRgb(hex: string) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : { r: 0, g: 0, b: 0 };
+  }
+}
+
+class HalftoneFilter extends filters.BaseFilter {
+  static type = 'Halftone';
+  static fragmentSource = halftoneShader;
+
+  dotSize: number;
+  angle: number;
+
+  constructor({ dotSize = 10, angle = Math.PI / 4 } = {}) {
+    super();
+    this.dotSize = dotSize;
+    this.angle = angle;
+  }
+
+  applyTo2d(options: any) {
+    const imageData = options.imageData;
+    const data = imageData.data;
+    const width = imageData.width;
+    const height = imageData.height;
+    
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tempCtx = tempCanvas.getContext('2d')!;
+    const tempImageData = tempCtx.createImageData(width, height);
+    
+    for (let y = 0; y < height; y += this.dotSize) {
+      for (let x = 0; x < width; x += this.dotSize) {
+        let totalLuminance = 0;
+        let count = 0;
+        
+        // Calculate average luminance for this cell
+        for (let dy = 0; dy < this.dotSize && y + dy < height; dy++) {
+          for (let dx = 0; dx < this.dotSize && x + dx < width; dx++) {
+            const i = ((y + dy) * width + (x + dx)) * 4;
+            const luminance = (data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722) / 255;
+            totalLuminance += luminance;
+            count++;
+          }
+        }
+        
+        const avgLuminance = totalLuminance / count;
+        const dotRadius = (this.dotSize / 2) * avgLuminance;
+        
+        // Draw dot
+        for (let dy = 0; dy < this.dotSize && y + dy < height; dy++) {
+          for (let dx = 0; dx < this.dotSize && x + dx < width; dx++) {
+            const distance = Math.sqrt(
+              Math.pow(dx - this.dotSize / 2, 2) +
+              Math.pow(dy - this.dotSize / 2, 2)
+            );
+            
+            const i = ((y + dy) * width + (x + dx)) * 4;
+            const value = distance < dotRadius ? 255 : 0;
+            
+            tempImageData.data[i] = value;
+            tempImageData.data[i + 1] = value;
+            tempImageData.data[i + 2] = value;
+            tempImageData.data[i + 3] = 255;
+          }
+        }
+      }
+    }
+    
+    // Copy back to original imageData
+    for (let i = 0; i < data.length; i++) {
+      data[i] = tempImageData.data[i];
+    }
+  }
+}
+
+// Register custom filters
+filters.DuotoneFilter = DuotoneFilter;
+filters.HalftoneFilter = HalftoneFilter;
 
 export default function ImageEditorComponent() {
   const [canvas, setCanvas] = useState<Canvas | null>(null);
@@ -17,6 +175,7 @@ export default function ImageEditorComponent() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [dotSize, setDotSize] = useState(10);
 
   // Initialize fabric.js canvas
   useEffect(() => {
@@ -47,20 +206,6 @@ export default function ImageEditorComponent() {
       fabricCanvas.dispose();
     };
   }, []);
-
-  // Custom Duotone Filter
-  const createDuotoneFilter = (color1: string, color2: string) => {
-    // Create a grayscale filter first
-    const grayscale = new filters.Grayscale();
-    
-    // Then blend with the chosen color
-    const blend = new filters.BlendColor({
-      color: color1,
-      mode: 'multiply'
-    });
-
-    return [grayscale, blend];
-  };
 
   const handleImageUpload = useCallback((file: File) => {
     if (!canvas) return;
@@ -125,13 +270,22 @@ export default function ImageEditorComponent() {
         image.filters.push(new filters.Grayscale());
         break;
       case 'duotone':
-        image.filters.push(...createDuotoneFilter(duotoneColors.color1, duotoneColors.color2));
+        image.filters.push(new (filters as any).DuotoneFilter({
+          color1: duotoneColors.color1,
+          color2: duotoneColors.color2
+        }));
+        break;
+      case 'halftone':
+        image.filters.push(new (filters as any).HalftoneFilter({
+          dotSize,
+          angle: Math.PI / 4
+        }));
         break;
     }
 
     image.applyFilters();
     canvas.renderAll();
-  }, [canvas, duotoneColors]);
+  }, [canvas, duotoneColors, dotSize]);
 
   useEffect(() => {
     if (!canvas) return;
@@ -178,6 +332,7 @@ export default function ImageEditorComponent() {
               <option value="none">No Effect</option>
               <option value="grayscale">Grayscale</option>
               <option value="duotone">Duotone</option>
+              <option value="halftone">Halftone</option>
             </Select>
           </div>
 
@@ -233,6 +388,22 @@ export default function ImageEditorComponent() {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {effect === 'halftone' && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Dot Size</label>
+                <input
+                  type="range"
+                  min="4"
+                  max="20"
+                  value={dotSize}
+                  onChange={(e) => setDotSize(Number(e.target.value))}
+                  className="w-full"
+                />
               </div>
             </div>
           )}
