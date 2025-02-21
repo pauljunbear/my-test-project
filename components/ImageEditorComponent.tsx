@@ -57,15 +57,15 @@ export default function ImageEditorComponent() {
   // Custom Duotone Filter
   const createDuotoneFilter = (color1: string, color2: string) => {
     // Create a grayscale filter first
-    const grayscale = new filters.Grayscale();
+    const grayscale = new filters.Grayscale() as unknown as IBaseFilter;
     
     // Then blend with the chosen color
     const blend = new filters.BlendColor({
       color: color1,
       mode: 'multiply'
-    });
+    }) as unknown as IBaseFilter;
 
-    return [grayscale, blend] as IBaseFilter[];
+    return [grayscale, blend];
   };
 
   const handleImageUpload = useCallback((file: File) => {
@@ -128,7 +128,7 @@ export default function ImageEditorComponent() {
 
     switch (effectType) {
       case 'grayscale':
-        image.filters.push(new filters.Grayscale());
+        image.filters.push(new filters.Grayscale() as unknown as IBaseFilter);
         break;
       case 'duotone':
         image.filters.push(...createDuotoneFilter(duotoneColors.color1, duotoneColors.color2));
