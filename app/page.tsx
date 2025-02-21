@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChromePicker } from 'react-color';
 import { Select, SelectItem } from '@tremor/react';
-import { Canvas, Image as FabricImage } from 'fabric';
+import { Canvas, Image as FabricImage, filters } from 'fabric';
 import type { IBaseFilter } from 'fabric/fabric-impl';
 
 type Effect = 'none' | 'grayscale' | 'duotone';
@@ -102,25 +102,21 @@ export default function ImageEditor() {
 
     switch (effectType) {
       case 'grayscale':
-        if (fabricInstance.Image.filters) {
-          const filter = new fabricInstance.Image.filters.Grayscale();
-          image.filters.push(filter as unknown as IBaseFilter);
-        }
+        const grayscaleFilter = new filters.Grayscale();
+        image.filters.push(grayscaleFilter as unknown as IBaseFilter);
         break;
       case 'duotone':
-        if (fabricInstance.Image.filters) {
-          const blendFilter = new fabricInstance.Image.filters.BlendColor({
-            color: duotoneColors.color1,
-            mode: 'tint'
-          });
-          const contrastFilter = new fabricInstance.Image.filters.Contrast({
-            contrast: 0.5
-          });
-          image.filters.push(
-            blendFilter as unknown as IBaseFilter,
-            contrastFilter as unknown as IBaseFilter
-          );
-        }
+        const blendFilter = new filters.BlendColor({
+          color: duotoneColors.color1,
+          mode: 'tint'
+        });
+        const contrastFilter = new filters.Contrast({
+          contrast: 0.5
+        });
+        image.filters.push(
+          blendFilter as unknown as IBaseFilter,
+          contrastFilter as unknown as IBaseFilter
+        );
         break;
     }
 
