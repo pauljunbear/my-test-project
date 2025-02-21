@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChromePicker } from 'react-color';
-import { Select, SelectItem } from '@tremor/react';
+import { Select } from '@tremor/react';
 import { Canvas, Image as FabricImage, filters } from 'fabric';
 import type { IBaseFilter } from 'fabric/fabric-impl';
 
 type Effect = 'none' | 'grayscale' | 'duotone';
-type DuotoneColors = { color1: string; color2: string };
+
+interface DuotoneFilter extends IBaseFilter {
+  color1: string;
+  color2: string;
+}
 
 export default function ImageEditorComponent() {
   const [canvas, setCanvas] = useState<Canvas | null>(null);
   const [effect, setEffect] = useState<Effect>('none');
-  const [duotoneColors, setDuotoneColors] = useState<DuotoneColors>({
+  const [duotoneColors, setDuotoneColors] = useState({
     color1: '#000000',
     color2: '#ffffff'
   });
@@ -18,59 +22,85 @@ export default function ImageEditorComponent() {
   const [showColorPicker2, setShowColorPicker2] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Initialize fabric.js canvas
   useEffect(() => {
     if (!canvasRef.current || canvas) return;
 
-    const fabricCanvas = new Canvas(canvasRef.current, {
-      width: 800,
-      height: 600,
-      backgroundColor: '#f8f9fa'
+    const fabricCanvas = new Canvas(canvasRef.current);
+    fabricCanvas.setDimensions({
+      width: window.innerWidth - 300, // Accounting for sidebar
+      height: window.innerHeight - 40 // Accounting for padding
     });
+    
+    fabricCanvas.setBackgroundColor('#f8f9fa', () => {
+      fabricCanvas.renderAll();
+    });
+
     setCanvas(fabricCanvas);
 
+    const handleResize = () => {
+      fabricCanvas.setDimensions({
+        width: window.innerWidth - 300,
+        height: window.innerHeight - 40
+      });
+      fabricCanvas.renderAll();
+    };
+
+    window.addEventListener('resize', handleResize);
     return () => {
+      window.removeEventListener('resize', handleResize);
       fabricCanvas.dispose();
     };
-  }, [canvas]);
+  }, []);
+
+  // Custom Duotone Filter
+  const createDuotoneFilter = (color1: string, color2: string) => {
+    return new filters.BlendColor({
+      color: color1,
+      mode: 'multiply',
+      alpha: 1
+    }) as IBaseFilter;
+  };
 
   const handleImageUpload = useCallback((file: File) => {
     if (!canvas) return;
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      const result = e.target?.result;
-      if (typeof result !== 'string') return;
-
       const imgElement = new Image();
       imgElement.crossOrigin = 'anonymous';
-      imgElement.src = result;
       imgElement.onload = () => {
         const fabricImage = new FabricImage(imgElement);
         canvas.clear();
         
+        // Calculate scale to fit canvas while maintaining aspect ratio
         const scale = Math.min(
-          canvas.width! / fabricImage.width!,
-          canvas.height! / fabricImage.height!
-        ) * 0.9;
+          (canvas.width! - 40) / fabricImage.width!,
+          (canvas.height! - 40) / fabricImage.height!
+        );
         
         fabricImage.scale(scale);
         fabricImage.set({
           left: (canvas.width! - fabricImage.width! * scale) / 2,
-          top: (canvas.height! - fabricImage.height! * scale) / 2
+          top: (canvas.height! - fabricImage.height! * scale) / 2,
+          selectable: false,
+          hasControls: false
         });
         
         canvas.add(fabricImage);
         canvas.renderAll();
         applyEffect(effect, fabricImage);
       };
+      imgElement.src = e.target?.result as string;
     };
     reader.readAsDataURL(file);
   }, [canvas, effect]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
+    setIsDragging(false);
     const file = e.dataTransfer.files[0];
     if (file && file.type.startsWith('image/')) {
       handleImageUpload(file);
@@ -79,6 +109,12 @@ export default function ImageEditorComponent() {
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
   }, []);
 
   const applyEffect = useCallback((effectType: Effect, image?: FabricImage) => {
@@ -88,17 +124,11 @@ export default function ImageEditorComponent() {
 
     switch (effectType) {
       case 'grayscale':
-        image.filters.push(new filters.Grayscale() as any);
+        image.filters.push(new filters.Grayscale());
         break;
       case 'duotone':
         image.filters.push(
-          new filters.BlendColor({
-            color: duotoneColors.color1,
-            mode: 'tint'
-          }) as any,
-          new filters.Contrast({
-            contrast: 0.5
-          }) as any
+          createDuotoneFilter(duotoneColors.color1, duotoneColors.color2)
         );
         break;
     }
@@ -116,67 +146,57 @@ export default function ImageEditorComponent() {
   }, [effect, duotoneColors, applyEffect, canvas]);
 
   return (
-    <div className="h-full w-full bg-white rounded-xl overflow-hidden flex shadow-2xl">
-      {/* Left Navigation */}
-      <div className="w-72 border-r border-gray-100 flex flex-col bg-white">
-        {/* Header */}
-        <div className="h-14 px-5 flex items-center border-b border-gray-100">
-          <h1 className="text-sm font-medium text-gray-700">Image Editor</h1>
+    <div className="h-full w-full flex bg-[#111113] text-white">
+      {/* Left Sidebar */}
+      <div className="w-72 bg-[#1a1a1c] border-r border-[#2a2a2c] flex flex-col">
+        <div className="p-6 border-b border-[#2a2a2c]">
+          <h1 className="text-lg font-semibold">Image Effects</h1>
         </div>
 
-        {/* Settings */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-5 space-y-5">
-            {/* Hidden File Input */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0])}
-              className="hidden"
-              id="fileInput"
-            />
+        <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0])}
+            className="hidden"
+          />
 
-            {/* Upload Section */}
-            <div className="space-y-2">
-              <label 
-                htmlFor="fileInput" 
-                className="inline-flex h-8 px-3 items-center text-xs font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-md hover:bg-gray-100 hover:border-gray-300 transition-all cursor-pointer"
-              >
-                Choose image
-              </label>
-            </div>
+          <div className="space-y-2">
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Choose Image
+            </button>
+            <p className="text-sm text-gray-400">or drag and drop an image</p>
+          </div>
 
-            {/* Effect Selection */}
-            <div className="space-y-2.5">
-              <span className="text-xs font-medium text-gray-700">Effect</span>
-              <Select 
-                value={effect}
-                onValueChange={(value) => setEffect(value as Effect)}
-                className="w-full"
-              >
-                <SelectItem value="none">No Effect</SelectItem>
-                <SelectItem value="grayscale">Grayscale</SelectItem>
-                <SelectItem value="duotone">Duotone</SelectItem>
-              </Select>
-            </div>
+          <div className="space-y-3">
+            <label className="text-sm font-medium">Effect</label>
+            <Select
+              value={effect}
+              onValueChange={(value) => setEffect(value as Effect)}
+              className="w-full bg-[#2a2a2c] border-[#3a3a3c]"
+            >
+              <option value="none">No Effect</option>
+              <option value="grayscale">Grayscale</option>
+              <option value="duotone">Duotone</option>
+            </Select>
+          </div>
 
-            {/* Duotone Controls */}
-            {effect === 'duotone' && (
-              <div className="space-y-2.5">
-                <span className="text-xs font-medium text-gray-700">Duotone Colors</span>
-                
-                {/* Color 1 */}
+          {effect === 'duotone' && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Color 1</label>
                 <div className="relative">
                   <button
                     onClick={() => setShowColorPicker1(!showColorPicker1)}
-                    className="w-full h-8 px-2 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-md hover:bg-gray-100 hover:border-gray-300 transition-all flex items-center gap-2"
+                    className="w-full h-10 rounded-lg border border-[#3a3a3c] flex items-center gap-2 px-3"
+                    style={{ backgroundColor: duotoneColors.color1 }}
                   >
-                    <div 
-                      className="w-4 h-4 rounded-sm border border-gray-300"
-                      style={{ backgroundColor: duotoneColors.color1 }}
-                    />
-                    Color 1
+                    <div className="w-6 h-6 rounded border border-white/20" />
+                    <span>{duotoneColors.color1}</span>
                   </button>
                   {showColorPicker1 && (
                     <div className="absolute z-10 mt-2">
@@ -191,18 +211,18 @@ export default function ImageEditorComponent() {
                     </div>
                   )}
                 </div>
+              </div>
 
-                {/* Color 2 */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Color 2</label>
                 <div className="relative">
                   <button
                     onClick={() => setShowColorPicker2(!showColorPicker2)}
-                    className="w-full h-8 px-2 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-md hover:bg-gray-100 hover:border-gray-300 transition-all flex items-center gap-2"
+                    className="w-full h-10 rounded-lg border border-[#3a3a3c] flex items-center gap-2 px-3"
+                    style={{ backgroundColor: duotoneColors.color2 }}
                   >
-                    <div 
-                      className="w-4 h-4 rounded-sm border border-gray-300"
-                      style={{ backgroundColor: duotoneColors.color2 }}
-                    />
-                    Color 2
+                    <div className="w-6 h-6 rounded border border-white/20" />
+                    <span>{duotoneColors.color2}</span>
                   </button>
                   {showColorPicker2 && (
                     <div className="absolute z-10 mt-2">
@@ -218,19 +238,18 @@ export default function ImageEditorComponent() {
                   )}
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
-        {/* Actions */}
-        <div className="p-5 border-t border-gray-100">
-          <div className="flex gap-2">
+        <div className="p-6 border-t border-[#2a2a2c]">
+          <div className="flex gap-3">
             <button
               onClick={() => {
                 setEffect('none');
                 setDuotoneColors({ color1: '#000000', color2: '#ffffff' });
               }}
-              className="flex-1 h-8 text-xs font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-md hover:bg-gray-100 hover:border-gray-300 transition-all"
+              className="flex-1 px-4 py-2 bg-[#2a2a2c] rounded-lg hover:bg-[#3a3a3c] transition-colors"
             >
               Reset
             </button>
@@ -242,7 +261,7 @@ export default function ImageEditorComponent() {
                 link.href = canvas.toDataURL();
                 link.click();
               }}
-              className="flex-1 h-8 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:hover:bg-gray-900 transition-all"
+              className="flex-1 px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
             >
               Export
             </button>
@@ -251,15 +270,18 @@ export default function ImageEditorComponent() {
       </div>
 
       {/* Main Content */}
-      <main className="flex-1 bg-white">
+      <div className="flex-1 p-6">
         <div 
-          className="w-full h-full flex items-center justify-center cursor-pointer"
+          className={`w-full h-full rounded-xl border-2 border-dashed transition-colors ${
+            isDragging ? 'border-blue-500 bg-blue-500/10' : 'border-[#2a2a2c]'
+          }`}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
         >
-          <canvas ref={canvasRef} />
+          <canvas ref={canvasRef} className="w-full h-full" />
         </div>
-      </main>
+      </div>
     </div>
   );
 } 
