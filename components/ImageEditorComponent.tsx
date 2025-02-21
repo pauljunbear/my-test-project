@@ -162,7 +162,7 @@ namespace CustomFilters {
     spacing: number;
     mode: 'CMYK' | 'RGB';
 
-    constructor({ dotSize = 10, angle = Math.PI / 4, spacing = 10, mode = 'CMYK' } = {}) {
+    constructor({ dotSize = 10, angle = Math.PI / 4, spacing = 10, mode = 'CMYK' as const } = {}) {
       super();
       this.dotSize = dotSize;
       this.angle = angle;
