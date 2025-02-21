@@ -4,7 +4,8 @@ import { Select } from '@tremor/react';
 import { Canvas, Image as FabricImage, filters } from 'fabric';
 import { Dropzone } from '@mantine/dropzone';
 import { notifications } from '@mantine/notifications';
-import { Card, Metric, Text } from '@tremor/react';
+import { Card, Metric } from '@tremor/react';
+import { Text } from '@mantine/core';
 import * as RadixSelect from '@radix-ui/react-select';
 import { useDisclosure } from '@mantine/hooks';
 
@@ -617,8 +618,8 @@ export default function ImageEditorComponent() {
             className="border-2 border-dashed border-[#2a2a2c] rounded-lg p-4 text-center hover:border-blue-500 transition-colors"
           >
             <div className="space-y-2">
-              <Text>Drag images here or click to select files</Text>
-              <Text size="sm" className="text-gray-400">
+              <Text fw={500}>Drag images here or click to select files</Text>
+              <Text size="sm" c="dimmed">
                 Upload a single image up to 5MB
               </Text>
             </div>
