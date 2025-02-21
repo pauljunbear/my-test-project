@@ -1,15 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChromePicker } from 'react-color';
 import { Select } from '@tremor/react';
-import { Canvas, Image as FabricImage, filters, BaseFilter } from 'fabric';
-import type { IBaseFilter } from 'fabric/fabric-impl';
+import { Canvas, Image as FabricImage, filters } from 'fabric';
 
 type Effect = 'none' | 'grayscale' | 'duotone';
-
-interface DuotoneFilter extends IBaseFilter {
-  color1: string;
-  color2: string;
-}
 
 export default function ImageEditorComponent() {
   const [canvas, setCanvas] = useState<Canvas | null>(null);
