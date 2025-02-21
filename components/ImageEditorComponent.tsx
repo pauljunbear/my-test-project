@@ -107,230 +107,232 @@ const embossShader = `
   }
 `;
 
-// Create custom filter classes
-class DuotoneFilter extends filters.BaseFilter<'Duotone', { color1: string; color2: string }> {
-  static type = 'Duotone';
-  static fragmentSource = duotoneShader;
+// Custom filters namespace
+namespace CustomFilters {
+  export const DuotoneFilter = class extends filters.BaseFilter<'Duotone', { color1: string; color2: string }> {
+    static type = 'Duotone';
+    static fragmentSource = duotoneShader;
 
-  color1: string;
-  color2: string;
+    color1: string;
+    color2: string;
 
-  constructor({ color1 = '#000000', color2 = '#ffffff' } = {}) {
-    super();
-    this.color1 = color1;
-    this.color2 = color2;
-  }
-
-  applyTo2d(options: any) {
-    const imageData = options.imageData;
-    const data = imageData.data;
-    
-    const c1 = this.hexToRgb(this.color1);
-    const c2 = this.hexToRgb(this.color2);
-
-    for (let i = 0; i < data.length; i += 4) {
-      const luminance = (data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722) / 255;
-      
-      data[i] = Math.round(c1.r * (1 - luminance) + c2.r * luminance);
-      data[i + 1] = Math.round(c1.g * (1 - luminance) + c2.g * luminance);
-      data[i + 2] = Math.round(c1.b * (1 - luminance) + c2.b * luminance);
+    constructor({ color1 = '#000000', color2 = '#ffffff' } = {}) {
+      super();
+      this.color1 = color1;
+      this.color2 = color2;
     }
-  }
 
-  private hexToRgb(hex: string) {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? {
-      r: parseInt(result[1], 16),
-      g: parseInt(result[2], 16),
-      b: parseInt(result[3], 16)
-    } : { r: 0, g: 0, b: 0 };
-  }
-}
+    applyTo2d(options: any) {
+      const imageData = options.imageData;
+      const data = imageData.data;
+      
+      const c1 = this.hexToRgb(this.color1);
+      const c2 = this.hexToRgb(this.color2);
 
-class HalftoneFilter extends filters.BaseFilter<'Halftone', { dotSize: number; angle: number }> {
-  static type = 'Halftone';
-  static fragmentSource = halftoneShader;
-
-  dotSize: number;
-  angle: number;
-
-  constructor({ dotSize = 10, angle = Math.PI / 4 } = {}) {
-    super();
-    this.dotSize = dotSize;
-    this.angle = angle;
-  }
-
-  applyTo2d(options: any) {
-    const imageData = options.imageData;
-    const data = imageData.data;
-    const width = imageData.width;
-    const height = imageData.height;
-    
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    const tempCtx = tempCanvas.getContext('2d')!;
-    const tempImageData = tempCtx.createImageData(width, height);
-    
-    for (let y = 0; y < height; y += this.dotSize) {
-      for (let x = 0; x < width; x += this.dotSize) {
-        let totalLuminance = 0;
-        let count = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const luminance = (data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722) / 255;
         
-        // Calculate average luminance for this cell
-        for (let dy = 0; dy < this.dotSize && y + dy < height; dy++) {
-          for (let dx = 0; dx < this.dotSize && x + dx < width; dx++) {
-            const i = ((y + dy) * width + (x + dx)) * 4;
-            const luminance = (data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722) / 255;
-            totalLuminance += luminance;
-            count++;
+        data[i] = Math.round(c1.r * (1 - luminance) + c2.r * luminance);
+        data[i + 1] = Math.round(c1.g * (1 - luminance) + c2.g * luminance);
+        data[i + 2] = Math.round(c1.b * (1 - luminance) + c2.b * luminance);
+      }
+    }
+
+    private hexToRgb(hex: string) {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      } : { r: 0, g: 0, b: 0 };
+    }
+  };
+
+  export const HalftoneFilter = class extends filters.BaseFilter<'Halftone', { dotSize: number; angle: number }> {
+    static type = 'Halftone';
+    static fragmentSource = halftoneShader;
+
+    dotSize: number;
+    angle: number;
+
+    constructor({ dotSize = 10, angle = Math.PI / 4 } = {}) {
+      super();
+      this.dotSize = dotSize;
+      this.angle = angle;
+    }
+
+    applyTo2d(options: any) {
+      const imageData = options.imageData;
+      const data = imageData.data;
+      const width = imageData.width;
+      const height = imageData.height;
+      
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const tempCtx = tempCanvas.getContext('2d')!;
+      const tempImageData = tempCtx.createImageData(width, height);
+      
+      for (let y = 0; y < height; y += this.dotSize) {
+        for (let x = 0; x < width; x += this.dotSize) {
+          let totalLuminance = 0;
+          let count = 0;
+          
+          // Calculate average luminance for this cell
+          for (let dy = 0; dy < this.dotSize && y + dy < height; dy++) {
+            for (let dx = 0; dx < this.dotSize && x + dx < width; dx++) {
+              const i = ((y + dy) * width + (x + dx)) * 4;
+              const luminance = (data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722) / 255;
+              totalLuminance += luminance;
+              count++;
+            }
+          }
+          
+          const avgLuminance = totalLuminance / count;
+          const dotRadius = (this.dotSize / 2) * avgLuminance;
+          
+          // Draw dot
+          for (let dy = 0; dy < this.dotSize && y + dy < height; dy++) {
+            for (let dx = 0; dx < this.dotSize && x + dx < width; dx++) {
+              const distance = Math.sqrt(
+                Math.pow(dx - this.dotSize / 2, 2) +
+                Math.pow(dy - this.dotSize / 2, 2)
+              );
+              
+              const i = ((y + dy) * width + (x + dx)) * 4;
+              const value = distance < dotRadius ? 255 : 0;
+              
+              tempImageData.data[i] = value;
+              tempImageData.data[i + 1] = value;
+              tempImageData.data[i + 2] = value;
+              tempImageData.data[i + 3] = 255;
+            }
           }
         }
-        
-        const avgLuminance = totalLuminance / count;
-        const dotRadius = (this.dotSize / 2) * avgLuminance;
-        
-        // Draw dot
-        for (let dy = 0; dy < this.dotSize && y + dy < height; dy++) {
-          for (let dx = 0; dx < this.dotSize && x + dx < width; dx++) {
-            const distance = Math.sqrt(
-              Math.pow(dx - this.dotSize / 2, 2) +
-              Math.pow(dy - this.dotSize / 2, 2)
-            );
-            
-            const i = ((y + dy) * width + (x + dx)) * 4;
-            const value = distance < dotRadius ? 255 : 0;
-            
-            tempImageData.data[i] = value;
-            tempImageData.data[i + 1] = value;
-            tempImageData.data[i + 2] = value;
-            tempImageData.data[i + 3] = 255;
-          }
-        }
       }
-    }
-    
-    // Copy back to original imageData
-    for (let i = 0; i < data.length; i++) {
-      data[i] = tempImageData.data[i];
-    }
-  }
-}
-
-class SepiaFilter extends filters.BaseFilter<'Sepia', { intensity: number }> {
-  static type = 'Sepia';
-  static fragmentSource = sepiaShader;
-
-  intensity: number;
-
-  constructor({ intensity = 1.0 } = {}) {
-    super();
-    this.intensity = intensity;
-  }
-
-  applyTo2d(options: any) {
-    const imageData = options.imageData;
-    const data = imageData.data;
-    
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
       
-      data[i] = Math.min(255, r * 0.393 + g * 0.769 + b * 0.189);
-      data[i + 1] = Math.min(255, r * 0.349 + g * 0.686 + b * 0.168);
-      data[i + 2] = Math.min(255, r * 0.272 + g * 0.534 + b * 0.131);
-    }
-  }
-}
-
-class EdgeDetectionFilter extends filters.BaseFilter<'EdgeDetection', { threshold: number }> {
-  static type = 'EdgeDetection';
-  static fragmentSource = edgeShader;
-
-  threshold: number;
-
-  constructor({ threshold = 0.5 } = {}) {
-    super();
-    this.threshold = threshold;
-  }
-
-  applyTo2d(options: any) {
-    const imageData = options.imageData;
-    const data = imageData.data;
-    const width = imageData.width;
-    const height = imageData.height;
-    const output = new Uint8ClampedArray(data.length);
-    
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const i = (y * width + x) * 4;
-        const right = ((y * width + Math.min(x + 1, width - 1)) * 4);
-        const bottom = ((Math.min(y + 1, height - 1) * width + x) * 4);
-        
-        const dx = Math.abs(data[i] - data[right]) +
-                  Math.abs(data[i + 1] - data[right + 1]) +
-                  Math.abs(data[i + 2] - data[right + 2]);
-                  
-        const dy = Math.abs(data[i] - data[bottom]) +
-                  Math.abs(data[i + 1] - data[bottom + 1]) +
-                  Math.abs(data[i + 2] - data[bottom + 2]);
-        
-        const edge = Math.min(255, Math.sqrt(dx * dx + dy * dy) * this.threshold);
-        output[i] = output[i + 1] = output[i + 2] = edge;
-        output[i + 3] = 255;
+      // Copy back to original imageData
+      for (let i = 0; i < data.length; i++) {
+        data[i] = tempImageData.data[i];
       }
     }
-    
-    for (let i = 0; i < data.length; i++) {
-      data[i] = output[i];
+  };
+
+  export const SepiaFilter = class extends filters.BaseFilter<'Sepia', { intensity: number }> {
+    static type = 'Sepia';
+    static fragmentSource = sepiaShader;
+
+    intensity: number;
+
+    constructor({ intensity = 1.0 } = {}) {
+      super();
+      this.intensity = intensity;
     }
-  }
-}
 
-class EmbossFilter extends filters.BaseFilter<'Emboss', { strength: number }> {
-  static type = 'Emboss';
-  static fragmentSource = embossShader;
-
-  strength: number;
-
-  constructor({ strength = 1.0 } = {}) {
-    super();
-    this.strength = strength;
-  }
-
-  applyTo2d(options: any) {
-    const imageData = options.imageData;
-    const data = imageData.data;
-    const width = imageData.width;
-    const height = imageData.height;
-    const output = new Uint8ClampedArray(data.length);
-    
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const i = (y * width + x) * 4;
-        const topLeft = (((y > 0 ? y - 1 : y) * width + (x > 0 ? x - 1 : x)) * 4);
+    applyTo2d(options: any) {
+      const imageData = options.imageData;
+      const data = imageData.data;
+      
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
         
-        for (let c = 0; c < 3; c++) {
-          const diff = (data[i + c] - data[topLeft + c]) * this.strength;
-          output[i + c] = Math.min(255, Math.max(0, 128 + diff));
+        data[i] = Math.min(255, r * 0.393 + g * 0.769 + b * 0.189);
+        data[i + 1] = Math.min(255, r * 0.349 + g * 0.686 + b * 0.168);
+        data[i + 2] = Math.min(255, r * 0.272 + g * 0.534 + b * 0.131);
+      }
+    }
+  };
+
+  export const EdgeDetectionFilter = class extends filters.BaseFilter<'EdgeDetection', { threshold: number }> {
+    static type = 'EdgeDetection';
+    static fragmentSource = edgeShader;
+
+    threshold: number;
+
+    constructor({ threshold = 0.5 } = {}) {
+      super();
+      this.threshold = threshold;
+    }
+
+    applyTo2d(options: any) {
+      const imageData = options.imageData;
+      const data = imageData.data;
+      const width = imageData.width;
+      const height = imageData.height;
+      const output = new Uint8ClampedArray(data.length);
+      
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          const right = ((y * width + Math.min(x + 1, width - 1)) * 4);
+          const bottom = ((Math.min(y + 1, height - 1) * width + x) * 4);
+          
+          const dx = Math.abs(data[i] - data[right]) +
+                    Math.abs(data[i + 1] - data[right + 1]) +
+                    Math.abs(data[i + 2] - data[right + 2]);
+                    
+          const dy = Math.abs(data[i] - data[bottom]) +
+                    Math.abs(data[i + 1] - data[bottom + 1]) +
+                    Math.abs(data[i + 2] - data[bottom + 2]);
+          
+          const edge = Math.min(255, Math.sqrt(dx * dx + dy * dy) * this.threshold);
+          output[i] = output[i + 1] = output[i + 2] = edge;
+          output[i + 3] = 255;
         }
-        output[i + 3] = 255;
+      }
+      
+      for (let i = 0; i < data.length; i++) {
+        data[i] = output[i];
       }
     }
-    
-    for (let i = 0; i < data.length; i++) {
-      data[i] = output[i];
+  };
+
+  export const EmbossFilter = class extends filters.BaseFilter<'Emboss', { strength: number }> {
+    static type = 'Emboss';
+    static fragmentSource = embossShader;
+
+    strength: number;
+
+    constructor({ strength = 1.0 } = {}) {
+      super();
+      this.strength = strength;
     }
-  }
+
+    applyTo2d(options: any) {
+      const imageData = options.imageData;
+      const data = imageData.data;
+      const width = imageData.width;
+      const height = imageData.height;
+      const output = new Uint8ClampedArray(data.length);
+      
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          const topLeft = (((y > 0 ? y - 1 : y) * width + (x > 0 ? x - 1 : x)) * 4);
+          
+          for (let c = 0; c < 3; c++) {
+            const diff = (data[i + c] - data[topLeft + c]) * this.strength;
+            output[i + c] = Math.min(255, Math.max(0, 128 + diff));
+          }
+          output[i + 3] = 255;
+        }
+      }
+      
+      for (let i = 0; i < data.length; i++) {
+        data[i] = output[i];
+      }
+    }
+  };
 }
 
 // Register custom filters
-filters.DuotoneFilter = DuotoneFilter;
-filters.HalftoneFilter = HalftoneFilter;
-filters.SepiaFilter = SepiaFilter;
-filters.EdgeDetectionFilter = EdgeDetectionFilter;
-filters.EmbossFilter = EmbossFilter;
+filters.DuotoneFilter = CustomFilters.DuotoneFilter;
+filters.HalftoneFilter = CustomFilters.HalftoneFilter;
+filters.SepiaFilter = CustomFilters.SepiaFilter;
+filters.EdgeDetectionFilter = CustomFilters.EdgeDetectionFilter;
+filters.EmbossFilter = CustomFilters.EmbossFilter;
 
 export default function ImageEditorComponent() {
   const [canvas, setCanvas] = useState<Canvas | null>(null);
@@ -448,7 +450,7 @@ export default function ImageEditorComponent() {
         image.filters.push(new filters.Grayscale());
         break;
       case 'sepia':
-        image.filters.push(new (filters as any).SepiaFilter({
+        image.filters.push(new CustomFilters.SepiaFilter({
           intensity: sepiaIntensity
         }));
         break;
@@ -470,7 +472,7 @@ export default function ImageEditorComponent() {
         }));
         break;
       case 'edge':
-        image.filters.push(new (filters as any).EdgeDetectionFilter({
+        image.filters.push(new CustomFilters.EdgeDetectionFilter({
           threshold: edgeThreshold
         }));
         break;
@@ -480,18 +482,18 @@ export default function ImageEditorComponent() {
         }));
         break;
       case 'emboss':
-        image.filters.push(new (filters as any).EmbossFilter({
+        image.filters.push(new CustomFilters.EmbossFilter({
           strength: embossStrength
         }));
         break;
       case 'duotone':
-        image.filters.push(new (filters as any).DuotoneFilter({
+        image.filters.push(new CustomFilters.DuotoneFilter({
           color1: duotoneColors.color1,
           color2: duotoneColors.color2
         }));
         break;
       case 'halftone':
-        image.filters.push(new (filters as any).HalftoneFilter({
+        image.filters.push(new CustomFilters.HalftoneFilter({
           dotSize,
           spacing: halftoneSpacing,
           angle: (halftoneAngle * Math.PI) / 180,
