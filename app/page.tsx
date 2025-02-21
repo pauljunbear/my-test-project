@@ -3,22 +3,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChromePicker } from 'react-color';
 import { Select, SelectItem } from '@tremor/react';
+import { Canvas, Image as FabricImage } from 'fabric';
 
 type Effect = 'none' | 'grayscale' | 'duotone';
 type DuotoneColors = { color1: string; color2: string };
 
-// Dynamically import fabric to ensure it's only loaded on client side
-let fabric: typeof import('fabric') | null = null;
-
 // Initialize fabric only on client side
+let fabricInstance: typeof import('fabric') | null = null;
+
 if (typeof window !== 'undefined') {
   import('fabric').then((module) => {
-    fabric = module;
+    fabricInstance = module;
   });
 }
 
 export default function ImageEditor() {
-  const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
+  const [canvas, setCanvas] = useState<Canvas | null>(null);
   const [effect, setEffect] = useState<Effect>('none');
   const [duotoneColors, setDuotoneColors] = useState<DuotoneColors>({
     color1: '#000000',
@@ -31,9 +31,9 @@ export default function ImageEditor() {
 
   // Initialize fabric.js canvas
   useEffect(() => {
-    if (!fabric || !canvasRef.current || canvas) return;
+    if (!canvasRef.current || canvas) return;
 
-    const fabricCanvas = new fabric.Canvas(canvasRef.current, {
+    const fabricCanvas = new Canvas(canvasRef.current, {
       width: 800,
       height: 600,
       backgroundColor: '#f8f9fa'
@@ -46,7 +46,7 @@ export default function ImageEditor() {
   }, [canvas]);
 
   const handleImageUpload = useCallback((file: File) => {
-    if (!canvas || !fabric) return;
+    if (!canvas || !fabricInstance) return;
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -58,7 +58,7 @@ export default function ImageEditor() {
       imgElement.crossOrigin = 'anonymous';
       imgElement.src = result;
       imgElement.onload = () => {
-        const fabricImage = new fabric.Image(imgElement);
+        const fabricImage = new FabricImage(imgElement);
         canvas.clear();
         
         // Scale image to fit canvas while maintaining aspect ratio
@@ -93,8 +93,8 @@ export default function ImageEditor() {
     e.preventDefault();
   }, []);
 
-  const applyEffect = useCallback((effectType: Effect, image?: fabric.Image) => {
-    if (!canvas || !fabric || !image) return;
+  const applyEffect = useCallback((effectType: Effect, image?: FabricImage) => {
+    if (!canvas || !fabricInstance || !image) return;
 
     // Reset filters
     image.filters = [];
@@ -123,7 +123,7 @@ export default function ImageEditor() {
 
   useEffect(() => {
     if (!canvas) return;
-    const activeObject = canvas.getObjects()[0] as fabric.Image;
+    const activeObject = canvas.getObjects()[0] as FabricImage;
     if (activeObject) {
       applyEffect(effect, activeObject);
     }
