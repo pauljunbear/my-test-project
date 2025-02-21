@@ -34,9 +34,8 @@ export default function ImageEditorComponent() {
       height: window.innerHeight - 40 // Accounting for padding
     });
     
-    fabricCanvas.setBackgroundColor('#f8f9fa', () => {
-      fabricCanvas.renderAll();
-    });
+    fabricCanvas.backgroundColor = '#f8f9fa';
+    fabricCanvas.renderAll();
 
     setCanvas(fabricCanvas);
 
