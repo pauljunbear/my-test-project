@@ -390,13 +390,19 @@ export default function ImageEditorComponent() {
   }, []);
 
   const handleImageUpload = useCallback((file: File) => {
-    if (!canvas) return;
+    console.log('Handling image upload:', file.name);
+    if (!canvas) {
+      console.log('No canvas available for image upload');
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (e) => {
+      console.log('Image file read successfully');
       const imgElement = new Image();
       imgElement.crossOrigin = 'anonymous';
       imgElement.onload = () => {
+        console.log('Image loaded into DOM element');
         const fabricImage = new FabricImage(imgElement);
         canvas.clear();
         
@@ -414,8 +420,15 @@ export default function ImageEditorComponent() {
           hasControls: false
         });
         
+        console.log('Adding image to canvas with dimensions:', {
+          width: fabricImage.width,
+          height: fabricImage.height,
+          scale
+        });
+        
         canvas.add(fabricImage);
         canvas.renderAll();
+        console.log('Image added to canvas, applying effect:', effect);
         applyEffect(effect, fabricImage);
       };
       imgElement.src = e.target?.result as string;
@@ -443,12 +456,19 @@ export default function ImageEditorComponent() {
   }, []);
 
   const applyEffect = useCallback((effectType: Effect, image?: FabricImage) => {
-    if (!canvas || !image) return;
+    if (!canvas || !image) {
+      console.log('No canvas or image available', { canvas, image });
+      return;
+    }
+
+    console.log('Applying effect:', effectType);
+    console.log('Current image filters:', image.filters);
 
     image.filters = [];
 
     switch (effectType) {
       case 'grayscale':
+        console.log('Applying grayscale filter');
         image.filters.push(new filters.Grayscale());
         break;
       case 'sepia':
@@ -489,31 +509,64 @@ export default function ImageEditorComponent() {
         }));
         break;
       case 'duotone':
-        image.filters.push(new CustomFilters.DuotoneFilter({
+        console.log('Applying duotone filter with colors:', duotoneColors);
+        const duotoneFilter = new CustomFilters.DuotoneFilter({
           color1: duotoneColors.color1,
           color2: duotoneColors.color2
-        }));
+        });
+        console.log('Created duotone filter:', duotoneFilter);
+        image.filters.push(duotoneFilter);
         break;
       case 'halftone':
-        image.filters.push(new CustomFilters.HalftoneFilter({
+        console.log('Applying halftone filter with params:', {
           dotSize,
           spacing: halftoneSpacing,
           angle: (halftoneAngle * Math.PI) / 180,
           mode: halftoneMode
-        }));
+        });
+        const halftoneFilter = new CustomFilters.HalftoneFilter({
+          dotSize,
+          spacing: halftoneSpacing,
+          angle: (halftoneAngle * Math.PI) / 180,
+          mode: halftoneMode
+        });
+        console.log('Created halftone filter:', halftoneFilter);
+        image.filters.push(halftoneFilter);
         break;
     }
 
-    image.applyFilters();
-    canvas.renderAll();
+    console.log('Filters after adding new filter:', image.filters);
+    
+    try {
+      console.log('Attempting to apply filters');
+      image.applyFilters();
+      console.log('Filters applied successfully');
+    } catch (error) {
+      console.error('Error applying filters:', error);
+    }
+
+    try {
+      console.log('Attempting to render canvas');
+      canvas.renderAll();
+      console.log('Canvas rendered successfully');
+    } catch (error) {
+      console.error('Error rendering canvas:', error);
+    }
   }, [canvas, duotoneColors, dotSize, sepiaIntensity, blurRadius, sharpenStrength,
       edgeThreshold, pixelSize, embossStrength, halftoneSpacing, halftoneAngle, halftoneMode]);
 
   useEffect(() => {
-    if (!canvas) return;
+    console.log('Effect changed to:', effect);
+    if (!canvas) {
+      console.log('No canvas available for effect change');
+      return;
+    }
     const activeObject = canvas.getObjects()[0] as FabricImage;
     if (activeObject) {
+      console.log('Found active image object:', activeObject);
       applyEffect(effect, activeObject);
+    } else {
+      console.log('No active image object found');
     }
   }, [effect, duotoneColors, applyEffect, canvas]);
 
