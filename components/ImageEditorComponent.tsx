@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChromePicker } from 'react-color';
 import { Select } from '@tremor/react';
 import { Canvas, Image as FabricImage, filters } from 'fabric';
-import type { IBaseFilter } from 'fabric/fabric-impl';
+import type { IBaseFilter, IBlendColorOptions } from 'fabric/fabric-impl';
 
 type Effect = 'none' | 'grayscale' | 'duotone';
 
@@ -56,11 +56,12 @@ export default function ImageEditorComponent() {
 
   // Custom Duotone Filter
   const createDuotoneFilter = (color1: string, color2: string) => {
-    return new filters.BlendColor({
+    const filter = new filters.BlendColor({
       color: color1,
       mode: 'multiply',
       alpha: 1
-    }) as IBaseFilter;
+    });
+    return filter as unknown as IBaseFilter;
   };
 
   const handleImageUpload = useCallback((file: File) => {
