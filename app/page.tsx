@@ -50,24 +50,27 @@ export default function ImageEditor() {
       const result = e.target?.result;
       if (typeof result !== 'string') return;
 
-      FabricImage.fromURL(result, (img) => {
-        canvas.clear();
-        
-        // Scale image to fit canvas while maintaining aspect ratio
-        const scale = Math.min(
-          canvas.width! / img.width!,
-          canvas.height! / img.height!
-        ) * 0.9;
-        
-        img.scale(scale);
-        img.set({
-          left: (canvas.width! - img.width! * scale) / 2,
-          top: (canvas.height! - img.height! * scale) / 2
-        });
-        
-        canvas.add(img);
-        canvas.renderAll();
-        applyEffect(effect, img);
+      FabricImage.fromURL(result, {
+        crossOrigin: 'anonymous',
+        callback: (img) => {
+          canvas.clear();
+          
+          // Scale image to fit canvas while maintaining aspect ratio
+          const scale = Math.min(
+            canvas.width! / img.width!,
+            canvas.height! / img.height!
+          ) * 0.9;
+          
+          img.scale(scale);
+          img.set({
+            left: (canvas.width! - img.width! * scale) / 2,
+            top: (canvas.height! - img.height! * scale) / 2
+          });
+          
+          canvas.add(img);
+          canvas.renderAll();
+          applyEffect(effect, img);
+        }
       });
     };
     reader.readAsDataURL(file);
