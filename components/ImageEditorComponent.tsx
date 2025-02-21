@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChromePicker } from 'react-color';
 import { Select } from '@tremor/react';
 import { Canvas, Image as FabricImage, filters } from 'fabric';
+import { Dropzone } from '@mantine/dropzone';
+import { notifications } from '@mantine/notifications';
+import { Card, Metric, Text } from '@tremor/react';
+import * as RadixSelect from '@radix-ui/react-select';
+import { useDisclosure } from '@mantine/hooks';
 
 type Effect = 'none' | 'grayscale' | 'duotone' | 'halftone' | 'sepia' | 'invert' | 'blur' | 'sharpen' | 'edge' | 'pixelate' | 'emboss';
 
@@ -339,6 +344,11 @@ namespace CustomFilters {
 export default function ImageEditorComponent() {
   const [canvas, setCanvas] = useState<Canvas | null>(null);
   const [effect, setEffect] = useState<Effect>('none');
+  const [imageStats, setImageStats] = useState({
+    processingTime: 0,
+    originalSize: 0,
+    processedSize: 0
+  });
   const [duotoneColors, setDuotoneColors] = useState({
     color1: '#000000',
     color2: '#ffffff'
@@ -392,9 +402,16 @@ export default function ImageEditorComponent() {
   const handleImageUpload = useCallback((file: File) => {
     console.log('Handling image upload:', file.name);
     if (!canvas) {
-      console.log('No canvas available for image upload');
+      notifications.show({
+        title: 'Error',
+        message: 'Canvas not initialized',
+        color: 'red'
+      });
       return;
     }
+
+    const startTime = performance.now();
+    const originalSize = file.size;
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -420,15 +437,22 @@ export default function ImageEditorComponent() {
           hasControls: false
         });
         
-        console.log('Adding image to canvas with dimensions:', {
-          width: fabricImage.width,
-          height: fabricImage.height,
-          scale
-        });
-        
         canvas.add(fabricImage);
         canvas.renderAll();
-        console.log('Image added to canvas, applying effect:', effect);
+        
+        const endTime = performance.now();
+        setImageStats({
+          processingTime: endTime - startTime,
+          originalSize,
+          processedSize: Math.round(canvas.toDataURL().length * 0.75) // Approximate size of base64 data
+        });
+
+        notifications.show({
+          title: 'Success',
+          message: 'Image uploaded successfully',
+          color: 'green'
+        });
+
         applyEffect(effect, fabricImage);
       };
       imgElement.src = e.target?.result as string;
@@ -579,23 +603,42 @@ export default function ImageEditorComponent() {
         </div>
 
         <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0])}
-            className="hidden"
-          />
+          <Dropzone
+            onDrop={(files) => handleImageUpload(files[0])}
+            onReject={() => {
+              notifications.show({
+                title: 'Error',
+                message: 'Please upload a valid image file',
+                color: 'red'
+              });
+            }}
+            maxSize={5 * 1024 ** 2}
+            accept={['image/*']}
+            className="border-2 border-dashed border-[#2a2a2c] rounded-lg p-4 text-center hover:border-blue-500 transition-colors"
+          >
+            <div className="space-y-2">
+              <Text>Drag images here or click to select files</Text>
+              <Text size="sm" color="dimmed">
+                Upload a single image up to 5MB
+              </Text>
+            </div>
+          </Dropzone>
 
-          <div className="space-y-2">
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Choose Image
-            </button>
-            <p className="text-sm text-gray-400">or drag and drop an image</p>
-          </div>
+          {/* Image Stats */}
+          {imageStats.originalSize > 0 && (
+            <div className="grid grid-cols-2 gap-4">
+              <Card className="bg-[#2a2a2c]">
+                <Text>Processing Time</Text>
+                <Metric>{Math.round(imageStats.processingTime)}ms</Metric>
+              </Card>
+              <Card className="bg-[#2a2a2c]">
+                <Text>Size Reduction</Text>
+                <Metric>
+                  {Math.round((1 - imageStats.processedSize / imageStats.originalSize) * 100)}%
+                </Metric>
+              </Card>
+            </div>
+          )}
 
           <div className="space-y-3">
             <label className="text-sm font-medium">Effect</label>
@@ -865,4 +908,4 @@ export default function ImageEditorComponent() {
       </div>
     </div>
   );
-} 
+}
