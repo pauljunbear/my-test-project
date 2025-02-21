@@ -152,7 +152,7 @@ namespace CustomFilters {
     dotSize: number;
     angle: number;
     spacing: number;
-    mode: 'CMYK' | 'RGB';
+    mode: 'CMYK';
   }> {
     static type = 'Halftone';
     static fragmentSource = halftoneShader;
@@ -160,14 +160,14 @@ namespace CustomFilters {
     dotSize: number;
     angle: number;
     spacing: number;
-    mode: 'CMYK' | 'RGB';
+    mode: 'CMYK';
 
-    constructor({ dotSize = 10, angle = Math.PI / 4, spacing = 10, mode = 'CMYK' as const } = {}) {
+    constructor({ dotSize = 10, angle = Math.PI / 4, spacing = 10, mode = 'CMYK' } = {}) {
       super();
       this.dotSize = dotSize;
       this.angle = angle;
       this.spacing = spacing;
-      this.mode = mode;
+      this.mode = 'CMYK';
     }
 
     applyTo2d(options: any) {
@@ -357,7 +357,7 @@ export default function ImageEditorComponent() {
   const [embossStrength, setEmbossStrength] = useState(1.0);
   const [halftoneSpacing, setHalftoneSpacing] = useState(10);
   const [halftoneAngle, setHalftoneAngle] = useState(45);
-  const [halftoneMode, setHalftoneMode] = useState<'CMYK' | 'RGB'>('CMYK');
+  const [halftoneMode, setHalftoneMode] = useState<'CMYK'>('CMYK');
 
   // Initialize fabric.js canvas
   useEffect(() => {
@@ -660,11 +660,10 @@ export default function ImageEditorComponent() {
                 <label className="text-sm font-medium">Mode</label>
                 <Select
                   value={halftoneMode}
-                  onValueChange={(value) => setHalftoneMode(value as 'CMYK' | 'RGB')}
+                  onValueChange={(value) => setHalftoneMode('CMYK')}
                   className="w-full bg-[#2a2a2c] border-[#3a3a3c]"
                 >
                   <option value="CMYK">CMYK</option>
-                  <option value="RGB">RGB</option>
                 </Select>
               </div>
             </div>
