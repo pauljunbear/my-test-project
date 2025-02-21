@@ -327,13 +327,6 @@ namespace CustomFilters {
   };
 }
 
-// Register custom filters
-filters.DuotoneFilter = CustomFilters.DuotoneFilter;
-filters.HalftoneFilter = CustomFilters.HalftoneFilter;
-filters.SepiaFilter = CustomFilters.SepiaFilter;
-filters.EdgeDetectionFilter = CustomFilters.EdgeDetectionFilter;
-filters.EmbossFilter = CustomFilters.EmbossFilter;
-
 export default function ImageEditorComponent() {
   const [canvas, setCanvas] = useState<Canvas | null>(null);
   const [effect, setEffect] = useState<Effect>('none');
