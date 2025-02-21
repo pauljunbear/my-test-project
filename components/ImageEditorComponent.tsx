@@ -618,7 +618,7 @@ export default function ImageEditorComponent() {
           >
             <div className="space-y-2">
               <Text>Drag images here or click to select files</Text>
-              <Text size="sm" color="dimmed">
+              <Text size="sm" className="text-gray-400">
                 Upload a single image up to 5MB
               </Text>
             </div>
