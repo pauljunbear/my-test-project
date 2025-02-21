@@ -148,17 +148,26 @@ namespace CustomFilters {
     }
   };
 
-  export const HalftoneFilter = class extends filters.BaseFilter<'Halftone', { dotSize: number; angle: number }> {
+  export const HalftoneFilter = class extends filters.BaseFilter<'Halftone', {
+    dotSize: number;
+    angle: number;
+    spacing: number;
+    mode: 'CMYK' | 'RGB';
+  }> {
     static type = 'Halftone';
     static fragmentSource = halftoneShader;
 
     dotSize: number;
     angle: number;
+    spacing: number;
+    mode: 'CMYK' | 'RGB';
 
-    constructor({ dotSize = 10, angle = Math.PI / 4 } = {}) {
+    constructor({ dotSize = 10, angle = Math.PI / 4, spacing = 10, mode = 'CMYK' } = {}) {
       super();
       this.dotSize = dotSize;
       this.angle = angle;
+      this.spacing = spacing;
+      this.mode = mode;
     }
 
     applyTo2d(options: any) {
