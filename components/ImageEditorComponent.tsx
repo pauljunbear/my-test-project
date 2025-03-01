@@ -65,6 +65,7 @@ export default function ImageEditorComponent() {
   const [isPanMode, setIsPanMode] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const [imageKey, setImageKey] = useState<number>(0);
   
   // Initialize canvas
   useEffect(() => {
@@ -151,279 +152,429 @@ export default function ImageEditorComponent() {
   const applyHalftoneFilter = useCallback((image: FabricImage) => {
     setIsProcessing(true);
     
-    // Get image data
-    const tempCanvas = document.createElement('canvas');
-    const ctx = tempCanvas.getContext('2d');
-    
-    if (!ctx) {
-      setIsProcessing(false);
-      return;
-    }
-    
-    // Set canvas dimensions to match image
-    const scaleFactor = image.scaleX || 1;
-    const width = (image.width || 0) * scaleFactor;
-    const height = (image.height || 0) * scaleFactor;
-    
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    
-    // Draw image to canvas
-    const imgElement = image.getElement() as HTMLImageElement;
-    ctx.drawImage(imgElement, 0, 0, width, height);
-    
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-    const outputData = new Uint8ClampedArray(data.length);
-    
-    // Apply halftone effect
-    const { dotSize, spacing, angle } = halftoneSettings;
-    const radians = (angle * Math.PI) / 180;
-    const cos = Math.cos(radians);
-    const sin = Math.sin(radians);
-    
-    // Process image data
-    for (let y = 0; y < height; y += spacing) {
-      for (let x = 0; x < width; x += spacing) {
-        // Sample the pixel luminance in this region
-        let totalLuminance = 0;
-        let pixelCount = 0;
-        
-        for (let dy = 0; dy < spacing && y + dy < height; dy++) {
-          for (let dx = 0; dx < spacing && x + dx < width; dx++) {
-            const i = 4 * ((y + dy) * width + (x + dx));
-            // Calculate luminance
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-            
-            totalLuminance += luminance;
-            pixelCount++;
+    try {
+      // Get image data
+      const tempCanvas = document.createElement('canvas');
+      const ctx = tempCanvas.getContext('2d');
+      
+      if (!ctx) {
+        setIsProcessing(false);
+        return;
+      }
+      
+      // Set canvas dimensions to match image
+      const scaleFactor = image.scaleX || 1;
+      const width = (image.width || 0) * scaleFactor;
+      const height = (image.height || 0) * scaleFactor;
+      
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      
+      // Draw image to canvas
+      const imgElement = image.getElement() as HTMLImageElement;
+      ctx.drawImage(imgElement, 0, 0, width, height);
+      
+      const imageData = ctx.getImageData(0, 0, width, height);
+      const data = imageData.data;
+      const outputData = new Uint8ClampedArray(data.length);
+      
+      // Apply halftone effect
+      const { dotSize, spacing, angle } = halftoneSettings;
+      const radians = (angle * Math.PI) / 180;
+      const cos = Math.cos(radians);
+      const sin = Math.sin(radians);
+      
+      // Process image data
+      for (let y = 0; y < height; y += spacing) {
+        for (let x = 0; x < width; x += spacing) {
+          // Sample the pixel luminance in this region
+          let totalLuminance = 0;
+          let pixelCount = 0;
+          
+          for (let dy = 0; dy < spacing && y + dy < height; dy++) {
+            for (let dx = 0; dx < spacing && x + dx < width; dx++) {
+              const i = 4 * ((y + dy) * width + (x + dx));
+              // Calculate luminance
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+              const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+              
+              totalLuminance += luminance;
+              pixelCount++;
+            }
           }
-        }
-        
-        // Normalized luminance in this region
-        const avgLuminance = totalLuminance / (pixelCount * 255);
-        const dotRadius = dotSize * avgLuminance;
-        
-        // Draw the dot
-        for (let dy = 0; dy < spacing && y + dy < height; dy++) {
-          for (let dx = 0; dx < spacing && x + dx < width; dx++) {
-            // Calculate distance from center of cell
-            const cx = spacing / 2;
-            const cy = spacing / 2;
-            
-            // Apply rotation
-            const rotX = (dx - cx) * cos - (dy - cy) * sin + cx;
-            const rotY = (dx - cx) * sin + (dy - cy) * cos + cy;
-            
-            const distance = Math.sqrt(
-              Math.pow(rotX - cx, 2) + Math.pow(rotY - cy, 2)
-            );
-            
-            const i = 4 * ((y + dy) * width + (x + dx));
-            
-            if (distance <= dotRadius) {
-              // Inside the dot - black
-              outputData[i] = 0;
-              outputData[i + 1] = 0;
-              outputData[i + 2] = 0;
-              outputData[i + 3] = 255;
-            } else {
-              // Outside the dot - white
-              outputData[i] = 255;
-              outputData[i + 1] = 255;
-              outputData[i + 2] = 255;
-              outputData[i + 3] = 255;
+          
+          // Normalized luminance in this region
+          const avgLuminance = totalLuminance / (pixelCount * 255);
+          const dotRadius = dotSize * avgLuminance;
+          
+          // Draw the dot
+          for (let dy = 0; dy < spacing && y + dy < height; dy++) {
+            for (let dx = 0; dx < spacing && x + dx < width; dx++) {
+              // Calculate distance from center of cell
+              const cx = spacing / 2;
+              const cy = spacing / 2;
+              
+              // Apply rotation
+              const rotX = (dx - cx) * cos - (dy - cy) * sin + cx;
+              const rotY = (dx - cx) * sin + (dy - cy) * cos + cy;
+              
+              const distance = Math.sqrt(
+                Math.pow(rotX - cx, 2) + Math.pow(rotY - cy, 2)
+              );
+              
+              const i = 4 * ((y + dy) * width + (x + dx));
+              
+              if (distance <= dotRadius) {
+                // Inside the dot - black
+                outputData[i] = 0;
+                outputData[i + 1] = 0;
+                outputData[i + 2] = 0;
+                outputData[i + 3] = 255;
+              } else {
+                // Outside the dot - white
+                outputData[i] = 255;
+                outputData[i + 1] = 255;
+                outputData[i + 2] = 255;
+                outputData[i + 3] = 255;
+              }
             }
           }
         }
       }
-    }
-    
-    // Update image with halftone effect
-    const outputImageData = new ImageData(outputData, width, height);
-    ctx.putImageData(outputImageData, 0, 0);
-    
-    // Create new image from canvas
-    const newImg = new Image();
-    newImg.src = tempCanvas.toDataURL('image/png');
-    
-    newImg.onload = () => {
-      // Save to history
-      const historyItem: ImageHistory = {
-        dataUrl: newImg.src,
-        effect: 'halftone',
-        timestamp: Date.now()
+      
+      // Update image with halftone effect
+      const outputImageData = new ImageData(outputData, width, height);
+      ctx.putImageData(outputImageData, 0, 0);
+      
+      // Create new image from canvas
+      const newImg = new Image();
+      newImg.src = tempCanvas.toDataURL('image/png');
+      
+      newImg.onload = () => {
+        // Save to history
+        const historyItem: ImageHistory = {
+          dataUrl: newImg.src,
+          effect: 'halftone',
+          timestamp: Date.now()
+        };
+        setImageHistory(prev => [...prev, historyItem]);
+        
+        // Increment key to trigger animation
+        setImageKey(prevKey => prevKey + 1);
+        
+        // Update canvas
+        const fabricImage = new FabricImage(newImg);
+        fabricImage.scaleToWidth(width);
+        fabricImage.set({
+          left: (canvas!.width! - fabricImage.width! * fabricImage.scaleX!) / 2,
+          top: (canvas!.height! - fabricImage.height! * fabricImage.scaleY!) / 2,
+          selectable: isPanMode,
+          hasControls: false,
+          hasBorders: isPanMode
+        });
+        
+        if (canvas) {
+          canvas.clear();
+          canvas.add(fabricImage);
+          canvas.renderAll();
+        }
+        
+        setIsProcessing(false);
       };
-      setImageHistory(prev => [...prev, historyItem]);
-      
-      // Update canvas
-      const fabricImage = new FabricImage(newImg);
-      fabricImage.scaleToWidth(width);
-      fabricImage.set({
-        left: (canvas!.width! - fabricImage.width! * fabricImage.scaleX!) / 2,
-        top: (canvas!.height! - fabricImage.height! * fabricImage.scaleY!) / 2,
-        selectable: false,
-        hasControls: false
-      });
-      
-      if (canvas) {
-        canvas.clear();
-        canvas.add(fabricImage);
-        canvas.renderAll();
-      }
-      
+    } catch (error) {
+      console.error('Error applying halftone filter:', error);
       setIsProcessing(false);
-    };
-  }, [halftoneSettings, canvas]);
+    }
+  }, [halftoneSettings, canvas, isPanMode]);
 
   // Custom duotone filter
   const applyDuotoneFilter = useCallback((image: FabricImage) => {
     setIsProcessing(true);
     
-    const { color1, color2, intensity } = duotoneSettings;
-    
-    // Helper to convert hex to rgb
-    const hexToRgb = (hex: string) => {
-      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-      return result ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16)
-      } : { r: 0, g: 0, b: 0 };
-    };
-    
-    const c1 = hexToRgb(color1);
-    const c2 = hexToRgb(color2);
-    
-    // Get image data
-    const el = image.getElement() as HTMLImageElement;
-    const tempCanvas = document.createElement('canvas');
-    const ctx = tempCanvas.getContext('2d');
-    
-    if (!ctx) {
-      setIsProcessing(false);
-      return;
-    }
-    
-    tempCanvas.width = el.width;
-    tempCanvas.height = el.height;
-    
-    ctx.drawImage(el, 0, 0);
-    
-    const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-    const data = imageData.data;
-    
-    // Apply duotone effect
-    for (let i = 0; i < data.length; i += 4) {
-      const luminance = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) / 255;
+    try {
+      const { color1, color2, intensity } = duotoneSettings;
       
-      // Calculate color based on luminance
-      const normIntensity = intensity / 100;
-      const r = c1.r * (1 - luminance) + c2.r * luminance;
-      const g = c1.g * (1 - luminance) + c2.g * luminance;
-      const b = c1.b * (1 - luminance) + c2.b * luminance;
-      
-      // Apply with intensity
-      data[i] = Math.round(data[i] * (1 - normIntensity) + r * normIntensity);
-      data[i + 1] = Math.round(data[i + 1] * (1 - normIntensity) + g * normIntensity);
-      data[i + 2] = Math.round(data[i + 2] * (1 - normIntensity) + b * normIntensity);
-    }
-    
-    ctx.putImageData(imageData, 0, 0);
-    
-    // Create new image from canvas
-    const newImg = new Image();
-    newImg.src = tempCanvas.toDataURL('image/png');
-    
-    newImg.onload = () => {
-      // Save to history
-      const historyItem: ImageHistory = {
-        dataUrl: newImg.src,
-        effect: 'duotone',
-        timestamp: Date.now()
+      // Helper to convert hex to rgb
+      const hexToRgb = (hex: string) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+          r: parseInt(result[1], 16),
+          g: parseInt(result[2], 16),
+          b: parseInt(result[3], 16)
+        } : { r: 0, g: 0, b: 0 };
       };
-      setImageHistory(prev => [...prev, historyItem]);
       
-      // Update canvas
-      const fabricImage = new FabricImage(newImg);
-      const scaleFactor = image.scaleX || 1;
-      const width = (image.width || 0) * scaleFactor;
+      const c1 = hexToRgb(color1);
+      const c2 = hexToRgb(color2);
       
-      fabricImage.scaleToWidth(width);
-      fabricImage.set({
-        left: (canvas!.width! - fabricImage.width! * fabricImage.scaleX!) / 2,
-        top: (canvas!.height! - fabricImage.height! * fabricImage.scaleY!) / 2,
-        selectable: false,
-        hasControls: false
-      });
+      // Get image data
+      const el = image.getElement() as HTMLImageElement;
+      const tempCanvas = document.createElement('canvas');
+      const ctx = tempCanvas.getContext('2d');
       
-      if (canvas) {
-        canvas.clear();
-        canvas.add(fabricImage);
-        canvas.renderAll();
+      if (!ctx) {
+        setIsProcessing(false);
+        return;
       }
       
+      tempCanvas.width = el.width;
+      tempCanvas.height = el.height;
+      
+      ctx.drawImage(el, 0, 0);
+      
+      const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      const data = imageData.data;
+      
+      // Apply duotone effect
+      for (let i = 0; i < data.length; i += 4) {
+        const luminance = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) / 255;
+        
+        // Calculate color based on luminance
+        const normIntensity = intensity / 100;
+        const r = c1.r * (1 - luminance) + c2.r * luminance;
+        const g = c1.g * (1 - luminance) + c2.g * luminance;
+        const b = c1.b * (1 - luminance) + c2.b * luminance;
+        
+        // Apply with intensity
+        data[i] = Math.round(data[i] * (1 - normIntensity) + r * normIntensity);
+        data[i + 1] = Math.round(data[i + 1] * (1 - normIntensity) + g * normIntensity);
+        data[i + 2] = Math.round(data[i + 2] * (1 - normIntensity) + b * normIntensity);
+      }
+      
+      ctx.putImageData(imageData, 0, 0);
+      
+      // Create new image from canvas
+      const newImg = new Image();
+      newImg.src = tempCanvas.toDataURL('image/png');
+      
+      newImg.onload = () => {
+        // Save to history
+        const historyItem: ImageHistory = {
+          dataUrl: newImg.src,
+          effect: 'duotone',
+          timestamp: Date.now()
+        };
+        setImageHistory(prev => [...prev, historyItem]);
+        
+        // Increment key to trigger animation
+        setImageKey(prevKey => prevKey + 1);
+        
+        // Update canvas
+        const fabricImage = new FabricImage(newImg);
+        const scaleFactor = image.scaleX || 1;
+        const width = (image.width || 0) * scaleFactor;
+        
+        fabricImage.scaleToWidth(width);
+        fabricImage.set({
+          left: (canvas!.width! - fabricImage.width! * fabricImage.scaleX!) / 2,
+          top: (canvas!.height! - fabricImage.height! * fabricImage.scaleY!) / 2,
+          selectable: isPanMode,
+          hasControls: false,
+          hasBorders: isPanMode
+        });
+        
+        if (canvas) {
+          canvas.clear();
+          canvas.add(fabricImage);
+          canvas.renderAll();
+        }
+        
+        setIsProcessing(false);
+      };
+    } catch (error) {
+      console.error('Error applying duotone filter:', error);
       setIsProcessing(false);
-    };
-  }, [duotoneSettings, canvas]);
+    }
+  }, [duotoneSettings, canvas, isPanMode]);
 
   // Black and white filter
   const applyBlackWhiteFilter = useCallback((image: FabricImage) => {
-    image.filters = [
-      new filters.Grayscale(),
-      new filters.Contrast({ contrast: 0.7 }),
-      new filters.Brightness({ brightness: 0.1 })
-    ];
-    
-    image.applyFilters();
-    canvas?.renderAll();
-    
-    // Save to history
-    const historyItem: ImageHistory = {
-      dataUrl: canvas?.toDataURL() || '',
-      effect: 'blackwhite',
-      timestamp: Date.now()
-    };
-    setImageHistory(prev => [...prev, historyItem]);
+    try {
+      // Clone the current image for animation purposes
+      const imgElement = image.getElement() as HTMLImageElement;
+      const tempCanvas = document.createElement('canvas');
+      const ctx = tempCanvas.getContext('2d');
+      
+      if (!ctx) {
+        console.error('Failed to get 2D context');
+        return;
+      }
+      
+      tempCanvas.width = imgElement.width;
+      tempCanvas.height = imgElement.height;
+      ctx.drawImage(imgElement, 0, 0, imgElement.width, imgElement.height);
+      
+      // Create a new fabric image with the same dimensions
+      const newImg = new Image();
+      newImg.crossOrigin = 'anonymous';
+      newImg.src = tempCanvas.toDataURL('image/png');
+      
+      newImg.onload = () => {
+        const fabricImage = new FabricImage(newImg, {
+          left: image.left,
+          top: image.top,
+          scaleX: image.scaleX,
+          scaleY: image.scaleY,
+          selectable: image.selectable,
+          hasControls: image.hasControls
+        });
+        
+        // Apply filters to the new image
+        fabricImage.filters = [
+          new filters.Grayscale(),
+          new filters.Contrast({ contrast: 0.7 }),
+          new filters.Brightness({ brightness: 0.1 })
+        ];
+        
+        fabricImage.applyFilters();
+        
+        if (canvas) {
+          // Store in history first
+          const historyItem: ImageHistory = {
+            dataUrl: fabricImage.toDataURL(),
+            effect: 'blackwhite',
+            timestamp: Date.now()
+          };
+          setImageHistory(prev => [...prev, historyItem]);
+          
+          // Increment key to trigger animation
+          setImageKey(prevKey => prevKey + 1);
+          
+          // Update canvas
+          canvas.clear();
+          canvas.add(fabricImage);
+          canvas.renderAll();
+        }
+      };
+    } catch (error) {
+      console.error('Error applying black and white filter:', error);
+    }
   }, [canvas]);
 
   // Sepia filter
   const applySepiaFilter = useCallback((image: FabricImage) => {
-    image.filters = [
-      new filters.Sepia()
-    ];
-    
-    image.applyFilters();
-    canvas?.renderAll();
-    
-    // Save to history
-    const historyItem: ImageHistory = {
-      dataUrl: canvas?.toDataURL() || '',
-      effect: 'sepia',
-      timestamp: Date.now()
-    };
-    setImageHistory(prev => [...prev, historyItem]);
+    try {
+      // Clone the current image for animation purposes
+      const imgElement = image.getElement() as HTMLImageElement;
+      const tempCanvas = document.createElement('canvas');
+      const ctx = tempCanvas.getContext('2d');
+      
+      if (!ctx) {
+        console.error('Failed to get 2D context');
+        return;
+      }
+      
+      tempCanvas.width = imgElement.width;
+      tempCanvas.height = imgElement.height;
+      ctx.drawImage(imgElement, 0, 0, imgElement.width, imgElement.height);
+      
+      // Create a new fabric image with the same dimensions
+      const newImg = new Image();
+      newImg.crossOrigin = 'anonymous';
+      newImg.src = tempCanvas.toDataURL('image/png');
+      
+      newImg.onload = () => {
+        const fabricImage = new FabricImage(newImg, {
+          left: image.left,
+          top: image.top,
+          scaleX: image.scaleX,
+          scaleY: image.scaleY,
+          selectable: image.selectable,
+          hasControls: image.hasControls
+        });
+        
+        // Apply filters to the new image
+        fabricImage.filters = [
+          new filters.Sepia()
+        ];
+        
+        fabricImage.applyFilters();
+        
+        if (canvas) {
+          // Store in history first
+          const historyItem: ImageHistory = {
+            dataUrl: fabricImage.toDataURL(),
+            effect: 'sepia',
+            timestamp: Date.now()
+          };
+          setImageHistory(prev => [...prev, historyItem]);
+          
+          // Increment key to trigger animation
+          setImageKey(prevKey => prevKey + 1);
+          
+          // Update canvas
+          canvas.clear();
+          canvas.add(fabricImage);
+          canvas.renderAll();
+        }
+      };
+    } catch (error) {
+      console.error('Error applying sepia filter:', error);
+    }
   }, [canvas]);
 
   // Noise filter
   const applyNoiseFilter = useCallback((image: FabricImage) => {
-    image.filters = [
-      new filters.Noise({ noise: 50 })
-    ];
-    
-    image.applyFilters();
-    canvas?.renderAll();
-    
-    // Save to history
-    const historyItem: ImageHistory = {
-      dataUrl: canvas?.toDataURL() || '',
-      effect: 'noise',
-      timestamp: Date.now()
-    };
-    setImageHistory(prev => [...prev, historyItem]);
+    try {
+      // Clone the current image for animation purposes
+      const imgElement = image.getElement() as HTMLImageElement;
+      const tempCanvas = document.createElement('canvas');
+      const ctx = tempCanvas.getContext('2d');
+      
+      if (!ctx) {
+        console.error('Failed to get 2D context');
+        return;
+      }
+      
+      tempCanvas.width = imgElement.width;
+      tempCanvas.height = imgElement.height;
+      ctx.drawImage(imgElement, 0, 0, imgElement.width, imgElement.height);
+      
+      // Create a new fabric image with the same dimensions
+      const newImg = new Image();
+      newImg.crossOrigin = 'anonymous';
+      newImg.src = tempCanvas.toDataURL('image/png');
+      
+      newImg.onload = () => {
+        const fabricImage = new FabricImage(newImg, {
+          left: image.left,
+          top: image.top,
+          scaleX: image.scaleX,
+          scaleY: image.scaleY,
+          selectable: image.selectable,
+          hasControls: image.hasControls
+        });
+        
+        // Apply filters to the new image
+        fabricImage.filters = [
+          new filters.Noise({ noise: 50 })
+        ];
+        
+        fabricImage.applyFilters();
+        
+        if (canvas) {
+          // Store in history first
+          const historyItem: ImageHistory = {
+            dataUrl: fabricImage.toDataURL(),
+            effect: 'noise',
+            timestamp: Date.now()
+          };
+          setImageHistory(prev => [...prev, historyItem]);
+          
+          // Increment key to trigger animation
+          setImageKey(prevKey => prevKey + 1);
+          
+          // Update canvas
+          canvas.clear();
+          canvas.add(fabricImage);
+          canvas.renderAll();
+        }
+      };
+    } catch (error) {
+      console.error('Error applying noise filter:', error);
+    }
   }, [canvas]);
 
   // Apply effect
@@ -905,7 +1056,8 @@ export default function ImageEditorComponent() {
       <div className="flex-1 p-6 flex items-center justify-center bg-[#f5f5f5] dark:bg-[#161616]">
         <div 
           ref={canvasContainerRef}
-          className="w-full h-full rounded-xl border-2 border-dashed border-[#e1e1e1] dark:border-[#2a2a2a] overflow-hidden bg-white dark:bg-black shadow-sm"
+          key={imageKey}
+          className="w-full h-full rounded-xl border-2 border-dashed border-[#e1e1e1] dark:border-[#2a2a2a] overflow-hidden bg-white dark:bg-black shadow-sm transition-all duration-500"
         >
           <canvas ref={canvasRef} className="w-full h-full" />
         </div>
