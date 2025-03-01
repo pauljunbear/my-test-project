@@ -50,7 +50,7 @@ interface ImageHistory {
 
 export default function ImageEditorComponent() {
   const [canvas, setCanvas] = useState<Canvas | null>(null);
-  const [effect, setEffect] = useState<Effect>('none');
+  const [currentEffect, setCurrentEffect] = useState<Effect>('none');
   const [imageHistory, setImageHistory] = useState<ImageHistory[]>([]);
   const [halftoneSettings, setHalftoneSettings] = useState<HalftoneSettings>({
     dotSize: 4,
@@ -162,29 +162,70 @@ export default function ImageEditorComponent() {
       const reader = new FileReader();
       
       reader.onload = (e) => {
-        // Create image element BEFORE setting src
+        if (!e.target?.result) {
+          console.error("Failed to load image data");
+          return;
+        }
+
+        const dataUrl = e.target.result as string;
+        console.log("Image data loaded successfully, creating image element");
+        
+        // Create image element
         const imgElement = new Image();
         imgElement.crossOrigin = 'anonymous';
         
         // Define onload handler BEFORE setting src
         imgElement.onload = () => {
           try {
-            console.log("Image loaded successfully:", imgElement.width, imgElement.height);
+            console.log("Image loaded successfully:", imgElement.naturalWidth, imgElement.naturalHeight);
             
-            // Clean up canvas first
-            canvas.clear();
+            if (imgElement.naturalWidth === 0 || imgElement.naturalHeight === 0) {
+              console.error("Image has invalid dimensions");
+              return;
+            }
             
+            // Clean up canvas first - IMPORTANT
+            if (canvas) {
+              console.log("Clearing canvas");
+              canvas.clear();
+              canvas.renderAll();
+            }
+            
+            // Create a new Fabric.js image
             const fabricImage = new FabricImage(imgElement);
             
-            // Scale to fit canvas
+            if (!fabricImage.width || !fabricImage.height) {
+              console.error("Fabric image has invalid dimensions");
+              return;
+            }
+            
+            console.log("Fabric image created:", fabricImage.width, fabricImage.height);
+            
+            // Scale to fit canvas - ensure canvas dimensions are valid
+            const canvasWidth = canvas.getWidth();
+            const canvasHeight = canvas.getHeight();
+            
+            console.log("Canvas dimensions:", canvasWidth, canvasHeight);
+            
+            if (!canvasWidth || !canvasHeight) {
+              console.error("Invalid canvas dimensions");
+              return;
+            }
+            
             const scale = Math.min(
-              (canvas.width! - 40) / fabricImage.width!,
-              (canvas.height! - 40) / fabricImage.height!
+              (canvasWidth - 40) / fabricImage.width,
+              (canvasHeight - 40) / fabricImage.height
             );
             
-            const left = (canvas.width! - fabricImage.width! * scale) / 2;
-            const top = (canvas.height! - fabricImage.height! * scale) / 2;
+            console.log("Calculated scale:", scale);
             
+            // Calculate position
+            const left = (canvasWidth - fabricImage.width * scale) / 2;
+            const top = (canvasHeight - fabricImage.height * scale) / 2;
+            
+            console.log("Positioning image at:", left, top);
+            
+            // Set scale and position
             fabricImage.scale(scale);
             fabricImage.set({
               left: left,
@@ -198,9 +239,9 @@ export default function ImageEditorComponent() {
               hoverCursor: isPanMode ? 'move' : 'default'
             });
             
-            // Save original to history with position and scale info
+            // Create history item BEFORE adding to canvas
             const historyItem: ImageHistory = {
-              dataUrl: e.target?.result as string,
+              dataUrl: dataUrl,
               effect: 'none',
               timestamp: Date.now(),
               position: { left, top },
@@ -209,18 +250,19 @@ export default function ImageEditorComponent() {
             
             setImageHistory([historyItem]);
             
-            // Add to canvas and render
+            // Add to canvas and explicitly render
+            console.log("Adding image to canvas");
             canvas.add(fabricImage);
-            canvas.renderAll();
+            console.log("Canvas objects count:", canvas.getObjects().length);
             
-            // Reset effect and zoom
-            setEffect('none');
+            // Reset view settings
+            setCurrentEffect('none');
             setZoomLevel(1);
             canvas.setZoom(1);
             canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
-            canvas.renderAll();
             
-            // Increment key to trigger animation
+            // Force another render and refresh key
+            canvas.requestRenderAll();
             setImageKey(prevKey => prevKey + 1);
             
             console.log("Image added to canvas successfully");
@@ -234,13 +276,18 @@ export default function ImageEditorComponent() {
           console.error("Error loading image:", err);
         };
         
-        // Set src AFTER defining onload handler
-        imgElement.src = e.target?.result as string;
+        // Set src AFTER defining onload handler - important to avoid race conditions
+        console.log("Setting image source");
+        imgElement.src = dataUrl;
+      };
+      
+      reader.onerror = (err) => {
+        console.error("Error reading file:", err);
       };
       
       reader.readAsDataURL(file);
     } catch (err) {
-      console.error("Error uploading image:", err);
+      console.error("Error in upload process:", err);
     }
   }, [canvas, isPanMode]);
 
@@ -845,7 +892,7 @@ export default function ImageEditorComponent() {
       return;
     }
     
-    setEffect(effectType);
+    setCurrentEffect(effectType);
     
     if (effectType === 'none') {
       // Reset to original
@@ -970,7 +1017,7 @@ export default function ImageEditorComponent() {
           
           // Update state
           setImageHistory(newHistory);
-          setEffect(prevState.effect);
+          setCurrentEffect(prevState.effect);
           
           // Increment key to trigger animation
           setImageKey(prevKey => prevKey + 1);
