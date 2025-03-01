@@ -44,6 +44,8 @@ interface ImageHistory {
   dataUrl: string;
   effect: Effect;
   timestamp: number;
+  position?: { left: number; top: number };
+  scale?: { scaleX: number; scaleY: number };
 }
 
 export default function ImageEditorComponent() {
@@ -153,39 +155,31 @@ export default function ImageEditorComponent() {
     setIsProcessing(true);
     
     try {
-      // Store current properties before applying filter
-      const currentProps = {
-        left: image.left,
-        top: image.top,
-        angle: image.angle,
-        selectable: isPanMode,
-        hasControls: false,
-        hasBorders: isPanMode
-      };
-      
-      // Get image data
+      // Get current image info before applying filter
+      const imgElement = image.getElement() as HTMLImageElement;
+      const originalWidth = image.getScaledWidth();
+      const originalHeight = image.getScaledHeight();
+      const currentLeft = image.left || 0;
+      const currentTop = image.top || 0;
+
+      // Create a clone of the original image to work with
       const tempCanvas = document.createElement('canvas');
       const ctx = tempCanvas.getContext('2d');
       
       if (!ctx) {
-        setIsProcessing(false);
         console.error("Failed to get 2D context");
+        setIsProcessing(false);
         return;
       }
       
       // Set canvas dimensions to match image
-      const scaleFactor = image.scaleX || 1;
-      const width = (image.width || 0) * scaleFactor;
-      const height = (image.height || 0) * scaleFactor;
-      
-      tempCanvas.width = width;
-      tempCanvas.height = height;
+      tempCanvas.width = imgElement.naturalWidth;
+      tempCanvas.height = imgElement.naturalHeight;
       
       // Draw image to canvas
-      const imgElement = image.getElement() as HTMLImageElement;
-      ctx.drawImage(imgElement, 0, 0, width, height);
+      ctx.drawImage(imgElement, 0, 0, imgElement.naturalWidth, imgElement.naturalHeight);
       
-      const imageData = ctx.getImageData(0, 0, width, height);
+      const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
       const data = imageData.data;
       const outputData = new Uint8ClampedArray(data.length);
       
@@ -196,15 +190,15 @@ export default function ImageEditorComponent() {
       const sin = Math.sin(radians);
       
       // Process image data
-      for (let y = 0; y < height; y += spacing) {
-        for (let x = 0; x < width; x += spacing) {
+      for (let y = 0; y < tempCanvas.height; y += spacing) {
+        for (let x = 0; x < tempCanvas.width; x += spacing) {
           // Sample the pixel luminance in this region
           let totalLuminance = 0;
           let pixelCount = 0;
           
-          for (let dy = 0; dy < spacing && y + dy < height; dy++) {
-            for (let dx = 0; dx < spacing && x + dx < width; dx++) {
-              const i = 4 * ((y + dy) * width + (x + dx));
+          for (let dy = 0; dy < spacing && y + dy < tempCanvas.height; dy++) {
+            for (let dx = 0; dx < spacing && x + dx < tempCanvas.width; dx++) {
+              const i = 4 * ((y + dy) * tempCanvas.width + (x + dx));
               // Calculate luminance
               const r = data[i];
               const g = data[i + 1];
@@ -221,8 +215,8 @@ export default function ImageEditorComponent() {
           const dotRadius = dotSize * avgLuminance;
           
           // Draw the dot
-          for (let dy = 0; dy < spacing && y + dy < height; dy++) {
-            for (let dx = 0; dx < spacing && x + dx < width; dx++) {
+          for (let dy = 0; dy < spacing && y + dy < tempCanvas.height; dy++) {
+            for (let dx = 0; dx < spacing && x + dx < tempCanvas.width; dx++) {
               // Calculate distance from center of cell
               const cx = spacing / 2;
               const cy = spacing / 2;
@@ -235,7 +229,7 @@ export default function ImageEditorComponent() {
                 Math.pow(rotX - cx, 2) + Math.pow(rotY - cy, 2)
               );
               
-              const i = 4 * ((y + dy) * width + (x + dx));
+              const i = 4 * ((y + dy) * tempCanvas.width + (x + dx));
               
               if (distance <= dotRadius) {
                 // Inside the dot - black
@@ -256,47 +250,59 @@ export default function ImageEditorComponent() {
       }
       
       // Update image with halftone effect
-      const outputImageData = new ImageData(outputData, width, height);
+      const outputImageData = new ImageData(outputData, tempCanvas.width, tempCanvas.height);
       ctx.putImageData(outputImageData, 0, 0);
       
       // Create new image from canvas
       const newImg = new Image();
-      newImg.src = tempCanvas.toDataURL('image/png');
-      
       newImg.onload = () => {
         if (!canvas) {
           setIsProcessing(false);
           return;
         }
         
-        // Save to history first
+        // Create a new Fabric.js image
+        const fabricImage = new FabricImage(newImg);
+        
+        // Set the scale to match original dimensions
+        const scaleX = originalWidth / fabricImage.width!;
+        const scaleY = originalHeight / fabricImage.height!;
+        fabricImage.scale(Math.min(scaleX, scaleY));
+        
+        // Position at the same spot as the original
+        fabricImage.set({
+          left: currentLeft,
+          top: currentTop,
+          selectable: isPanMode,
+          hasControls: false,
+          hasBorders: isPanMode
+        });
+        
+        // Save to history before updating canvas
         const historyItem: ImageHistory = {
           dataUrl: newImg.src,
           effect: 'halftone',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          position: { left: currentLeft, top: currentTop },
+          scale: { scaleX: fabricImage.scaleX || 1, scaleY: fabricImage.scaleY || 1 }
         };
+        
         setImageHistory(prev => [...prev, historyItem]);
         
-        // Increment key to trigger animation
-        setImageKey(prevKey => prevKey + 1);
-        
-        // Create new fabric image with preserved properties
-        const fabricImage = new FabricImage(newImg, {
-          ...currentProps,
-          scaleX: 1,
-          scaleY: 1
-        });
-        
-        // Scale to original width
-        fabricImage.scaleToWidth(width);
-        
-        // Clear canvas and add new image
+        // Update canvas
         canvas.clear();
         canvas.add(fabricImage);
         canvas.renderAll();
         
+        // Increment key to trigger animation
+        setImageKey(prevKey => prevKey + 1);
+        
         setIsProcessing(false);
       };
+      
+      // Set the source after defining the onload handler
+      newImg.src = tempCanvas.toDataURL('image/png');
+      
     } catch (error) {
       console.error('Error applying halftone filter:', error);
       setIsProcessing(false);
@@ -308,15 +314,12 @@ export default function ImageEditorComponent() {
     setIsProcessing(true);
     
     try {
-      // Store current properties before applying filter
-      const currentProps = {
-        left: image.left,
-        top: image.top,
-        angle: image.angle,
-        selectable: isPanMode,
-        hasControls: false,
-        hasBorders: isPanMode
-      };
+      // Get current image info before applying filter
+      const imgElement = image.getElement() as HTMLImageElement;
+      const originalWidth = image.getScaledWidth();
+      const originalHeight = image.getScaledHeight();
+      const currentLeft = image.left || 0;
+      const currentTop = image.top || 0;
       
       const { color1, color2, intensity } = duotoneSettings;
       
@@ -333,8 +336,7 @@ export default function ImageEditorComponent() {
       const c1 = hexToRgb(color1);
       const c2 = hexToRgb(color2);
       
-      // Get image data
-      const el = image.getElement() as HTMLImageElement;
+      // Create a clone of the original image to work with
       const tempCanvas = document.createElement('canvas');
       const ctx = tempCanvas.getContext('2d');
       
@@ -344,14 +346,10 @@ export default function ImageEditorComponent() {
         return;
       }
       
-      const scaleFactor = image.scaleX || 1;
-      const width = (image.width || 0) * scaleFactor;
-      const height = (image.height || 0) * scaleFactor;
+      tempCanvas.width = imgElement.naturalWidth;
+      tempCanvas.height = imgElement.naturalHeight;
       
-      tempCanvas.width = width;
-      tempCanvas.height = height;
-      
-      ctx.drawImage(el, 0, 0, width, height);
+      ctx.drawImage(imgElement, 0, 0, imgElement.naturalWidth, imgElement.naturalHeight);
       
       const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
       const data = imageData.data;
@@ -376,42 +374,54 @@ export default function ImageEditorComponent() {
       
       // Create new image from canvas
       const newImg = new Image();
-      newImg.src = tempCanvas.toDataURL('image/png');
-      
       newImg.onload = () => {
         if (!canvas) {
           setIsProcessing(false);
           return;
         }
         
-        // Save to history
+        // Create a new Fabric.js image
+        const fabricImage = new FabricImage(newImg);
+        
+        // Set the scale to match original dimensions
+        const scaleX = originalWidth / fabricImage.width!;
+        const scaleY = originalHeight / fabricImage.height!;
+        fabricImage.scale(Math.min(scaleX, scaleY));
+        
+        // Position at the same spot as the original
+        fabricImage.set({
+          left: currentLeft,
+          top: currentTop,
+          selectable: isPanMode,
+          hasControls: false,
+          hasBorders: isPanMode
+        });
+        
+        // Save to history before updating canvas
         const historyItem: ImageHistory = {
           dataUrl: newImg.src,
           effect: 'duotone',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          position: { left: currentLeft, top: currentTop },
+          scale: { scaleX: fabricImage.scaleX || 1, scaleY: fabricImage.scaleY || 1 }
         };
+        
         setImageHistory(prev => [...prev, historyItem]);
         
-        // Increment key to trigger animation
-        setImageKey(prevKey => prevKey + 1);
-        
-        // Create new fabric image with preserved properties
-        const fabricImage = new FabricImage(newImg, {
-          ...currentProps,
-          scaleX: 1,
-          scaleY: 1
-        });
-        
-        // Scale to original width
-        fabricImage.scaleToWidth(width);
-        
-        // Clear canvas and add new image
+        // Update canvas
         canvas.clear();
         canvas.add(fabricImage);
         canvas.renderAll();
         
+        // Increment key to trigger animation
+        setImageKey(prevKey => prevKey + 1);
+        
         setIsProcessing(false);
       };
+      
+      // Set the source after defining the onload handler
+      newImg.src = tempCanvas.toDataURL('image/png');
+      
     } catch (error) {
       console.error('Error applying duotone filter:', error);
       setIsProcessing(false);
@@ -421,20 +431,14 @@ export default function ImageEditorComponent() {
   // Black and white filter
   const applyBlackWhiteFilter = useCallback((image: FabricImage) => {
     try {
-      // Store current properties before applying filter
-      const currentProps = {
-        left: image.left,
-        top: image.top,
-        scaleX: image.scaleX,
-        scaleY: image.scaleY,
-        angle: image.angle,
-        selectable: isPanMode,
-        hasControls: false,
-        hasBorders: isPanMode
-      };
-
-      // Clone the current image for animation purposes
+      // Get current image info before applying filter
       const imgElement = image.getElement() as HTMLImageElement;
+      const originalWidth = image.getScaledWidth();
+      const originalHeight = image.getScaledHeight();
+      const currentLeft = image.left || 0;
+      const currentTop = image.top || 0;
+      
+      // Clone the current image for animation purposes
       const tempCanvas = document.createElement('canvas');
       const ctx = tempCanvas.getContext('2d');
       
@@ -443,20 +447,19 @@ export default function ImageEditorComponent() {
         return;
       }
       
-      tempCanvas.width = imgElement.width;
-      tempCanvas.height = imgElement.height;
-      ctx.drawImage(imgElement, 0, 0, imgElement.width, imgElement.height);
+      tempCanvas.width = imgElement.naturalWidth;
+      tempCanvas.height = imgElement.naturalHeight;
+      ctx.drawImage(imgElement, 0, 0, imgElement.naturalWidth, imgElement.naturalHeight);
       
       // Create a new fabric image with the same dimensions
       const newImg = new Image();
       newImg.crossOrigin = 'anonymous';
-      newImg.src = tempCanvas.toDataURL('image/png');
       
       newImg.onload = () => {
         if (!canvas) return;
         
-        // Create the new fabric image with preserved properties
-        const fabricImage = new FabricImage(newImg, currentProps);
+        // Create a new Fabric.js image
+        const fabricImage = new FabricImage(newImg);
         
         // Apply filters to the new image
         fabricImage.filters = [
@@ -468,12 +471,29 @@ export default function ImageEditorComponent() {
         // Apply filters and ensure it completes
         fabricImage.applyFilters();
         
-        // Store in history first
+        // Set the scale to match original dimensions
+        const scaleX = originalWidth / fabricImage.width!;
+        const scaleY = originalHeight / fabricImage.height!;
+        fabricImage.scale(Math.min(scaleX, scaleY));
+        
+        // Position at the same spot as the original
+        fabricImage.set({
+          left: currentLeft,
+          top: currentTop,
+          selectable: isPanMode,
+          hasControls: false,
+          hasBorders: isPanMode
+        });
+        
+        // Save to history before updating canvas
         const historyItem: ImageHistory = {
           dataUrl: fabricImage.toDataURL({ format: 'png', multiplier: 1 }),
           effect: 'blackwhite',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          position: { left: currentLeft, top: currentTop },
+          scale: { scaleX: fabricImage.scaleX || 1, scaleY: fabricImage.scaleY || 1 }
         };
+        
         setImageHistory(prev => [...prev, historyItem]);
         
         // Increment key to trigger animation
@@ -484,6 +504,9 @@ export default function ImageEditorComponent() {
         canvas.add(fabricImage);
         canvas.renderAll();
       };
+      
+      newImg.src = tempCanvas.toDataURL('image/png');
+      
     } catch (error) {
       console.error('Error applying black and white filter:', error);
     }
@@ -492,20 +515,14 @@ export default function ImageEditorComponent() {
   // Sepia filter
   const applySepiaFilter = useCallback((image: FabricImage) => {
     try {
-      // Store current properties before applying filter
-      const currentProps = {
-        left: image.left,
-        top: image.top,
-        scaleX: image.scaleX,
-        scaleY: image.scaleY,
-        angle: image.angle,
-        selectable: isPanMode,
-        hasControls: false,
-        hasBorders: isPanMode
-      };
-
-      // Clone the current image for animation purposes
+      // Get current image info before applying filter
       const imgElement = image.getElement() as HTMLImageElement;
+      const originalWidth = image.getScaledWidth();
+      const originalHeight = image.getScaledHeight();
+      const currentLeft = image.left || 0;
+      const currentTop = image.top || 0;
+      
+      // Clone the current image for animation purposes
       const tempCanvas = document.createElement('canvas');
       const ctx = tempCanvas.getContext('2d');
       
@@ -514,20 +531,19 @@ export default function ImageEditorComponent() {
         return;
       }
       
-      tempCanvas.width = imgElement.width;
-      tempCanvas.height = imgElement.height;
-      ctx.drawImage(imgElement, 0, 0, imgElement.width, imgElement.height);
+      tempCanvas.width = imgElement.naturalWidth;
+      tempCanvas.height = imgElement.naturalHeight;
+      ctx.drawImage(imgElement, 0, 0, imgElement.naturalWidth, imgElement.naturalHeight);
       
       // Create a new fabric image with the same dimensions
       const newImg = new Image();
       newImg.crossOrigin = 'anonymous';
-      newImg.src = tempCanvas.toDataURL('image/png');
       
       newImg.onload = () => {
         if (!canvas) return;
         
-        // Create the new fabric image with preserved properties
-        const fabricImage = new FabricImage(newImg, currentProps);
+        // Create a new Fabric.js image
+        const fabricImage = new FabricImage(newImg);
         
         // Apply filters to the new image
         fabricImage.filters = [
@@ -537,12 +553,29 @@ export default function ImageEditorComponent() {
         // Apply filters and ensure it completes
         fabricImage.applyFilters();
         
-        // Store in history first
+        // Set the scale to match original dimensions
+        const scaleX = originalWidth / fabricImage.width!;
+        const scaleY = originalHeight / fabricImage.height!;
+        fabricImage.scale(Math.min(scaleX, scaleY));
+        
+        // Position at the same spot as the original
+        fabricImage.set({
+          left: currentLeft,
+          top: currentTop,
+          selectable: isPanMode,
+          hasControls: false,
+          hasBorders: isPanMode
+        });
+        
+        // Save to history before updating canvas
         const historyItem: ImageHistory = {
           dataUrl: fabricImage.toDataURL({ format: 'png', multiplier: 1 }),
           effect: 'sepia',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          position: { left: currentLeft, top: currentTop },
+          scale: { scaleX: fabricImage.scaleX || 1, scaleY: fabricImage.scaleY || 1 }
         };
+        
         setImageHistory(prev => [...prev, historyItem]);
         
         // Increment key to trigger animation
@@ -553,6 +586,9 @@ export default function ImageEditorComponent() {
         canvas.add(fabricImage);
         canvas.renderAll();
       };
+      
+      newImg.src = tempCanvas.toDataURL('image/png');
+      
     } catch (error) {
       console.error('Error applying sepia filter:', error);
     }
@@ -561,20 +597,14 @@ export default function ImageEditorComponent() {
   // Noise filter
   const applyNoiseFilter = useCallback((image: FabricImage) => {
     try {
-      // Store current properties before applying filter
-      const currentProps = {
-        left: image.left,
-        top: image.top,
-        scaleX: image.scaleX,
-        scaleY: image.scaleY,
-        angle: image.angle,
-        selectable: isPanMode,
-        hasControls: false,
-        hasBorders: isPanMode
-      };
-
-      // Clone the current image for animation purposes
+      // Get current image info before applying filter
       const imgElement = image.getElement() as HTMLImageElement;
+      const originalWidth = image.getScaledWidth();
+      const originalHeight = image.getScaledHeight();
+      const currentLeft = image.left || 0;
+      const currentTop = image.top || 0;
+      
+      // Clone the current image for animation purposes
       const tempCanvas = document.createElement('canvas');
       const ctx = tempCanvas.getContext('2d');
       
@@ -583,20 +613,19 @@ export default function ImageEditorComponent() {
         return;
       }
       
-      tempCanvas.width = imgElement.width;
-      tempCanvas.height = imgElement.height;
-      ctx.drawImage(imgElement, 0, 0, imgElement.width, imgElement.height);
+      tempCanvas.width = imgElement.naturalWidth;
+      tempCanvas.height = imgElement.naturalHeight;
+      ctx.drawImage(imgElement, 0, 0, imgElement.naturalWidth, imgElement.naturalHeight);
       
       // Create a new fabric image with the same dimensions
       const newImg = new Image();
       newImg.crossOrigin = 'anonymous';
-      newImg.src = tempCanvas.toDataURL('image/png');
       
       newImg.onload = () => {
         if (!canvas) return;
         
-        // Create the new fabric image with preserved properties
-        const fabricImage = new FabricImage(newImg, currentProps);
+        // Create a new Fabric.js image
+        const fabricImage = new FabricImage(newImg);
         
         // Apply filters to the new image
         fabricImage.filters = [
@@ -606,12 +635,29 @@ export default function ImageEditorComponent() {
         // Apply filters and ensure it completes
         fabricImage.applyFilters();
         
-        // Store in history first
+        // Set the scale to match original dimensions
+        const scaleX = originalWidth / fabricImage.width!;
+        const scaleY = originalHeight / fabricImage.height!;
+        fabricImage.scale(Math.min(scaleX, scaleY));
+        
+        // Position at the same spot as the original
+        fabricImage.set({
+          left: currentLeft,
+          top: currentTop,
+          selectable: isPanMode,
+          hasControls: false,
+          hasBorders: isPanMode
+        });
+        
+        // Save to history before updating canvas
         const historyItem: ImageHistory = {
           dataUrl: fabricImage.toDataURL({ format: 'png', multiplier: 1 }),
           effect: 'noise',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          position: { left: currentLeft, top: currentTop },
+          scale: { scaleX: fabricImage.scaleX || 1, scaleY: fabricImage.scaleY || 1 }
         };
+        
         setImageHistory(prev => [...prev, historyItem]);
         
         // Increment key to trigger animation
@@ -622,6 +668,9 @@ export default function ImageEditorComponent() {
         canvas.add(fabricImage);
         canvas.renderAll();
       };
+      
+      newImg.src = tempCanvas.toDataURL('image/png');
+      
     } catch (error) {
       console.error('Error applying noise filter:', error);
     }
@@ -714,14 +763,6 @@ export default function ImageEditorComponent() {
       imgElement.crossOrigin = 'anonymous';
       
       imgElement.onload = () => {
-        // Save original to history
-        const historyItem: ImageHistory = {
-          dataUrl: e.target?.result as string,
-          effect: 'none',
-          timestamp: Date.now()
-        };
-        setImageHistory([historyItem]);
-        
         const fabricImage = new FabricImage(imgElement);
         
         // Scale to fit canvas
@@ -730,10 +771,13 @@ export default function ImageEditorComponent() {
           (canvas.height! - 40) / fabricImage.height!
         );
         
+        const left = (canvas.width! - fabricImage.width! * scale) / 2;
+        const top = (canvas.height! - fabricImage.height! * scale) / 2;
+        
         fabricImage.scale(scale);
         fabricImage.set({
-          left: (canvas.width! - fabricImage.width! * scale) / 2,
-          top: (canvas.height! - fabricImage.height! * scale) / 2,
+          left: left,
+          top: top,
           selectable: isPanMode,
           hasControls: false,
           hasBorders: isPanMode,
@@ -742,6 +786,17 @@ export default function ImageEditorComponent() {
           lockScalingY: true,
           hoverCursor: isPanMode ? 'move' : 'default'
         });
+        
+        // Save original to history with position and scale info
+        const historyItem: ImageHistory = {
+          dataUrl: e.target?.result as string,
+          effect: 'none',
+          timestamp: Date.now(),
+          position: { left, top },
+          scale: { scaleX: scale, scaleY: scale }
+        };
+        
+        setImageHistory([historyItem]);
         
         canvas.clear();
         canvas.add(fabricImage);
@@ -763,38 +818,66 @@ export default function ImageEditorComponent() {
 
   // Undo to previous state
   const handleUndo = useCallback(() => {
-    if (imageHistory.length <= 1) return;
+    if (imageHistory.length <= 1) {
+      console.log("Nothing to undo");
+      return;
+    }
     
     // Get previous state
     const newHistory = [...imageHistory];
-    newHistory.pop();
+    newHistory.pop(); // Remove current state
     const prevState = newHistory[newHistory.length - 1];
+    
+    if (!prevState || !prevState.dataUrl) {
+      console.error("Invalid previous state");
+      return;
+    }
+    
+    console.log("Undoing to previous state:", prevState.effect);
     
     // Load previous image
     const img = new Image();
-    img.src = prevState.dataUrl;
+    img.crossOrigin = 'anonymous';
     
     img.onload = () => {
+      if (!canvas) return;
+      
       const fabricImage = new FabricImage(img);
       
-      if (canvas) {
-        fabricImage.set({
-          left: (canvas.width! - fabricImage.width!) / 2,
-          top: (canvas.height! - fabricImage.height!) / 2,
-          selectable: false,
-          hasControls: false
-        });
-        
-        canvas.clear();
-        canvas.add(fabricImage);
-        canvas.renderAll();
-        
-        // Update state
-        setImageHistory(newHistory);
-        setEffect(prevState.effect);
-      }
+      // Apply the position and scale from history if available
+      const position = prevState.position || { 
+        left: (canvas.width! - fabricImage.width!) / 2,
+        top: (canvas.height! - fabricImage.height!) / 2 
+      };
+      
+      const scale = prevState.scale || { scaleX: 1, scaleY: 1 };
+      
+      fabricImage.set({
+        left: position.left,
+        top: position.top,
+        scaleX: scale.scaleX,
+        scaleY: scale.scaleY,
+        selectable: isPanMode,
+        hasControls: false,
+        hasBorders: isPanMode
+      });
+      
+      // Clear and update canvas
+      canvas.clear();
+      canvas.add(fabricImage);
+      canvas.renderAll();
+      
+      // Update state
+      setImageHistory(newHistory);
+      setEffect(prevState.effect);
+      
+      // Increment key to trigger animation
+      setImageKey(prevKey => prevKey + 1);
     };
-  }, [canvas, imageHistory]);
+    
+    // Set the source after defining the onload handler
+    img.src = prevState.dataUrl;
+  }, [canvas, imageHistory, isPanMode]);
 
   // Export image
   const handleExport = useCallback(() => {
