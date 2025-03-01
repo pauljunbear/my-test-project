@@ -24,6 +24,7 @@ import { Switch } from './ui/switch';
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
 import { Download, RotateCw, Undo, ZoomIn, ZoomOut, Maximize, Move } from 'lucide-react';
+import * as fabric from 'fabric';
 
 type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'none';
 
@@ -90,7 +91,7 @@ export default function ImageEditorComponent() {
       const pointer = fabricCanvas.getPointer(opt.e);
       
       // Set zoom point (zoom towards mouse position)
-      fabricCanvas.zoomToPoint({ x: pointer.x, y: pointer.y }, zoom);
+      fabricCanvas.zoomToPoint(new fabric.Point(pointer.x, pointer.y), zoom);
       
       // Update zoom level state
       setZoomLevel(zoom);
@@ -598,7 +599,7 @@ export default function ImageEditorComponent() {
       y: canvas.height! / 2
     };
     
-    canvas.zoomToPoint(center, newZoom);
+    canvas.zoomToPoint(new fabric.Point(center.x, center.y), newZoom);
     setZoomLevel(newZoom);
   }, [canvas, zoomLevel]);
 
@@ -614,7 +615,7 @@ export default function ImageEditorComponent() {
       y: canvas.height! / 2
     };
     
-    canvas.zoomToPoint(center, newZoom);
+    canvas.zoomToPoint(new fabric.Point(center.x, center.y), newZoom);
     setZoomLevel(newZoom);
   }, [canvas, zoomLevel]);
 
