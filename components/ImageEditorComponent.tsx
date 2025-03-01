@@ -297,6 +297,12 @@ export default function ImageEditorComponent() {
         // Increment key to trigger animation
         setImageKey(prevKey => prevKey + 1);
         
+        // Debug canvas state
+        console.log("Canvas objects before:", canvas.getObjects().length);
+        console.log("Canvas objects after:", canvas.getObjects().length);
+        console.log("Image dimensions:", fabricImage.width, fabricImage.height);
+        console.log("Image position:", fabricImage.left, fabricImage.top);
+        
         setIsProcessing(false);
       };
       
@@ -416,6 +422,12 @@ export default function ImageEditorComponent() {
         // Increment key to trigger animation
         setImageKey(prevKey => prevKey + 1);
         
+        // Debug canvas state
+        console.log("Canvas objects before:", canvas.getObjects().length);
+        console.log("Canvas objects after:", canvas.getObjects().length);
+        console.log("Image dimensions:", fabricImage.width, fabricImage.height);
+        console.log("Image position:", fabricImage.left, fabricImage.top);
+        
         setIsProcessing(false);
       };
       
@@ -503,6 +515,12 @@ export default function ImageEditorComponent() {
         canvas.clear();
         canvas.add(fabricImage);
         canvas.renderAll();
+        
+        // Debug canvas state
+        console.log("Canvas objects before:", canvas.getObjects().length);
+        console.log("Canvas objects after:", canvas.getObjects().length);
+        console.log("Image dimensions:", fabricImage.width, fabricImage.height);
+        console.log("Image position:", fabricImage.left, fabricImage.top);
       };
       
       newImg.src = tempCanvas.toDataURL('image/png');
@@ -585,6 +603,12 @@ export default function ImageEditorComponent() {
         canvas.clear();
         canvas.add(fabricImage);
         canvas.renderAll();
+        
+        // Debug canvas state
+        console.log("Canvas objects before:", canvas.getObjects().length);
+        console.log("Canvas objects after:", canvas.getObjects().length);
+        console.log("Image dimensions:", fabricImage.width, fabricImage.height);
+        console.log("Image position:", fabricImage.left, fabricImage.top);
       };
       
       newImg.src = tempCanvas.toDataURL('image/png');
@@ -667,6 +691,12 @@ export default function ImageEditorComponent() {
         canvas.clear();
         canvas.add(fabricImage);
         canvas.renderAll();
+        
+        // Debug canvas state
+        console.log("Canvas objects before:", canvas.getObjects().length);
+        console.log("Canvas objects after:", canvas.getObjects().length);
+        console.log("Image dimensions:", fabricImage.width, fabricImage.height);
+        console.log("Image position:", fabricImage.left, fabricImage.top);
       };
       
       newImg.src = tempCanvas.toDataURL('image/png');
