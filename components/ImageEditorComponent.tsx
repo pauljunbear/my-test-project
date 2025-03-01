@@ -23,7 +23,7 @@ import { ColorPicker } from './ui/color-picker';
 import { Switch } from './ui/switch';
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
-import { Download, RotateCw, Undo } from 'lucide-react';
+import { Download, RotateCw, Undo, ZoomIn, ZoomOut, Maximize, Move } from 'lucide-react';
 
 type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'none';
 
@@ -60,7 +60,10 @@ export default function ImageEditorComponent() {
     intensity: 100
   });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [isPanMode, setIsPanMode] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
   
   // Initialize canvas
   useEffect(() => {
@@ -74,6 +77,27 @@ export default function ImageEditorComponent() {
     
     fabricCanvas.backgroundColor = '#f8f9fa';
     fabricCanvas.renderAll();
+
+    // Enable mouse wheel zoom
+    fabricCanvas.on('mouse:wheel', function(opt) {
+      const delta = opt.e.deltaY;
+      let zoom = fabricCanvas.getZoom();
+      zoom *= 0.999 ** delta;
+      if (zoom > 20) zoom = 20;
+      if (zoom < 0.1) zoom = 0.1;
+      
+      // Get mouse position
+      const pointer = fabricCanvas.getPointer(opt.e);
+      
+      // Set zoom point (zoom towards mouse position)
+      fabricCanvas.zoomToPoint({ x: pointer.x, y: pointer.y }, zoom);
+      
+      // Update zoom level state
+      setZoomLevel(zoom);
+      
+      opt.e.preventDefault();
+      opt.e.stopPropagation();
+    });
 
     setCanvas(fabricCanvas);
 
@@ -91,6 +115,36 @@ export default function ImageEditorComponent() {
       fabricCanvas.dispose();
     };
   }, []);
+
+  // Toggle pan mode
+  useEffect(() => {
+    if (!canvas) return;
+    
+    const objects = canvas.getObjects();
+    if (objects.length === 0) return;
+    
+    const image = objects[0] as FabricImage;
+    
+    if (isPanMode) {
+      image.set({
+        selectable: true,
+        hasControls: false,
+        hasBorders: true,
+        lockRotation: true,
+        lockScalingX: true,
+        lockScalingY: true,
+        hoverCursor: 'move'
+      });
+    } else {
+      image.set({
+        selectable: false,
+        hasControls: false,
+        hasBorders: false
+      });
+    }
+    
+    canvas.renderAll();
+  }, [canvas, isPanMode]);
 
   // Custom halftone filter
   const applyHalftoneFilter = useCallback((image: FabricImage) => {
@@ -453,23 +507,32 @@ export default function ImageEditorComponent() {
         fabricImage.set({
           left: (canvas.width! - fabricImage.width! * scale) / 2,
           top: (canvas.height! - fabricImage.height! * scale) / 2,
-          selectable: false,
-          hasControls: false
+          selectable: isPanMode,
+          hasControls: false,
+          hasBorders: isPanMode,
+          lockRotation: true,
+          lockScalingX: true,
+          lockScalingY: true,
+          hoverCursor: isPanMode ? 'move' : 'default'
         });
         
         canvas.clear();
         canvas.add(fabricImage);
         canvas.renderAll();
         
-        // Reset effect
+        // Reset effect and zoom
         setEffect('none');
+        setZoomLevel(1);
+        canvas.setZoom(1);
+        canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
+        canvas.renderAll();
       };
       
       imgElement.src = e.target?.result as string;
     };
     
     reader.readAsDataURL(file);
-  }, [canvas]);
+  }, [canvas, isPanMode]);
 
   // Undo to previous state
   const handleUndo = useCallback(() => {
@@ -522,6 +585,60 @@ export default function ImageEditorComponent() {
     document.body.removeChild(link);
   }, [canvas]);
 
+  // Zoom controls
+  const handleZoomIn = useCallback(() => {
+    if (!canvas) return;
+    
+    let newZoom = zoomLevel * 1.2;
+    if (newZoom > 20) newZoom = 20;
+    
+    // Get canvas center
+    const center = {
+      x: canvas.width! / 2,
+      y: canvas.height! / 2
+    };
+    
+    canvas.zoomToPoint(center, newZoom);
+    setZoomLevel(newZoom);
+  }, [canvas, zoomLevel]);
+
+  const handleZoomOut = useCallback(() => {
+    if (!canvas) return;
+    
+    let newZoom = zoomLevel / 1.2;
+    if (newZoom < 0.1) newZoom = 0.1;
+    
+    // Get canvas center
+    const center = {
+      x: canvas.width! / 2,
+      y: canvas.height! / 2
+    };
+    
+    canvas.zoomToPoint(center, newZoom);
+    setZoomLevel(newZoom);
+  }, [canvas, zoomLevel]);
+
+  const handleResetZoom = useCallback(() => {
+    if (!canvas) return;
+    
+    // Reset zoom and position
+    canvas.setZoom(1);
+    canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
+    
+    // Center the image
+    const objects = canvas.getObjects();
+    if (objects.length > 0) {
+      const image = objects[0] as FabricImage;
+      image.set({
+        left: (canvas.width! - image.width! * image.scaleX!) / 2,
+        top: (canvas.height! - image.height! * image.scaleY!) / 2
+      });
+    }
+    
+    canvas.renderAll();
+    setZoomLevel(1);
+  }, [canvas]);
+
   return (
     <div className="h-full w-full flex bg-[#fafafa] text-[#0a0a0a] dark:bg-[#121212] dark:text-[#fafafa]">
       {/* Left Panel */}
@@ -540,6 +657,60 @@ export default function ImageEditorComponent() {
             </CardHeader>
             <CardContent>
               <UploadDropzone onUpload={handleImageUpload} />
+            </CardContent>
+          </Card>
+          
+          {/* Canvas Controls */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Canvas Controls</CardTitle>
+              <CardDescription>Zoom and pan your image</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Zoom: {Math.round(zoomLevel * 100)}%</span>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={handleZoomOut}
+                    disabled={zoomLevel <= 0.1}
+                  >
+                    <ZoomOut className="h-4 w-4" />
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={handleZoomIn}
+                    disabled={zoomLevel >= 20}
+                  >
+                    <ZoomIn className="h-4 w-4" />
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={handleResetZoom}
+                  >
+                    <Maximize className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Switch 
+                  id="pan-mode" 
+                  checked={isPanMode}
+                  onCheckedChange={setIsPanMode}
+                />
+                <Label htmlFor="pan-mode" className="flex items-center gap-1">
+                  <Move className="h-4 w-4" />
+                  Pan Mode
+                </Label>
+              </div>
+              
+              <p className="text-xs text-muted-foreground">
+                Tip: Use mouse wheel to zoom in/out. Enable pan mode to move the image.
+              </p>
             </CardContent>
           </Card>
           
@@ -731,7 +902,10 @@ export default function ImageEditorComponent() {
       
       {/* Main Canvas Area */}
       <div className="flex-1 p-6 flex items-center justify-center bg-[#f5f5f5] dark:bg-[#161616]">
-        <div className="w-full h-full rounded-xl border-2 border-dashed border-[#e1e1e1] dark:border-[#2a2a2a] overflow-hidden bg-white dark:bg-black shadow-sm">
+        <div 
+          ref={canvasContainerRef}
+          className="w-full h-full rounded-xl border-2 border-dashed border-[#e1e1e1] dark:border-[#2a2a2a] overflow-hidden bg-white dark:bg-black shadow-sm"
+        >
           <canvas ref={canvasRef} className="w-full h-full" />
         </div>
       </div>
