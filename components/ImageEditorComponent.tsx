@@ -150,17 +150,123 @@ export default function ImageEditorComponent() {
     canvas.renderAll();
   }, [canvas, isPanMode]);
 
+  // Handle image upload
+  const handleImageUpload = useCallback((file: File) => {
+    if (!canvas) {
+      console.error("Canvas is not initialized");
+      return;
+    }
+    
+    try {
+      console.log("Starting image upload process");
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        // Create image element BEFORE setting src
+        const imgElement = new Image();
+        imgElement.crossOrigin = 'anonymous';
+        
+        // Define onload handler BEFORE setting src
+        imgElement.onload = () => {
+          try {
+            console.log("Image loaded successfully:", imgElement.width, imgElement.height);
+            
+            // Clean up canvas first
+            canvas.clear();
+            
+            const fabricImage = new FabricImage(imgElement);
+            
+            // Scale to fit canvas
+            const scale = Math.min(
+              (canvas.width! - 40) / fabricImage.width!,
+              (canvas.height! - 40) / fabricImage.height!
+            );
+            
+            const left = (canvas.width! - fabricImage.width! * scale) / 2;
+            const top = (canvas.height! - fabricImage.height! * scale) / 2;
+            
+            fabricImage.scale(scale);
+            fabricImage.set({
+              left: left,
+              top: top,
+              selectable: isPanMode,
+              hasControls: false,
+              hasBorders: isPanMode,
+              lockRotation: true,
+              lockScalingX: true,
+              lockScalingY: true,
+              hoverCursor: isPanMode ? 'move' : 'default'
+            });
+            
+            // Save original to history with position and scale info
+            const historyItem: ImageHistory = {
+              dataUrl: e.target?.result as string,
+              effect: 'none',
+              timestamp: Date.now(),
+              position: { left, top },
+              scale: { scaleX: scale, scaleY: scale }
+            };
+            
+            setImageHistory([historyItem]);
+            
+            // Add to canvas and render
+            canvas.add(fabricImage);
+            canvas.renderAll();
+            
+            // Reset effect and zoom
+            setEffect('none');
+            setZoomLevel(1);
+            canvas.setZoom(1);
+            canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
+            canvas.renderAll();
+            
+            // Increment key to trigger animation
+            setImageKey(prevKey => prevKey + 1);
+            
+            console.log("Image added to canvas successfully");
+          } catch (err) {
+            console.error("Error creating fabric image:", err);
+          }
+        };
+        
+        // Set error handler
+        imgElement.onerror = (err) => {
+          console.error("Error loading image:", err);
+        };
+        
+        // Set src AFTER defining onload handler
+        imgElement.src = e.target?.result as string;
+      };
+      
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("Error uploading image:", err);
+    }
+  }, [canvas, isPanMode]);
+
   // Custom halftone filter
   const applyHalftoneFilter = useCallback((image: FabricImage) => {
     setIsProcessing(true);
     
     try {
+      console.log("Starting halftone filter application");
+      
       // Get current image info before applying filter
       const imgElement = image.getElement() as HTMLImageElement;
+      if (!imgElement) {
+        console.error("No image element found");
+        setIsProcessing(false);
+        return;
+      }
+      
+      console.log("Original image dimensions:", imgElement.naturalWidth, imgElement.naturalHeight);
       const originalWidth = image.getScaledWidth();
       const originalHeight = image.getScaledHeight();
       const currentLeft = image.left || 0;
       const currentTop = image.top || 0;
+      
+      console.log("Current image position:", currentLeft, currentTop);
+      console.log("Current image scale:", image.scaleX, image.scaleY);
 
       // Create a clone of the original image to work with
       const tempCanvas = document.createElement('canvas');
@@ -172,7 +278,7 @@ export default function ImageEditorComponent() {
         return;
       }
       
-      // Set canvas dimensions to match image
+      // Set canvas dimensions to match image's NATURAL dimensions
       tempCanvas.width = imgElement.naturalWidth;
       tempCanvas.height = imgElement.naturalHeight;
       
@@ -255,58 +361,77 @@ export default function ImageEditorComponent() {
       
       // Create new image from canvas
       const newImg = new Image();
+      
+      // IMPORTANT: Define onload handler BEFORE setting src
       newImg.onload = () => {
         if (!canvas) {
+          console.error("Canvas not available");
           setIsProcessing(false);
           return;
         }
         
-        // Create a new Fabric.js image
-        const fabricImage = new FabricImage(newImg);
-        
-        // Set the scale to match original dimensions
-        const scaleX = originalWidth / fabricImage.width!;
-        const scaleY = originalHeight / fabricImage.height!;
-        fabricImage.scale(Math.min(scaleX, scaleY));
-        
-        // Position at the same spot as the original
-        fabricImage.set({
-          left: currentLeft,
-          top: currentTop,
-          selectable: isPanMode,
-          hasControls: false,
-          hasBorders: isPanMode
-        });
-        
-        // Save to history before updating canvas
-        const historyItem: ImageHistory = {
-          dataUrl: newImg.src,
-          effect: 'halftone',
-          timestamp: Date.now(),
-          position: { left: currentLeft, top: currentTop },
-          scale: { scaleX: fabricImage.scaleX || 1, scaleY: fabricImage.scaleY || 1 }
-        };
-        
-        setImageHistory(prev => [...prev, historyItem]);
-        
-        // Update canvas
-        canvas.clear();
-        canvas.add(fabricImage);
-        canvas.renderAll();
-        
-        // Increment key to trigger animation
-        setImageKey(prevKey => prevKey + 1);
-        
-        // Debug canvas state
-        console.log("Canvas objects before:", canvas.getObjects().length);
-        console.log("Canvas objects after:", canvas.getObjects().length);
-        console.log("Image dimensions:", fabricImage.width, fabricImage.height);
-        console.log("Image position:", fabricImage.left, fabricImage.top);
-        
+        try {
+          console.log("New image loaded successfully");
+          
+          // Clean up canvas first
+          canvas.clear();
+          
+          // Create a new Fabric.js image
+          const fabricImage = new FabricImage(newImg);
+          
+          console.log("New fabric image created:", fabricImage.width, fabricImage.height);
+          
+          // Set the scale to match original dimensions
+          const scaleX = originalWidth / fabricImage.width!;
+          const scaleY = originalHeight / fabricImage.height!;
+          fabricImage.scale(Math.min(scaleX, scaleY));
+          
+          // Position at the same spot as the original
+          fabricImage.set({
+            left: currentLeft,
+            top: currentTop,
+            selectable: isPanMode,
+            hasControls: false,
+            hasBorders: isPanMode
+          });
+          
+          console.log("New image positioned at:", fabricImage.left, fabricImage.top);
+          console.log("New image scaled to:", fabricImage.scaleX, fabricImage.scaleY);
+          
+          // Save to history before updating canvas
+          const historyItem: ImageHistory = {
+            dataUrl: newImg.src,
+            effect: 'halftone',
+            timestamp: Date.now(),
+            position: { left: currentLeft, top: currentTop },
+            scale: { scaleX: fabricImage.scaleX || 1, scaleY: fabricImage.scaleY || 1 }
+          };
+          
+          setImageHistory(prev => [...prev, historyItem]);
+          
+          // Add to canvas
+          canvas.add(fabricImage);
+          canvas.renderAll();
+          
+          // Increment key to trigger animation
+          setImageKey(prevKey => prevKey + 1);
+          
+          console.log("Halftone effect applied successfully");
+          
+          setIsProcessing(false);
+        } catch (err) {
+          console.error("Error applying halftone effect (onload):", err);
+          setIsProcessing(false);
+        }
+      };
+      
+      // Set error handler
+      newImg.onerror = (err) => {
+        console.error("Error loading new image:", err);
         setIsProcessing(false);
       };
       
-      // Set the source after defining the onload handler
+      // Set the source AFTER defining the onload handler
       newImg.src = tempCanvas.toDataURL('image/png');
       
     } catch (error) {
@@ -783,69 +908,6 @@ export default function ImageEditorComponent() {
     }
   }, [canvas, applyHalftoneFilter, applyDuotoneFilter, applyBlackWhiteFilter, applySepiaFilter, applyNoiseFilter, imageHistory, isPanMode]);
   
-  // Handle image upload
-  const handleImageUpload = useCallback((file: File) => {
-    if (!canvas) return;
-    
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const imgElement = new Image();
-      imgElement.crossOrigin = 'anonymous';
-      
-      imgElement.onload = () => {
-        const fabricImage = new FabricImage(imgElement);
-        
-        // Scale to fit canvas
-        const scale = Math.min(
-          (canvas.width! - 40) / fabricImage.width!,
-          (canvas.height! - 40) / fabricImage.height!
-        );
-        
-        const left = (canvas.width! - fabricImage.width! * scale) / 2;
-        const top = (canvas.height! - fabricImage.height! * scale) / 2;
-        
-        fabricImage.scale(scale);
-        fabricImage.set({
-          left: left,
-          top: top,
-          selectable: isPanMode,
-          hasControls: false,
-          hasBorders: isPanMode,
-          lockRotation: true,
-          lockScalingX: true,
-          lockScalingY: true,
-          hoverCursor: isPanMode ? 'move' : 'default'
-        });
-        
-        // Save original to history with position and scale info
-        const historyItem: ImageHistory = {
-          dataUrl: e.target?.result as string,
-          effect: 'none',
-          timestamp: Date.now(),
-          position: { left, top },
-          scale: { scaleX: scale, scaleY: scale }
-        };
-        
-        setImageHistory([historyItem]);
-        
-        canvas.clear();
-        canvas.add(fabricImage);
-        canvas.renderAll();
-        
-        // Reset effect and zoom
-        setEffect('none');
-        setZoomLevel(1);
-        canvas.setZoom(1);
-        canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
-        canvas.renderAll();
-      };
-      
-      imgElement.src = e.target?.result as string;
-    };
-    
-    reader.readAsDataURL(file);
-  }, [canvas, isPanMode]);
-
   // Undo to previous state
   const handleUndo = useCallback(() => {
     if (imageHistory.length <= 1) {
@@ -853,60 +915,83 @@ export default function ImageEditorComponent() {
       return;
     }
     
-    // Get previous state
-    const newHistory = [...imageHistory];
-    newHistory.pop(); // Remove current state
-    const prevState = newHistory[newHistory.length - 1];
-    
-    if (!prevState || !prevState.dataUrl) {
-      console.error("Invalid previous state");
-      return;
-    }
-    
-    console.log("Undoing to previous state:", prevState.effect);
-    
-    // Load previous image
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    
-    img.onload = () => {
-      if (!canvas) return;
+    try {
+      console.log("Starting undo operation");
+      // Get previous state
+      const newHistory = [...imageHistory];
+      newHistory.pop(); // Remove current state
+      const prevState = newHistory[newHistory.length - 1];
       
-      const fabricImage = new FabricImage(img);
+      if (!prevState || !prevState.dataUrl) {
+        console.error("Invalid previous state");
+        return;
+      }
       
-      // Apply the position and scale from history if available
-      const position = prevState.position || { 
-        left: (canvas.width! - fabricImage.width!) / 2,
-        top: (canvas.height! - fabricImage.height!) / 2 
+      console.log("Undoing to previous state:", prevState.effect);
+      
+      // Load previous image
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      
+      // IMPORTANT: Define onload handler BEFORE setting src
+      img.onload = () => {
+        if (!canvas) {
+          console.error("Canvas not available");
+          return;
+        }
+        
+        try {
+          // Clean up canvas first
+          canvas.clear();
+          
+          const fabricImage = new FabricImage(img);
+          
+          // Apply the position and scale from history if available
+          const position = prevState.position || { 
+            left: (canvas.width! - fabricImage.width!) / 2,
+            top: (canvas.height! - fabricImage.height!) / 2 
+          };
+          
+          const scale = prevState.scale || { scaleX: 1, scaleY: 1 };
+          
+          fabricImage.set({
+            left: position.left,
+            top: position.top,
+            scaleX: scale.scaleX,
+            scaleY: scale.scaleY,
+            selectable: isPanMode,
+            hasControls: false,
+            hasBorders: isPanMode
+          });
+          
+          // Add to canvas and render
+          canvas.add(fabricImage);
+          canvas.renderAll();
+          
+          // Update state
+          setImageHistory(newHistory);
+          setEffect(prevState.effect);
+          
+          // Increment key to trigger animation
+          setImageKey(prevKey => prevKey + 1);
+          
+          console.log("Undo completed successfully");
+        } catch (err) {
+          console.error("Error during undo operation:", err);
+        }
       };
       
-      const scale = prevState.scale || { scaleX: 1, scaleY: 1 };
+      // Set error handler
+      img.onerror = (err) => {
+        console.error("Error loading image during undo:", err);
+      };
       
-      fabricImage.set({
-        left: position.left,
-        top: position.top,
-        scaleX: scale.scaleX,
-        scaleY: scale.scaleY,
-        selectable: isPanMode,
-        hasControls: false,
-        hasBorders: isPanMode
-      });
+      // Set the source AFTER defining the onload handler
+      img.src = prevState.dataUrl;
       
-      // Clear and update canvas
-      canvas.clear();
-      canvas.add(fabricImage);
-      canvas.renderAll();
-      
-      // Update state
-      setImageHistory(newHistory);
-      setEffect(prevState.effect);
-      
-      // Increment key to trigger animation
-      setImageKey(prevKey => prevKey + 1);
-    };
-    
-    // Set the source after defining the onload handler
-    img.src = prevState.dataUrl;
+    } catch (err) {
+      console.error("Error in handleUndo:", err);
+    }
   }, [canvas, imageHistory, isPanMode]);
 
   // Export image
