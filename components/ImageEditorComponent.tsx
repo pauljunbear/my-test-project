@@ -490,17 +490,165 @@ export default function ImageEditorComponent() {
     link.click();
   };
   
-  // Handle color selection from the color set
+  // Handle color selection from the color library
   const handleColorSelect = (color: string) => {
     if (currentEffect === 'duotone') {
       setDuotoneSettings(prev => ({ ...prev, color1: color }));
     }
+    
+    // If no effect is selected, automatically set to duotone
+    if (currentEffect === 'none' && image) {
+      setCurrentEffect('duotone');
+      setDuotoneSettings(prev => ({ ...prev, color1: color }));
+    }
   };
   
-  // Handle duotone pair selection
+  // Preview a color from the color library
+  const handlePreviewColor = (color: string) => {
+    if (!image) return;
+    
+    // Store current settings to restore later
+    const tempEffect: AppliedEffect = {
+      type: 'duotone',
+      settings: {
+        color1: color,
+        color2: duotoneSettings.color2,
+        intensity: duotoneSettings.intensity
+      }
+    };
+    
+    // Apply preview
+    setPreviewMode(true);
+    setPreviewEffect(tempEffect);
+    
+    // Apply the preview effect to the canvas
+    const canvas = canvasRef.current;
+    const hiddenCanvas = hiddenCanvasRef.current;
+    
+    if (!canvas || !hiddenCanvas || !image) return;
+    
+    const ctx = canvas.getContext('2d');
+    const hiddenCtx = hiddenCanvas.getContext('2d');
+    
+    if (!ctx || !hiddenCtx) return;
+    
+    // Set canvas dimensions to match the image
+    canvas.width = image.width;
+    canvas.height = image.height;
+    hiddenCanvas.width = image.width;
+    hiddenCanvas.height = image.height;
+    
+    // Draw the original image on the hidden canvas
+    hiddenCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    hiddenCtx.drawImage(image, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    
+    // Get the image data
+    const imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    
+    // Apply all existing effects
+    let processedImageData = imageData;
+    for (const effect of appliedEffects) {
+      processedImageData = applyEffectToImageData(
+        effect, 
+        processedImageData, 
+        hiddenCtx, 
+        hiddenCanvas.width, 
+        hiddenCanvas.height
+      );
+    }
+    
+    // Apply the preview effect
+    processedImageData = applyEffectToImageData(
+      tempEffect, 
+      processedImageData, 
+      hiddenCtx, 
+      hiddenCanvas.width, 
+      hiddenCanvas.height
+    );
+    
+    // Put the processed image data back on the canvas
+    ctx.putImageData(processedImageData, 0, 0);
+  };
+
+  // Handle duotone pair selection from the color library
   const handleDuotonePairSelect = (color1: string, color2: string) => {
-    setDuotoneSettings(prev => ({ ...prev, color1, color2 }));
-    setCurrentEffect('duotone');
+    setDuotoneSettings(prev => ({ 
+      ...prev, 
+      color1, 
+      color2 
+    }));
+    
+    // If no effect is selected, automatically set to duotone
+    if (currentEffect === 'none' && image) {
+      setCurrentEffect('duotone');
+    }
+  };
+  
+  // Preview a duotone pair from the color library
+  const handlePreviewDuotonePair = (color1: string, color2: string) => {
+    if (!image) return;
+    
+    // Store current settings to restore later
+    const tempEffect: AppliedEffect = {
+      type: 'duotone',
+      settings: {
+        color1: color1,
+        color2: color2,
+        intensity: duotoneSettings.intensity
+      }
+    };
+    
+    // Apply preview
+    setPreviewMode(true);
+    setPreviewEffect(tempEffect);
+    
+    // Apply the preview effect to the canvas
+    const canvas = canvasRef.current;
+    const hiddenCanvas = hiddenCanvasRef.current;
+    
+    if (!canvas || !hiddenCanvas || !image) return;
+    
+    const ctx = canvas.getContext('2d');
+    const hiddenCtx = hiddenCanvas.getContext('2d');
+    
+    if (!ctx || !hiddenCtx) return;
+    
+    // Set canvas dimensions to match the image
+    canvas.width = image.width;
+    canvas.height = image.height;
+    hiddenCanvas.width = image.width;
+    hiddenCanvas.height = image.height;
+    
+    // Draw the original image on the hidden canvas
+    hiddenCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    hiddenCtx.drawImage(image, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    
+    // Get the image data
+    const imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    
+    // Apply all existing effects
+    let processedImageData = imageData;
+    for (const effect of appliedEffects) {
+      processedImageData = applyEffectToImageData(
+        effect, 
+        processedImageData, 
+        hiddenCtx, 
+        hiddenCanvas.width, 
+        hiddenCanvas.height
+      );
+    }
+    
+    // Apply the preview effect
+    processedImageData = applyEffectToImageData(
+      tempEffect, 
+      processedImageData, 
+      hiddenCtx, 
+      hiddenCanvas.width, 
+      hiddenCanvas.height
+    );
+    
+    // Put the processed image data back on the canvas
+    ctx.putImageData(processedImageData, 0, 0);
   };
   
   return (
@@ -788,8 +936,39 @@ export default function ImageEditorComponent() {
                 <ColorSetSelector 
                   onSelectColor={handleColorSelect}
                   onSelectPair={handleDuotonePairSelect}
+                  onPreviewColor={handlePreviewColor}
+                  onPreviewPair={handlePreviewDuotonePair}
+                  onCancelPreview={cancelPreview}
                   selectedColor={currentEffect === 'duotone' ? duotoneSettings.color1 : undefined}
+                  previewMode={!!image}
                 />
+                
+                {currentEffect === 'duotone' && (
+                  <div className="mt-4 space-y-2 border-t pt-4">
+                    <h3 className="text-sm font-medium">Duotone Settings</h3>
+                    <div>
+                      <Label>Intensity: {duotoneSettings.intensity.toFixed(1)}</Label>
+                      <Slider
+                        value={[duotoneSettings.intensity * 100]}
+                        min={0}
+                        max={100}
+                        step={10}
+                        onValueChange={(value) => setDuotoneSettings(prev => ({ 
+                          ...prev, 
+                          intensity: value[0] / 100 
+                        }))}
+                      />
+                    </div>
+                    <Button 
+                      className="w-full mt-2"
+                      onClick={applyEffect}
+                      disabled={!image}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Color Effect
+                    </Button>
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </div>
