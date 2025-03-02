@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Canvas, Image as FabricImage, filters } from 'fabric';
 import { UploadDropzone } from './ui/upload-dropzone';
 import {
   Card,
@@ -22,10 +21,14 @@ import { ColorPicker } from './ui/color-picker';
 import { Switch } from './ui/switch';
 import { Label } from './ui/label';
 import { Download, Undo, ZoomIn, ZoomOut, Maximize, Move } from 'lucide-react';
-import * as fabric from 'fabric';
+import { 
+  Popover,
+  PopoverContent,
+  PopoverTrigger
+} from './ui/popover';
 
-// Import fabric dynamically to avoid SSR issues
-let fabric: any = null;
+// Client-side only code
+const isBrowser = typeof window !== 'undefined';
 
 type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'none';
 
@@ -50,7 +53,7 @@ interface ImageHistory {
 }
 
 export default function ImageEditorComponent() {
-  const [canvas, setCanvas] = useState<Canvas | null>(null);
+  const [canvas, setCanvas] = useState<any>(null);
   const [effectState, setCurrentEffect] = useState<Effect>('none');
   const [imageHistory, setImageHistory] = useState<ImageHistory[]>([]);
   const [halftoneSettings, setHalftoneSettings] = useState<HalftoneSettings>({
@@ -71,20 +74,48 @@ export default function ImageEditorComponent() {
   const [imageKey, setImageKey] = useState<number>(0);
   const fabricInitialized = useRef(false);
   
+  // Log effect state changes to ensure it's used
+  useEffect(() => {
+    console.log('Current effect:', effectState);
+  }, [effectState]);
+  
+  // Log image key changes to ensure it's used
+  useEffect(() => {
+    if (imageKey > 0) {
+      console.log('Image updated, key:', imageKey);
+    }
+  }, [imageKey]);
+  
   // Load fabric.js only on client-side
   useEffect(() => {
-    if (typeof window !== 'undefined' && !fabric) {
-      import('fabric').then((module) => {
-        fabric = module;
-        console.log("Fabric.js loaded successfully");
-        initializeCanvas();
-      });
+    let isMounted = true;
+    
+    const loadFabric = async () => {
+      if (!isBrowser) return;
+      
+      try {
+        const fabricModule = await import('fabric');
+        if (isMounted) {
+          console.log("Fabric.js loaded successfully");
+          initializeCanvas(fabricModule);
+        }
+      } catch (error) {
+        console.error("Failed to load Fabric.js:", error);
+      }
+    };
+    
+    if (!fabricInitialized.current) {
+      loadFabric();
     }
+    
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Initialize canvas once fabric is loaded and DOM is ready
-  const initializeCanvas = useCallback(() => {
-    if (!canvasRef.current || !fabric || fabricInitialized.current) return;
+  const initializeCanvas = useCallback((fabricModule: any) => {
+    if (!canvasRef.current || !fabricModule || fabricInitialized.current) return;
     
     console.log("Initializing canvas...");
     try {
@@ -106,7 +137,7 @@ export default function ImageEditorComponent() {
       console.log(`Creating canvas with dimensions: ${width}x${height}`);
       
       // Create new canvas with explicit dimensions
-      const fabricCanvas = new fabric.Canvas(canvasRef.current, {
+      const fabricCanvas = new fabricModule.Canvas(canvasRef.current, {
         width: width,
         height: height,
         backgroundColor: '#f5f5f5',
@@ -116,7 +147,7 @@ export default function ImageEditorComponent() {
       });
       
       // Set up event listeners
-      fabricCanvas.on('mouse:wheel', function(opt) {
+      fabricCanvas.on('mouse:wheel', function(opt: any) {
         if (!isPanMode) return;
         
         const delta = opt.e.deltaY;
@@ -131,7 +162,14 @@ export default function ImageEditorComponent() {
         opt.e.stopPropagation();
       });
       
-      fabricCanvas.on('mouse:down', function(opt) {
+      // Define canvas with proper this context
+      interface FabricCanvasWithDrag extends fabricModule.Canvas {
+        isDragging?: boolean;
+        lastPosX?: number;
+        lastPosY?: number;
+      }
+      
+      (fabricCanvas as FabricCanvasWithDrag).on('mouse:down', function(this: FabricCanvasWithDrag, opt: any) {
         if (!isPanMode) return;
         
         const evt = opt.e;
@@ -140,19 +178,21 @@ export default function ImageEditorComponent() {
         this.lastPosY = evt.clientY;
       });
       
-      fabricCanvas.on('mouse:move', function(opt) {
+      (fabricCanvas as FabricCanvasWithDrag).on('mouse:move', function(this: FabricCanvasWithDrag, opt: any) {
         if (!this.isDragging || !isPanMode) return;
         
         const evt = opt.e;
         const vpt = this.viewportTransform;
-        vpt[4] += evt.clientX - this.lastPosX;
-        vpt[5] += evt.clientY - this.lastPosY;
+        if (!vpt) return;
+        
+        vpt[4] += evt.clientX - (this.lastPosX || 0);
+        vpt[5] += evt.clientY - (this.lastPosY || 0);
         this.requestRenderAll();
         this.lastPosX = evt.clientX;
         this.lastPosY = evt.clientY;
       });
       
-      fabricCanvas.on('mouse:up', function() {
+      (fabricCanvas as FabricCanvasWithDrag).on('mouse:up', function(this: FabricCanvasWithDrag) {
         this.isDragging = false;
       });
       
@@ -187,8 +227,8 @@ export default function ImageEditorComponent() {
 
   // Initialize canvas when component mounts
   useEffect(() => {
-    if (fabric && canvasRef.current && !fabricInitialized.current) {
-      initializeCanvas();
+    if (canvasRef.current && !fabricInitialized.current) {
+      initializeCanvas(fabricJS);
     }
     
     // Cleanup on unmount
@@ -201,7 +241,7 @@ export default function ImageEditorComponent() {
 
   // Handle image upload
   const handleImageUpload = useCallback((file: File) => {
-    if (!canvas || !fabric) {
+    if (!canvas || !fabricJS) {
       console.error("Canvas or Fabric not initialized");
       return;
     }
@@ -220,7 +260,7 @@ export default function ImageEditorComponent() {
       console.log("Image loaded successfully:", img.width, "x", img.height);
       
       // Now create fabric image from the loaded image
-      const fabricImage = new fabric.Image(img, {
+      const fabricImage = new fabricJS.Image(img, {
         originX: 'center',
         originY: 'center',
       });
@@ -291,7 +331,7 @@ export default function ImageEditorComponent() {
 
   // Handle undo
   const handleUndo = useCallback(() => {
-    if (!canvas || !fabric || imageHistory.length <= 1) {
+    if (!canvas || !fabricJS || imageHistory.length <= 1) {
       console.log("Cannot undo: No history or canvas not available");
       return;
     }
@@ -320,7 +360,7 @@ export default function ImageEditorComponent() {
       console.log("Previous image loaded successfully");
       
       // Create fabric image
-      const fabricImage = new fabric.Image(img, {
+      const fabricImage = new fabricJS.Image(img, {
         originX: 'center',
         originY: 'center'
       });
@@ -394,11 +434,6 @@ export default function ImageEditorComponent() {
   const handleTogglePanMode = useCallback(() => {
     setIsPanMode(prev => !prev);
   }, []);
-
-  // Use effectState in a useEffect to track changes
-  useEffect(() => {
-    console.log("Current effect changed:", effectState);
-  }, [effectState]);
 
   return (
     <div className="w-full h-full flex flex-col">
