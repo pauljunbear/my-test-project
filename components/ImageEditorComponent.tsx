@@ -73,15 +73,26 @@ export default function ImageEditorComponent() {
   useEffect(() => {
     if (!canvasRef.current || canvas) return;
 
-    const fabricCanvas = new Canvas(canvasRef.current);
-    fabricCanvas.setDimensions({
-      width: window.innerWidth - 420, // Account for sidebar
-      height: window.innerHeight - 40
+    console.log('Initializing canvas...');
+    
+    // Create a new Fabric.js canvas instance
+    const fabricCanvas = new fabric.Canvas(canvasRef.current, {
+      backgroundColor: '#f8f9fa',
+      preserveObjectStacking: true,
+      selection: false
     });
     
-    fabricCanvas.backgroundColor = '#f8f9fa';
-    fabricCanvas.renderAll();
-
+    // Set dimensions
+    const initialWidth = window.innerWidth - 420;
+    const initialHeight = window.innerHeight - 40;
+    
+    fabricCanvas.setDimensions({
+      width: initialWidth,
+      height: initialHeight
+    });
+    
+    console.log(`Canvas dimensions set to ${initialWidth}x${initialHeight}`);
+    
     // Enable mouse wheel zoom
     fabricCanvas.on('mouse:wheel', function(opt) {
       const delta = opt.e.deltaY;
@@ -103,19 +114,29 @@ export default function ImageEditorComponent() {
       opt.e.stopPropagation();
     });
 
+    // Explicitly render the canvas after initialization
+    fabricCanvas.renderAll();
+    
+    console.log('Canvas initialized successfully');
     setCanvas(fabricCanvas);
 
     const handleResize = () => {
+      const newWidth = window.innerWidth - 420;
+      const newHeight = window.innerHeight - 40;
+      
       fabricCanvas.setDimensions({
-        width: window.innerWidth - 420,
-        height: window.innerHeight - 40
+        width: newWidth,
+        height: newHeight
       });
       fabricCanvas.renderAll();
+      console.log(`Canvas resized to ${newWidth}x${newHeight}`);
     };
 
     window.addEventListener('resize', handleResize);
+    
     return () => {
       window.removeEventListener('resize', handleResize);
+      console.log('Disposing canvas...');
       fabricCanvas.dispose();
     };
   }, []);
@@ -158,7 +179,7 @@ export default function ImageEditorComponent() {
     }
     
     try {
-      console.log("Starting image upload process");
+      console.log("Starting image upload process for file:", file.name);
       const reader = new FileReader();
       
       reader.onload = (e) => {
@@ -168,68 +189,68 @@ export default function ImageEditorComponent() {
         }
 
         const dataUrl = e.target.result as string;
-        console.log("Image data loaded successfully, creating image element");
+        console.log("Image data loaded successfully, length:", dataUrl.length);
         
-        // Create image element
+        // Create a new image element
         const imgElement = new Image();
+        
+        // Set crossOrigin to anonymous to prevent tainted canvas issues
         imgElement.crossOrigin = 'anonymous';
         
-        // Define onload handler BEFORE setting src
+        // Define what happens when the image loads
         imgElement.onload = () => {
           try {
-            console.log("Image loaded successfully:", imgElement.naturalWidth, imgElement.naturalHeight);
+            console.log("Image loaded successfully:", imgElement.naturalWidth, "x", imgElement.naturalHeight);
+            
+            if (!canvas) {
+              console.error("Canvas no longer available");
+              return;
+            }
             
             if (imgElement.naturalWidth === 0 || imgElement.naturalHeight === 0) {
               console.error("Image has invalid dimensions");
               return;
             }
             
-            // Clean up canvas first - IMPORTANT
-            if (canvas) {
-              console.log("Clearing canvas");
-              canvas.clear();
-              canvas.renderAll();
-            }
+            // Remove all existing objects from canvas
+            canvas.clear();
             
-            // Create a new Fabric.js image
-            const fabricImage = new FabricImage(imgElement);
+            // Create a new fabric image with the loaded image element
+            const fabricImage = new fabric.Image(imgElement);
             
-            if (!fabricImage.width || !fabricImage.height) {
-              console.error("Fabric image has invalid dimensions");
+            if (!fabricImage) {
+              console.error("Failed to create fabric image");
               return;
             }
             
-            console.log("Fabric image created:", fabricImage.width, fabricImage.height);
+            console.log("Fabric image created successfully");
             
-            // Scale to fit canvas - ensure canvas dimensions are valid
+            // Get canvas dimensions
             const canvasWidth = canvas.getWidth();
             const canvasHeight = canvas.getHeight();
             
-            console.log("Canvas dimensions:", canvasWidth, canvasHeight);
+            console.log(`Canvas dimensions: ${canvasWidth}x${canvasHeight}`);
+            console.log(`Image dimensions: ${fabricImage.width}x${fabricImage.height}`);
             
-            if (!canvasWidth || !canvasHeight) {
-              console.error("Invalid canvas dimensions");
-              return;
-            }
+            // Calculate scale to fit the image within the canvas (with some padding)
+            let scaleX = (canvasWidth - 80) / fabricImage.width!;
+            let scaleY = (canvasHeight - 80) / fabricImage.height!;
+            const scale = Math.min(scaleX, scaleY);
             
-            const scale = Math.min(
-              (canvasWidth - 40) / fabricImage.width,
-              (canvasHeight - 40) / fabricImage.height
-            );
+            console.log(`Calculated scale: ${scale}`);
             
-            console.log("Calculated scale:", scale);
+            // Calculate position to center the image
+            const left = (canvasWidth - fabricImage.width! * scale) / 2;
+            const top = (canvasHeight - fabricImage.height! * scale) / 2;
             
-            // Calculate position
-            const left = (canvasWidth - fabricImage.width * scale) / 2;
-            const top = (canvasHeight - fabricImage.height * scale) / 2;
+            console.log(`Image will be positioned at (${left}, ${top})`);
             
-            console.log("Positioning image at:", left, top);
-            
-            // Set scale and position
-            fabricImage.scale(scale);
+            // Configure the image
             fabricImage.set({
               left: left,
               top: top,
+              scaleX: scale,
+              scaleY: scale,
               selectable: isPanMode,
               hasControls: false,
               hasBorders: isPanMode,
@@ -239,7 +260,7 @@ export default function ImageEditorComponent() {
               hoverCursor: isPanMode ? 'move' : 'default'
             });
             
-            // Create history item BEFORE adding to canvas
+            // Create history item
             const historyItem: ImageHistory = {
               dataUrl: dataUrl,
               effect: 'none',
@@ -248,24 +269,27 @@ export default function ImageEditorComponent() {
               scale: { scaleX: scale, scaleY: scale }
             };
             
+            // Add the image to the canvas FIRST, then update state
+            canvas.add(fabricImage);
+            console.log("Image added to canvas");
+            
+            // Force an immediate render of the canvas
+            canvas.renderAll();
+            console.log("Canvas rendered");
+            
+            // Update history state AFTER successful canvas update
             setImageHistory([historyItem]);
             
-            // Add to canvas and explicitly render
-            console.log("Adding image to canvas");
-            canvas.add(fabricImage);
-            console.log("Canvas objects count:", canvas.getObjects().length);
-            
-            // Reset view settings
+            // Update other state variables
             setCurrentEffect('none');
             setZoomLevel(1);
             canvas.setZoom(1);
             canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
             
-            // Force another render and refresh key
-            canvas.requestRenderAll();
+            // Trigger a component re-render by updating the key
             setImageKey(prevKey => prevKey + 1);
             
-            console.log("Image added to canvas successfully");
+            console.log("Image upload process completed successfully");
           } catch (err) {
             console.error("Error creating fabric image:", err);
           }
@@ -276,8 +300,8 @@ export default function ImageEditorComponent() {
           console.error("Error loading image:", err);
         };
         
-        // Set src AFTER defining onload handler - important to avoid race conditions
-        console.log("Setting image source");
+        // Set src AFTER defining handlers to avoid race conditions
+        console.log("Setting image source...");
         imgElement.src = dataUrl;
       };
       
@@ -285,7 +309,9 @@ export default function ImageEditorComponent() {
         console.error("Error reading file:", err);
       };
       
+      // Start reading the file
       reader.readAsDataURL(file);
+      
     } catch (err) {
       console.error("Error in upload process:", err);
     }
