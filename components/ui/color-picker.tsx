@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
-import { Popover, PopoverContent, PopoverTrigger } from './popover';
-import { HexColorPicker } from 'react-colorful';
-import { Button } from './button';
+import React, { useState, useEffect } from 'react';
+import { Input } from './input';
+import { Label } from './label';
 
 interface ColorPickerProps {
   color: string;
@@ -9,45 +8,55 @@ interface ColorPickerProps {
 }
 
 export function ColorPicker({ color, onChange }: ColorPickerProps) {
-  const [open, setOpen] = useState(false);
+  const [inputValue, setInputValue] = useState(color);
+
+  // Update input value when color prop changes
+  useEffect(() => {
+    setInputValue(color);
+  }, [color]);
+
+  // Handle manual input of hex color
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+    
+    // Only update parent if it's a valid hex color
+    if (/^#[0-9A-F]{6}$/i.test(value)) {
+      onChange(value);
+    }
+  };
+
+  // Handle color picker change
+  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+    onChange(value);
+  };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button 
-          variant="outline" 
-          className="w-full h-10 p-1 flex items-center justify-between"
-        >
-          <div className="flex items-center gap-2">
-            <div 
-              className="h-6 w-6 rounded-sm border border-muted-foreground/20" 
-              style={{ backgroundColor: color }}
-            />
-            <span className="text-sm">{color}</span>
-          </div>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-3">
-        <HexColorPicker color={color} onChange={onChange} />
-        <div className="flex justify-between mt-3">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setOpen(false)}
-          >
-            Close
-          </Button>
-          <Button 
-            size="sm" 
-            onClick={() => {
-              onChange(color);
-              setOpen(false);
-            }}
-          >
-            Apply
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
+    <div className="p-3 space-y-3">
+      <div className="flex items-center gap-2">
+        <div 
+          className="w-10 h-10 rounded-md border border-gray-300" 
+          style={{ backgroundColor: color }}
+        />
+        <Input
+          type="text"
+          value={inputValue}
+          onChange={handleInputChange}
+          className="w-24"
+          maxLength={7}
+        />
+      </div>
+      <div>
+        <Label className="sr-only">Pick a color</Label>
+        <input
+          type="color"
+          value={color}
+          onChange={handleColorChange}
+          className="w-full h-8 cursor-pointer"
+        />
+      </div>
+    </div>
   );
 } 

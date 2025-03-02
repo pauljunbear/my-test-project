@@ -19,12 +19,13 @@ import {
 } from './ui/slider';
 import { ColorPicker } from './ui/color-picker';
 import { Label } from './ui/label';
-import { Download, Undo } from 'lucide-react';
+import { Download, Undo, Plus, Trash } from 'lucide-react';
 import { 
   Popover,
   PopoverContent,
   PopoverTrigger
 } from './ui/popover';
+import { ColorSetSelector } from './ui/color-set-selector';
 
 // Define types
 type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'none';
@@ -44,15 +45,20 @@ interface DuotoneSettings {
 
 interface ImageHistory {
   dataUrl: string;
-  effect: Effect;
+  effects: AppliedEffect[];
   timestamp: number;
+}
+
+interface AppliedEffect {
+  type: Effect;
+  settings?: HalftoneSettings | DuotoneSettings | { noiseLevel: number };
 }
 
 export default function ImageEditorComponent() {
   // State
   const [image, setImage] = useState<HTMLImageElement | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [currentEffect, setCurrentEffect] = useState<Effect>('none');
+  const [appliedEffects, setAppliedEffects] = useState<AppliedEffect[]>([]);
   const [imageHistory, setImageHistory] = useState<ImageHistory[]>([]);
   
   const [halftoneSettings, setHalftoneSettings] = useState<HalftoneSettings>({
@@ -73,6 +79,7 @@ export default function ImageEditorComponent() {
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
+  const originalImageRef = useRef<HTMLImageElement | null>(null);
   
   // Handle image upload
   const handleImageUpload = (file: File) => {
@@ -82,27 +89,53 @@ export default function ImageEditorComponent() {
         const img = new Image();
         img.onload = () => {
           setImage(img);
+          originalImageRef.current = img;
+          
+          // Reset effects
+          setAppliedEffects([]);
           
           // Save to history
           const newHistory: ImageHistory = {
             dataUrl: e.target?.result as string,
-            effect: 'none',
+            effects: [],
             timestamp: Date.now()
           };
           
           setImageHistory([newHistory]);
-          setCurrentEffect('none');
         };
         img.src = e.target?.result as string;
-        setPreviewUrl(e.target?.result as string);
       };
       reader.readAsDataURL(file);
     }
   };
   
-  // Apply effects whenever parameters change
+  // Apply the current effect to the image
+  const applyEffect = () => {
+    if (!image || currentEffect === 'none') return;
+    
+    const newEffect: AppliedEffect = { type: currentEffect };
+    
+    // Add settings based on effect type
+    if (currentEffect === 'halftone') {
+      newEffect.settings = { ...halftoneSettings };
+    } else if (currentEffect === 'duotone') {
+      newEffect.settings = { ...duotoneSettings };
+    } else if (currentEffect === 'noise') {
+      newEffect.settings = { noiseLevel };
+    }
+    
+    // Add to applied effects
+    setAppliedEffects(prev => [...prev, newEffect]);
+  };
+  
+  // Remove an effect from the applied effects
+  const removeEffect = (index: number) => {
+    setAppliedEffects(prev => prev.filter((_, i) => i !== index));
+  };
+  
+  // Apply all effects to the image
   useEffect(() => {
-    if (!image || !canvasRef.current || !hiddenCanvasRef.current) return;
+    if (!originalImageRef.current || !canvasRef.current || !hiddenCanvasRef.current) return;
     
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -111,8 +144,8 @@ export default function ImageEditorComponent() {
     // Set canvas size based on image dimensions (with a maximum size for display)
     const maxWidth = 800;
     const maxHeight = 600;
-    let width = image.width;
-    let height = image.height;
+    let width = originalImageRef.current.width;
+    let height = originalImageRef.current.height;
     
     if (width > maxWidth) {
       height = (maxWidth / width) * height;
@@ -134,14 +167,54 @@ export default function ImageEditorComponent() {
     const hiddenCtx = hiddenCanvas.getContext('2d');
     if (!hiddenCtx) return;
     
-    // Draw the original image
-    hiddenCtx.drawImage(image, 0, 0, width, height);
+    // Start with the original image
+    hiddenCtx.clearRect(0, 0, width, height);
+    hiddenCtx.drawImage(originalImageRef.current, 0, 0, width, height);
     
-    // Get image data for processing
-    const imageData = hiddenCtx.getImageData(0, 0, width, height);
+    // Apply each effect in sequence
+    let currentImageData = hiddenCtx.getImageData(0, 0, width, height);
+    
+    for (const effect of appliedEffects) {
+      // Apply the effect to the current image data
+      currentImageData = applyEffectToImageData(
+        effect, 
+        currentImageData, 
+        hiddenCtx, 
+        width, 
+        height
+      );
+    }
+    
+    // Draw the final result to the visible canvas
+    ctx.clearRect(0, 0, width, height);
+    ctx.putImageData(currentImageData, 0, 0);
+    
+    // Save the current state to history if effects changed
+    if (imageHistory.length > 0 && 
+        JSON.stringify(imageHistory[imageHistory.length - 1].effects) !== JSON.stringify(appliedEffects)) {
+      const newHistory: ImageHistory = {
+        dataUrl: canvas.toDataURL('image/png'),
+        effects: [...appliedEffects],
+        timestamp: Date.now()
+      };
+      
+      setImageHistory(prev => [...prev, newHistory]);
+    }
+  }, [appliedEffects, image]);
+  
+  // Function to apply a single effect to image data
+  const applyEffectToImageData = (
+    effect: AppliedEffect, 
+    imageData: ImageData, 
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number
+  ): ImageData => {
     const data = imageData.data;
     
-    if (currentEffect === 'duotone') {
+    if (effect.type === 'duotone') {
+      const settings = effect.settings as DuotoneSettings;
+      
       // Parse hex colors to RGB
       const parseColor = (hex: string) => {
         const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -152,8 +225,8 @@ export default function ImageEditorComponent() {
         } : { r: 0, g: 0, b: 0 };
       };
       
-      const color1 = parseColor(duotoneSettings.color1);
-      const color2 = parseColor(duotoneSettings.color2);
+      const color1 = parseColor(settings.color1);
+      const color2 = parseColor(settings.color2);
       
       // Apply duotone effect
       for (let i = 0; i < data.length; i += 4) {
@@ -166,34 +239,46 @@ export default function ImageEditorComponent() {
         data[i + 2] = Math.round(color1.b * (1 - gray) + color2.b * gray); // Blue
         
         // Apply intensity
-        if (duotoneSettings.intensity < 1) {
-          const originalWeight = 1 - duotoneSettings.intensity;
-          data[i] = Math.round(data[i] * duotoneSettings.intensity + imageData.data[i] * originalWeight);
-          data[i + 1] = Math.round(data[i + 1] * duotoneSettings.intensity + imageData.data[i + 1] * originalWeight);
-          data[i + 2] = Math.round(data[i + 2] * duotoneSettings.intensity + imageData.data[i + 2] * originalWeight);
+        if (settings.intensity < 1) {
+          const originalWeight = 1 - settings.intensity;
+          data[i] = Math.round(data[i] * settings.intensity + imageData.data[i] * originalWeight);
+          data[i + 1] = Math.round(data[i + 1] * settings.intensity + imageData.data[i + 1] * originalWeight);
+          data[i + 2] = Math.round(data[i + 2] * settings.intensity + imageData.data[i + 2] * originalWeight);
         }
       }
       
-      // Put the modified image data back on the canvas
       ctx.putImageData(imageData, 0, 0);
+      return ctx.getImageData(0, 0, width, height);
       
-    } else if (currentEffect === 'halftone') {
-      // Clear canvas for halftone effect
-      ctx.clearRect(0, 0, width, height);
+    } else if (effect.type === 'halftone') {
+      const settings = effect.settings as HalftoneSettings;
       
-      // Get original image grayscale data
+      // Create a new canvas for the halftone effect
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const tempCtx = tempCanvas.getContext('2d');
+      if (!tempCtx) return imageData;
+      
+      // Put the current image data on the temp canvas
+      tempCtx.putImageData(imageData, 0, 0);
+      
+      // Get grayscale data
       const grayscaleData: number[] = [];
       for (let i = 0; i < data.length; i += 4) {
         const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
         grayscaleData.push(gray);
       }
       
-      // Apply halftone effect
-      const spacing = halftoneSettings.spacing; // Dot spacing
-      const size = halftoneSettings.dotSize; // Max dot size
-      const radians = (halftoneSettings.angle * Math.PI) / 180;
+      // Clear the context for halftone effect
+      ctx.clearRect(0, 0, width, height);
       
-      // Set black background for halftone effect
+      // Apply halftone effect
+      const spacing = settings.spacing; // Dot spacing
+      const size = settings.dotSize; // Max dot size
+      const radians = (settings.angle * Math.PI) / 180;
+      
+      // Set white background for halftone effect
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, width, height);
       ctx.fillStyle = 'black';
@@ -213,11 +298,11 @@ export default function ImageEditorComponent() {
               // Draw the dot
               ctx.beginPath();
               
-              if (halftoneSettings.shape === 'circle') {
+              if (settings.shape === 'circle') {
                 ctx.arc(x, y, dotSize / 2, 0, Math.PI * 2);
-              } else if (halftoneSettings.shape === 'square') {
+              } else if (settings.shape === 'square') {
                 ctx.rect(x - dotSize / 2, y - dotSize / 2, dotSize, dotSize);
-              } else if (halftoneSettings.shape === 'line') {
+              } else if (settings.shape === 'line') {
                 const startX = x - (dotSize / 2) * Math.cos(radians);
                 const startY = y - (dotSize / 2) * Math.sin(radians);
                 const endX = x + (dotSize / 2) * Math.cos(radians);
@@ -229,14 +314,17 @@ export default function ImageEditorComponent() {
               }
               
               ctx.fill();
-              if (halftoneSettings.shape === 'line') {
+              if (settings.shape === 'line') {
                 ctx.stroke();
               }
             }
           }
         }
       }
-    } else if (currentEffect === 'blackwhite') {
+      
+      return ctx.getImageData(0, 0, width, height);
+      
+    } else if (effect.type === 'blackwhite') {
       // Apply black and white effect
       for (let i = 0; i < data.length; i += 4) {
         const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
@@ -245,9 +333,10 @@ export default function ImageEditorComponent() {
         data[i + 2] = gray; // Blue
       }
       
-      // Put the modified image data back on the canvas
       ctx.putImageData(imageData, 0, 0);
-    } else if (currentEffect === 'sepia') {
+      return ctx.getImageData(0, 0, width, height);
+      
+    } else if (effect.type === 'sepia') {
       // Apply sepia effect
       for (let i = 0; i < data.length; i += 4) {
         const r = data[i];
@@ -259,43 +348,28 @@ export default function ImageEditorComponent() {
         data[i + 2] = Math.min(255, (r * 0.272) + (g * 0.534) + (b * 0.131)); // Blue
       }
       
-      // Put the modified image data back on the canvas
       ctx.putImageData(imageData, 0, 0);
-    } else if (currentEffect === 'noise') {
+      return ctx.getImageData(0, 0, width, height);
+      
+    } else if (effect.type === 'noise') {
+      const settings = effect.settings as { noiseLevel: number };
+      
       // Apply noise effect
       for (let i = 0; i < data.length; i += 4) {
         if (i % 4 < 3) { // Skip alpha channel
-          const noise = (Math.random() - 0.5) * noiseLevel;
+          const noise = (Math.random() - 0.5) * settings.noiseLevel;
           data[i] = Math.max(0, Math.min(255, data[i] + noise));
           data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
           data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
         }
       }
       
-      // Put the modified image data back on the canvas
       ctx.putImageData(imageData, 0, 0);
-    } else {
-      // No effect, just draw the original image
-      ctx.drawImage(image, 0, 0, width, height);
+      return ctx.getImageData(0, 0, width, height);
     }
     
-    // Save the current state to history if effect changed
-    if (imageHistory.length > 0 && imageHistory[imageHistory.length - 1].effect !== currentEffect) {
-      const newHistory: ImageHistory = {
-        dataUrl: canvas.toDataURL('image/png'),
-        effect: currentEffect,
-        timestamp: Date.now()
-      };
-      
-      setImageHistory(prev => [...prev, newHistory]);
-    }
-  }, [
-    image, 
-    currentEffect, 
-    duotoneSettings, 
-    halftoneSettings,
-    noiseLevel
-  ]);
+    return imageData;
+  };
   
   // Handle undo
   const handleUndo = () => {
@@ -306,15 +380,16 @@ export default function ImageEditorComponent() {
     newHistory.pop();
     setImageHistory(newHistory);
     
-    // Set the current effect to the previous one
+    // Set the applied effects to the previous state
     const previousState = newHistory[newHistory.length - 1];
-    setCurrentEffect(previousState.effect);
+    setAppliedEffects(previousState.effects);
     
-    // If we're back to the original image, reload it
+    // If we're back to the original image, reset
     if (newHistory.length === 1) {
       const img = new Image();
       img.onload = () => {
         setImage(img);
+        originalImageRef.current = img;
       };
       img.src = previousState.dataUrl;
     }
@@ -325,9 +400,22 @@ export default function ImageEditorComponent() {
     if (!canvasRef.current) return;
     
     const link = document.createElement('a');
-    link.download = `edited-image-${currentEffect}.png`;
+    link.download = `edited-image.png`;
     link.href = canvasRef.current.toDataURL('image/png');
     link.click();
+  };
+  
+  // Handle color selection from the color set
+  const handleColorSelect = (color: string) => {
+    if (currentEffect === 'duotone') {
+      setDuotoneSettings(prev => ({ ...prev, color1: color }));
+    }
+  };
+  
+  // Handle duotone pair selection
+  const handleDuotonePairSelect = (color1: string, color2: string) => {
+    setDuotoneSettings(prev => ({ ...prev, color1, color2 }));
+    setCurrentEffect('duotone');
   };
   
   return (
@@ -335,7 +423,7 @@ export default function ImageEditorComponent() {
       <Card className="flex-1 flex flex-col overflow-hidden">
         <CardHeader className="pb-2">
           <CardTitle>Image Editor</CardTitle>
-          <CardDescription>Upload an image and apply effects</CardDescription>
+          <CardDescription>Upload an image and apply multiple effects</CardDescription>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col md:flex-row gap-4 p-2 overflow-hidden">
           <div className="w-full md:w-3/4 flex flex-col">
@@ -368,30 +456,44 @@ export default function ImageEditorComponent() {
               <canvas ref={canvasRef} className="max-w-full max-h-full" />
               <canvas ref={hiddenCanvasRef} className="hidden" />
             </div>
+            
+            {/* Applied Effects List */}
+            {image && (
+              <div className="mt-2">
+                <h3 className="text-sm font-medium mb-1">Applied Effects:</h3>
+                {appliedEffects.length === 0 ? (
+                  <p className="text-sm text-gray-500">No effects applied yet</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {appliedEffects.map((effect, index) => (
+                      <div 
+                        key={`${effect.type}-${index}`} 
+                        className="bg-gray-200 rounded-md px-2 py-1 text-xs flex items-center gap-1"
+                      >
+                        <span>{effect.type}</span>
+                        <button 
+                          onClick={() => removeEffect(index)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           
           <div className="w-full md:w-1/4 overflow-y-auto">
             <Tabs defaultValue="effects">
               <TabsList className="w-full">
                 <TabsTrigger value="effects" className="flex-1">Effects</TabsTrigger>
-                <TabsTrigger value="settings" className="flex-1">Settings</TabsTrigger>
+                <TabsTrigger value="colors" className="flex-1">Colors</TabsTrigger>
               </TabsList>
               
               <TabsContent value="effects" className="space-y-4 mt-2">
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>No Effect</Label>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setCurrentEffect('none')}
-                      className={currentEffect === 'none' ? "bg-blue-100" : ""}
-                      disabled={!image}
-                    >
-                      Apply
-                    </Button>
-                  </div>
-                  
                   <div className="flex items-center justify-between">
                     <Label>Black & White</Label>
                     <Button 
@@ -401,7 +503,7 @@ export default function ImageEditorComponent() {
                       className={currentEffect === 'blackwhite' ? "bg-blue-100" : ""}
                       disabled={!image}
                     >
-                      Apply
+                      Select
                     </Button>
                   </div>
                   
@@ -414,7 +516,7 @@ export default function ImageEditorComponent() {
                       className={currentEffect === 'sepia' ? "bg-blue-100" : ""}
                       disabled={!image}
                     >
-                      Apply
+                      Select
                     </Button>
                   </div>
                   
@@ -427,7 +529,7 @@ export default function ImageEditorComponent() {
                       className={currentEffect === 'noise' ? "bg-blue-100" : ""}
                       disabled={!image}
                     >
-                      Apply
+                      Select
                     </Button>
                   </div>
                   
@@ -453,7 +555,7 @@ export default function ImageEditorComponent() {
                       className={currentEffect === 'halftone' ? "bg-blue-100" : ""}
                       disabled={!image}
                     >
-                      Apply
+                      Select
                     </Button>
                   </div>
                   
@@ -516,7 +618,7 @@ export default function ImageEditorComponent() {
                       className={currentEffect === 'duotone' ? "bg-blue-100" : ""}
                       disabled={!image}
                     >
-                      Apply
+                      Select
                     </Button>
                   </div>
                   
@@ -573,24 +675,25 @@ export default function ImageEditorComponent() {
                       </div>
                     </div>
                   )}
+                  
+                  {/* Apply Effect Button */}
+                  <Button 
+                    className="w-full mt-4"
+                    onClick={applyEffect}
+                    disabled={!image || currentEffect === 'none'}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Effect
+                  </Button>
                 </div>
               </TabsContent>
               
-              <TabsContent value="settings" className="space-y-4 mt-2">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Download Image</Label>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={handleDownload}
-                      disabled={!image}
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Download
-                    </Button>
-                  </div>
-                </div>
+              <TabsContent value="colors" className="space-y-4 mt-2">
+                <ColorSetSelector 
+                  onSelectColor={handleColorSelect}
+                  onSelectPair={handleDuotonePairSelect}
+                  selectedColor={currentEffect === 'duotone' ? duotoneSettings.color1 : undefined}
+                />
               </TabsContent>
             </Tabs>
           </div>

@@ -1,0 +1,84 @@
+{
+  "colorSets": [
+    {
+      "name": "Traditional",
+      "colors": [
+        { "name": "Akane (茜)", "hex": "#CB4042", "description": "Deep red" },
+        { "name": "Murasaki (紫)", "hex": "#4B0082", "description": "Purple" },
+        { "name": "Ai (藍)", "hex": "#0F2540", "description": "Indigo" },
+        { "name": "Midori (緑)", "hex": "#227D51", "description": "Green" },
+        { "name": "Yamabuki (山吹)", "hex": "#F8B500", "description": "Golden yellow" }
+      ]
+    },
+    {
+      "name": "Edo Period",
+      "colors": [
+        { "name": "Beni (紅)", "hex": "#E83015", "description": "Crimson" },
+        { "name": "Kon (紺)", "hex": "#223A70", "description": "Navy blue" },
+        { "name": "Moegi (萌黄)", "hex": "#7BA23F", "description": "Fresh onion green" },
+        { "name": "Kuchiba (朽葉)", "hex": "#BF794E", "description": "Fallen leaf" },
+        { "name": "Sumi (墨)", "hex": "#1C1C1C", "description": "Ink black" }
+      ]
+    },
+    {
+      "name": "Sakura",
+      "colors": [
+        { "name": "Sakura (桜)", "hex": "#FEDFE1", "description": "Cherry blossom pink" },
+        { "name": "Momo (桃)", "hex": "#F596AA", "description": "Peach" },
+        { "name": "Usu (薄)", "hex": "#E6B422", "description": "Pale gold" },
+        { "name": "Matcha (抹茶)", "hex": "#91AD70", "description": "Matcha green" },
+        { "name": "Fuji (藤)", "hex": "#A59ACA", "description": "Wisteria purple" }
+      ]
+    },
+    {
+      "name": "Ocean",
+      "colors": [
+        { "name": "Ruri (瑠璃)", "hex": "#0089A7", "description": "Lapis lazuli" },
+        { "name": "Asagi (浅葱)", "hex": "#00A3AF", "description": "Light blue" },
+        { "name": "Sora (空)", "hex": "#2B5F75", "description": "Sky blue" },
+        { "name": "Mizu (水)", "hex": "#81C7D4", "description": "Water blue" },
+        { "name": "Nami (波)", "hex": "#1E88A8", "description": "Wave blue" }
+      ]
+    },
+    {
+      "name": "Earth",
+      "colors": [
+        { "name": "Kaki (柿)", "hex": "#C46243", "description": "Persimmon" },
+        { "name": "Cha (茶)", "hex": "#8C6450", "description": "Tea brown" },
+        { "name": "Kobicha (焦茶)", "hex": "#6A4028", "description": "Dark brown" },
+        { "name": "Kuri (栗)", "hex": "#9A6A4F", "description": "Chestnut" },
+        { "name": "Tsuchi (土)", "hex": "#BC763C", "description": "Soil" }
+      ]
+    },
+    {
+      "name": "Duotone Pairs",
+      "pairs": [
+        { 
+          "name": "Sunset", 
+          "color1": "#E83015", 
+          "color2": "#F8B500"
+        },
+        { 
+          "name": "Ocean Depth", 
+          "color1": "#0089A7", 
+          "color2": "#223A70"
+        },
+        { 
+          "name": "Forest", 
+          "color1": "#227D51", 
+          "color2": "#7BA23F"
+        },
+        { 
+          "name": "Cherry", 
+          "color1": "#CB4042", 
+          "color2": "#FEDFE1"
+        },
+        { 
+          "name": "Twilight", 
+          "color1": "#4B0082", 
+          "color2": "#A59ACA"
+        }
+      ]
+    }
+  ]
+}
