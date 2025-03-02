@@ -55,67 +55,198 @@ interface AppliedEffect {
 }
 
 export default function ImageEditorComponent() {
-  // State
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [currentEffect, setCurrentEffect] = useState<Effect>('none');
   const [appliedEffects, setAppliedEffects] = useState<AppliedEffect[]>([]);
   const [imageHistory, setImageHistory] = useState<ImageHistory[]>([]);
+  const [noiseLevel, setNoiseLevel] = useState(25);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [, setPreviewEffect] = useState<AppliedEffect | null>(null);
   
   const [halftoneSettings, setHalftoneSettings] = useState<HalftoneSettings>({
-    dotSize: 4,
+    dotSize: 3,
     spacing: 6,
     angle: 45,
     shape: 'circle'
   });
   
   const [duotoneSettings, setDuotoneSettings] = useState<DuotoneSettings>({
-    color1: '#ff0099',
-    color2: '#0033ff',
-    intensity: 0.8
+    color1: '#000000',
+    color2: '#FFFFFF',
+    intensity: 0.5
   });
   
-  const [noiseLevel, setNoiseLevel] = useState(25);
-  
   // Refs
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
   const originalImageRef = useRef<HTMLImageElement | null>(null);
   
   // Handle image upload
   const handleImageUpload = (file: File) => {
-    if (file && file.type.match('image.*')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          setImage(img);
-          originalImageRef.current = img;
-          
-          // Reset effects
-          setAppliedEffects([]);
-          
-          // Save to history
-          const newHistory: ImageHistory = {
-            dataUrl: e.target?.result as string,
-            effects: [],
-            timestamp: Date.now()
-          };
-          
-          setImageHistory([newHistory]);
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      if (!e.target?.result) return;
+      
+      const img = new Image();
+      img.onload = () => {
+        setImage(img);
+        originalImageRef.current = img;
+        
+        // Reset effects and history
+        setAppliedEffects([]);
+        setCurrentEffect('none');
+        setPreviewMode(false);
+        
+        // Initialize canvas with the image
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        
+        // Set initial history
+        const newHistory: ImageHistory = {
+          dataUrl: canvas.toDataURL('image/png'),
+          effects: [],
+          timestamp: Date.now()
         };
-        img.src = e.target?.result as string;
+        
+        setImageHistory([newHistory]);
+        
+        // Render the canvas
+        renderCanvas();
       };
-      reader.readAsDataURL(file);
-    }
+      
+      img.src = e.target.result as string;
+    };
+    
+    reader.readAsDataURL(file);
   };
   
-  // Apply the current effect to the image
+  // Function to render the canvas with current effects
+  const renderCanvas = () => {
+    const canvas = canvasRef.current;
+    const hiddenCanvas = hiddenCanvasRef.current;
+    
+    if (!canvas || !hiddenCanvas || !image) return;
+    
+    const ctx = canvas.getContext('2d');
+    const hiddenCtx = hiddenCanvas.getContext('2d');
+    
+    if (!ctx || !hiddenCtx) return;
+    
+    // Set canvas dimensions to match the image
+    canvas.width = image.width;
+    canvas.height = image.height;
+    hiddenCanvas.width = image.width;
+    hiddenCanvas.height = image.height;
+    
+    // Draw the original image on the hidden canvas
+    hiddenCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    hiddenCtx.drawImage(image, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    
+    // Get the image data
+    const imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    
+    // Apply all effects
+    let processedImageData = imageData;
+    for (const effect of appliedEffects) {
+      processedImageData = applyEffectToImageData(
+        effect, 
+        processedImageData, 
+        hiddenCtx, 
+        hiddenCanvas.width, 
+        hiddenCanvas.height
+      );
+    }
+    
+    // Put the processed image data back on the canvas
+    ctx.putImageData(processedImageData, 0, 0);
+  };
+  
+  // Preview the current effect without applying it
+  const previewCurrentEffect = () => {
+    if (!image || currentEffect === 'none') return;
+    
+    const effectToPreview: AppliedEffect = {
+      type: currentEffect
+    };
+    
+    if (currentEffect === 'halftone') {
+      effectToPreview.settings = { ...halftoneSettings };
+    } else if (currentEffect === 'duotone') {
+      effectToPreview.settings = { ...duotoneSettings };
+    } else if (currentEffect === 'noise') {
+      effectToPreview.settings = { noiseLevel };
+    }
+    
+    setPreviewEffect(effectToPreview);
+    setPreviewMode(true);
+    
+    // Apply the preview effect to the canvas
+    const canvas = canvasRef.current;
+    const hiddenCanvas = hiddenCanvasRef.current;
+    
+    if (!canvas || !hiddenCanvas || !image) return;
+    
+    const ctx = canvas.getContext('2d');
+    const hiddenCtx = hiddenCanvas.getContext('2d');
+    
+    if (!ctx || !hiddenCtx) return;
+    
+    // Set canvas dimensions to match the image
+    canvas.width = image.width;
+    canvas.height = image.height;
+    hiddenCanvas.width = image.width;
+    hiddenCanvas.height = image.height;
+    
+    // Draw the original image on the hidden canvas
+    hiddenCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    hiddenCtx.drawImage(image, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    
+    // Get the image data
+    const imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    
+    // Apply all existing effects
+    let processedImageData = imageData;
+    for (const effect of appliedEffects) {
+      processedImageData = applyEffectToImageData(
+        effect, 
+        processedImageData, 
+        hiddenCtx, 
+        hiddenCanvas.width, 
+        hiddenCanvas.height
+      );
+    }
+    
+    // Apply the preview effect
+    processedImageData = applyEffectToImageData(
+      effectToPreview, 
+      processedImageData, 
+      hiddenCtx, 
+      hiddenCanvas.width, 
+      hiddenCanvas.height
+    );
+    
+    // Put the processed image data back on the canvas
+    ctx.putImageData(processedImageData, 0, 0);
+  };
+  
+  // Cancel the preview and revert to the original image with applied effects
+  const cancelPreview = () => {
+    setPreviewMode(false);
+    setPreviewEffect(null);
+    
+    // Redraw the canvas with only the applied effects
+    renderCanvas();
+  };
+
+  // Apply the current effect
   const applyEffect = () => {
     if (!image || currentEffect === 'none') return;
     
-    const newEffect: AppliedEffect = { type: currentEffect };
+    const newEffect: AppliedEffect = {
+      type: currentEffect
+    };
     
-    // Add settings based on effect type
     if (currentEffect === 'halftone') {
       newEffect.settings = { ...halftoneSettings };
     } else if (currentEffect === 'duotone') {
@@ -124,8 +255,9 @@ export default function ImageEditorComponent() {
       newEffect.settings = { noiseLevel };
     }
     
-    // Add to applied effects
     setAppliedEffects(prev => [...prev, newEffect]);
+    setPreviewMode(false);
+    setPreviewEffect(null);
   };
   
   // Remove an effect from the applied effects
@@ -133,74 +265,27 @@ export default function ImageEditorComponent() {
     setAppliedEffects(prev => prev.filter((_, i) => i !== index));
   };
   
-  // Apply all effects to the image
+  // Effect to update canvas when image or effects change
   useEffect(() => {
-    if (!originalImageRef.current || !canvasRef.current || !hiddenCanvasRef.current) return;
+    if (!image) return;
     
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    // If we're in preview mode, don't re-render the canvas
+    if (previewMode) return;
     
-    // Set canvas size based on image dimensions (with a maximum size for display)
-    const maxWidth = 800;
-    const maxHeight = 600;
-    let width = originalImageRef.current.width;
-    let height = originalImageRef.current.height;
-    
-    if (width > maxWidth) {
-      height = (maxWidth / width) * height;
-      width = maxWidth;
-    }
-    
-    if (height > maxHeight) {
-      width = (maxHeight / height) * width;
-      height = maxHeight;
-    }
-    
-    canvas.width = width;
-    canvas.height = height;
-    
-    // Create a hidden canvas for image processing
-    const hiddenCanvas = hiddenCanvasRef.current;
-    hiddenCanvas.width = width;
-    hiddenCanvas.height = height;
-    const hiddenCtx = hiddenCanvas.getContext('2d');
-    if (!hiddenCtx) return;
-    
-    // Start with the original image
-    hiddenCtx.clearRect(0, 0, width, height);
-    hiddenCtx.drawImage(originalImageRef.current, 0, 0, width, height);
-    
-    // Apply each effect in sequence
-    let currentImageData = hiddenCtx.getImageData(0, 0, width, height);
-    
-    for (const effect of appliedEffects) {
-      // Apply the effect to the current image data
-      currentImageData = applyEffectToImageData(
-        effect, 
-        currentImageData, 
-        hiddenCtx, 
-        width, 
-        height
-      );
-    }
-    
-    // Draw the final result to the visible canvas
-    ctx.clearRect(0, 0, width, height);
-    ctx.putImageData(currentImageData, 0, 0);
+    renderCanvas();
     
     // Save the current state to history if effects changed
     if (imageHistory.length > 0 && 
         JSON.stringify(imageHistory[imageHistory.length - 1].effects) !== JSON.stringify(appliedEffects)) {
       const newHistory: ImageHistory = {
-        dataUrl: canvas.toDataURL('image/png'),
+        dataUrl: canvasRef.current?.toDataURL('image/png') || '',
         effects: [...appliedEffects],
         timestamp: Date.now()
       };
       
       setImageHistory(prev => [...prev, newHistory]);
     }
-  }, [appliedEffects, image]);
+  }, [appliedEffects, image, imageHistory, previewMode]);
   
   // Function to apply a single effect to image data
   const applyEffectToImageData = (
@@ -419,8 +504,8 @@ export default function ImageEditorComponent() {
   };
   
   return (
-    <div className="flex flex-col h-full">
-      <Card className="flex-1 flex flex-col overflow-hidden">
+    <div className="container mx-auto p-4 h-full">
+      <Card className="w-full h-full flex flex-col">
         <CardHeader className="pb-2">
           <CardTitle>Image Editor</CardTitle>
           <CardDescription>Upload an image and apply multiple effects</CardDescription>
@@ -456,33 +541,6 @@ export default function ImageEditorComponent() {
               <canvas ref={canvasRef} className="max-w-full max-h-full" />
               <canvas ref={hiddenCanvasRef} className="hidden" />
             </div>
-            
-            {/* Applied Effects List */}
-            {image && (
-              <div className="mt-2">
-                <h3 className="text-sm font-medium mb-1">Applied Effects:</h3>
-                {appliedEffects.length === 0 ? (
-                  <p className="text-sm text-gray-500">No effects applied yet</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {appliedEffects.map((effect, index) => (
-                      <div 
-                        key={`${effect.type}-${index}`} 
-                        className="bg-gray-200 rounded-md px-2 py-1 text-xs flex items-center gap-1"
-                      >
-                        <span>{effect.type}</span>
-                        <button 
-                          onClick={() => removeEffect(index)}
-                          className="text-red-500 hover:text-red-700"
-                        >
-                          <Trash className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
           
           <div className="w-full md:w-1/4 overflow-y-auto">
@@ -493,6 +551,33 @@ export default function ImageEditorComponent() {
               </TabsList>
               
               <TabsContent value="effects" className="space-y-4 mt-2">
+                {/* Applied Effects List */}
+                {image && (
+                  <div className="mb-4 border-b pb-2">
+                    <h3 className="text-sm font-medium mb-1">Applied Effects:</h3>
+                    {appliedEffects.length === 0 ? (
+                      <p className="text-sm text-gray-500">No effects applied yet</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {appliedEffects.map((effect, index) => (
+                          <div 
+                            key={`${effect.type}-${index}`} 
+                            className="bg-gray-200 rounded-md px-2 py-1 text-xs flex items-center gap-1"
+                          >
+                            <span>{effect.type}</span>
+                            <button 
+                              onClick={() => removeEffect(index)}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Trash className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label>Black & White</Label>
@@ -676,15 +761,26 @@ export default function ImageEditorComponent() {
                     </div>
                   )}
                   
-                  {/* Apply Effect Button */}
-                  <Button 
-                    className="w-full mt-4"
-                    onClick={applyEffect}
-                    disabled={!image || currentEffect === 'none'}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Effect
-                  </Button>
+                  {/* Preview and Apply Effect Buttons */}
+                  <div className="flex gap-2 mt-4">
+                    <Button 
+                      className="flex-1"
+                      variant="outline"
+                      onClick={previewMode ? cancelPreview : previewCurrentEffect}
+                      disabled={!image || currentEffect === 'none'}
+                    >
+                      {previewMode ? "Cancel Preview" : "Preview Effect"}
+                    </Button>
+                    
+                    <Button 
+                      className="flex-1"
+                      onClick={applyEffect}
+                      disabled={!image || currentEffect === 'none'}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Effect
+                    </Button>
+                  </div>
                 </div>
               </TabsContent>
               

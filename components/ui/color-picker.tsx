@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { HexColorPicker } from 'react-colorful';
 import { Input } from './input';
 import { Label } from './label';
+import { Popover, PopoverContent, PopoverTrigger } from './popover';
+import { Button } from './button';
 
 interface ColorPickerProps {
   color: string;
@@ -26,35 +29,27 @@ export function ColorPicker({ color, onChange }: ColorPickerProps) {
     }
   };
 
-  // Handle color picker change
-  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setInputValue(value);
-    onChange(value);
-  };
-
   return (
-    <div className="p-3 space-y-3">
+    <div className="flex flex-col gap-2 w-full">
       <div className="flex items-center gap-2">
-        <div 
-          className="w-10 h-10 rounded-md border border-gray-300" 
-          style={{ backgroundColor: color }}
-        />
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className="w-10 h-10 p-0 border-2"
+              style={{ backgroundColor: color }}
+            />
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-3" align="start">
+            <HexColorPicker color={color} onChange={onChange} />
+          </PopoverContent>
+        </Popover>
         <Input
           type="text"
           value={inputValue}
           onChange={handleInputChange}
           className="w-24"
           maxLength={7}
-        />
-      </div>
-      <div>
-        <Label className="sr-only">Pick a color</Label>
-        <input
-          type="color"
-          value={color}
-          onChange={handleColorChange}
-          className="w-full h-8 cursor-pointer"
         />
       </div>
     </div>

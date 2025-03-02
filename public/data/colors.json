@@ -1,0 +1,134 @@
+{
+  "colorSets": [
+    {
+      "name": "Basic Colors",
+      "colors": [
+        {
+          "name": "Red",
+          "hex": "#FF0000",
+          "description": "Pure red"
+        },
+        {
+          "name": "Green",
+          "hex": "#00FF00",
+          "description": "Pure green"
+        },
+        {
+          "name": "Blue",
+          "hex": "#0000FF",
+          "description": "Pure blue"
+        },
+        {
+          "name": "Yellow",
+          "hex": "#FFFF00",
+          "description": "Pure yellow"
+        },
+        {
+          "name": "Cyan",
+          "hex": "#00FFFF",
+          "description": "Pure cyan"
+        },
+        {
+          "name": "Magenta",
+          "hex": "#FF00FF",
+          "description": "Pure magenta"
+        }
+      ]
+    },
+    {
+      "name": "Grayscale",
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#FFFFFF",
+          "description": "Pure white"
+        },
+        {
+          "name": "Light Gray",
+          "hex": "#D3D3D3",
+          "description": "Light gray"
+        },
+        {
+          "name": "Gray",
+          "hex": "#808080",
+          "description": "Medium gray"
+        },
+        {
+          "name": "Dark Gray",
+          "hex": "#404040",
+          "description": "Dark gray"
+        },
+        {
+          "name": "Black",
+          "hex": "#000000",
+          "description": "Pure black"
+        }
+      ]
+    },
+    {
+      "name": "Pastels",
+      "colors": [
+        {
+          "name": "Pastel Pink",
+          "hex": "#FFD1DC",
+          "description": "Soft pink"
+        },
+        {
+          "name": "Pastel Blue",
+          "hex": "#A7C7E7",
+          "description": "Soft blue"
+        },
+        {
+          "name": "Pastel Green",
+          "hex": "#C1E1C1",
+          "description": "Soft green"
+        },
+        {
+          "name": "Pastel Yellow",
+          "hex": "#FDFD96",
+          "description": "Soft yellow"
+        },
+        {
+          "name": "Pastel Purple",
+          "hex": "#C3B1E1",
+          "description": "Soft purple"
+        }
+      ]
+    },
+    {
+      "name": "Duotone Pairs",
+      "pairs": [
+        {
+          "name": "Blue & Yellow",
+          "color1": "#0066CC",
+          "color2": "#FFCC00"
+        },
+        {
+          "name": "Pink & Teal",
+          "color1": "#FF6B6B",
+          "color2": "#4ECDC4"
+        },
+        {
+          "name": "Purple & Green",
+          "color1": "#9B59B6",
+          "color2": "#2ECC71"
+        },
+        {
+          "name": "Orange & Blue",
+          "color1": "#E67E22",
+          "color2": "#3498DB"
+        },
+        {
+          "name": "Red & Black",
+          "color1": "#E74C3C",
+          "color2": "#2C3E50"
+        },
+        {
+          "name": "Sepia",
+          "color1": "#704214",
+          "color2": "#FFF8DC"
+        }
+      ]
+    }
+  ]
+} 
