@@ -24,6 +24,9 @@ import { Label } from './ui/label';
 import { Download, Undo, ZoomIn, ZoomOut, Maximize, Move } from 'lucide-react';
 import * as fabric from 'fabric';
 
+// Import fabric dynamically to avoid SSR issues
+let fabric: any = null;
+
 type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'none';
 
 interface HalftoneSettings {
@@ -52,1312 +55,556 @@ export default function ImageEditorComponent() {
   const [imageHistory, setImageHistory] = useState<ImageHistory[]>([]);
   const [halftoneSettings, setHalftoneSettings] = useState<HalftoneSettings>({
     dotSize: 4,
-    spacing: 10,
+    spacing: 4,
     angle: 45
   });
   const [duotoneSettings, setDuotoneSettings] = useState<DuotoneSettings>({
     color1: '#000000',
     color2: '#ffffff',
-    intensity: 100
+    intensity: 50
   });
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [noiseLevel, setNoiseLevel] = useState(25);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isPanMode, setIsPanMode] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [imageKey, setImageKey] = useState<number>(0);
+  const fabricInitialized = useRef(false);
   
-  // Initialize canvas
+  // Load fabric.js only on client-side
   useEffect(() => {
-    if (!canvasRef.current || canvas) return;
+    if (typeof window !== 'undefined' && !fabric) {
+      import('fabric').then((module) => {
+        fabric = module;
+        console.log("Fabric.js loaded successfully");
+        initializeCanvas();
+      });
+    }
+  }, []);
 
-    console.log('Initializing canvas with Fabric.js...');
+  // Initialize canvas once fabric is loaded and DOM is ready
+  const initializeCanvas = useCallback(() => {
+    if (!canvasRef.current || !fabric || fabricInitialized.current) return;
     
+    console.log("Initializing canvas...");
     try {
-      // Create a new Fabric.js canvas instance with explicit initialization
+      // Clean up any existing canvas instance
+      if (canvas) {
+        canvas.dispose();
+      }
+
+      // Get container dimensions
+      const container = canvasContainerRef.current;
+      if (!container) {
+        console.error("Canvas container not found");
+        return;
+      }
+      
+      const width = container.clientWidth;
+      const height = container.clientHeight || 500; // Fallback height
+      
+      console.log(`Creating canvas with dimensions: ${width}x${height}`);
+      
+      // Create new canvas with explicit dimensions
       const fabricCanvas = new fabric.Canvas(canvasRef.current, {
-        backgroundColor: '#f8f9fa',
+        width: width,
+        height: height,
+        backgroundColor: '#f5f5f5',
         preserveObjectStacking: true,
         selection: false,
         renderOnAddRemove: true
       });
       
-      if (!fabricCanvas) {
-        console.error("Failed to create Fabric.js canvas");
-        return;
-      }
-      
-      // Set dimensions
-      const initialWidth = window.innerWidth - 420;
-      const initialHeight = window.innerHeight - 40;
-      
-      fabricCanvas.setDimensions({
-        width: initialWidth,
-        height: initialHeight
-      });
-      
-      console.log(`Canvas dimensions set to ${initialWidth}x${initialHeight}`);
-      
-      // Enable mouse wheel zoom
+      // Set up event listeners
       fabricCanvas.on('mouse:wheel', function(opt) {
+        if (!isPanMode) return;
+        
         const delta = opt.e.deltaY;
         let zoom = fabricCanvas.getZoom();
         zoom *= 0.999 ** delta;
         if (zoom > 20) zoom = 20;
         if (zoom < 0.1) zoom = 0.1;
         
-        // Get mouse position
-        const pointer = fabricCanvas.getPointer(opt.e);
-        
-        // Set zoom point (zoom towards mouse position)
-        fabricCanvas.zoomToPoint(new fabric.Point(pointer.x, pointer.y), zoom);
-        
-        // Update zoom level state
+        fabricCanvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
         setZoomLevel(zoom);
-        
         opt.e.preventDefault();
         opt.e.stopPropagation();
       });
-
-      // Force an initial render
-      fabricCanvas.renderAll();
       
-      console.log('Canvas initialized successfully:', fabricCanvas);
-      setCanvas(fabricCanvas);
-
-      const handleResize = () => {
-        const newWidth = window.innerWidth - 420;
-        const newHeight = window.innerHeight - 40;
+      fabricCanvas.on('mouse:down', function(opt) {
+        if (!isPanMode) return;
         
-        fabricCanvas.setDimensions({
-          width: newWidth,
-          height: newHeight
-        });
-        fabricCanvas.renderAll();
-        console.log(`Canvas resized to ${newWidth}x${newHeight}`);
-      };
-
-      window.addEventListener('resize', handleResize);
+        const evt = opt.e;
+        this.isDragging = true;
+        this.lastPosX = evt.clientX;
+        this.lastPosY = evt.clientY;
+      });
       
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        console.log('Disposing canvas...');
-        fabricCanvas.dispose();
-      };
+      fabricCanvas.on('mouse:move', function(opt) {
+        if (!this.isDragging || !isPanMode) return;
+        
+        const evt = opt.e;
+        const vpt = this.viewportTransform;
+        vpt[4] += evt.clientX - this.lastPosX;
+        vpt[5] += evt.clientY - this.lastPosY;
+        this.requestRenderAll();
+        this.lastPosX = evt.clientX;
+        this.lastPosY = evt.clientY;
+      });
+      
+      fabricCanvas.on('mouse:up', function() {
+        this.isDragging = false;
+      });
+      
+      // Store canvas instance
+      setCanvas(fabricCanvas);
+      fabricInitialized.current = true;
+      console.log("Canvas initialized successfully");
     } catch (error) {
       console.error("Error initializing canvas:", error);
     }
-  }, []);
+  }, [canvas, isPanMode]);
 
-  // Toggle pan mode
+  // Handle window resize
   useEffect(() => {
-    if (!canvas) return;
+    const handleResize = () => {
+      if (!canvas || !canvasContainerRef.current) return;
+      
+      const container = canvasContainerRef.current;
+      const width = container.clientWidth;
+      const height = container.clientHeight || 500;
+      
+      canvas.setWidth(width);
+      canvas.setHeight(height);
+      canvas.renderAll();
+      
+      console.log(`Canvas resized to: ${width}x${height}`);
+    };
     
-    const objects = canvas.getObjects();
-    if (objects.length === 0) return;
-    
-    const image = objects[0] as FabricImage;
-    
-    if (isPanMode) {
-      image.set({
-        selectable: true,
-        hasControls: false,
-        hasBorders: true,
-        lockRotation: true,
-        lockScalingX: true,
-        lockScalingY: true,
-        hoverCursor: 'move'
-      });
-    } else {
-      image.set({
-        selectable: false,
-        hasControls: false,
-        hasBorders: false
-      });
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [canvas]);
+
+  // Initialize canvas when component mounts
+  useEffect(() => {
+    if (fabric && canvasRef.current && !fabricInitialized.current) {
+      initializeCanvas();
     }
     
-    canvas.renderAll();
-  }, [canvas, isPanMode]);
+    // Cleanup on unmount
+    return () => {
+      if (canvas) {
+        canvas.dispose();
+      }
+    };
+  }, [canvas, initializeCanvas]);
 
   // Handle image upload
   const handleImageUpload = useCallback((file: File) => {
-    if (!canvas) {
-      console.error("Canvas is not initialized");
+    if (!canvas || !fabric) {
+      console.error("Canvas or Fabric not initialized");
       return;
     }
     
-    try {
-      console.log("Starting image upload process for file:", file.name, "size:", file.size);
+    console.log("Handling image upload:", file.name, file.type, file.size);
+    
+    // Create a URL for the uploaded file
+    const blobUrl = URL.createObjectURL(file);
+    console.log("Created blob URL:", blobUrl);
+    
+    // Load image using native Image first to ensure it's loaded
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    img.onload = () => {
+      console.log("Image loaded successfully:", img.width, "x", img.height);
       
-      // Create a local blob URL instead of using FileReader
-      const blobUrl = URL.createObjectURL(file);
-      console.log("Created blob URL:", blobUrl);
+      // Now create fabric image from the loaded image
+      const fabricImage = new fabric.Image(img, {
+        originX: 'center',
+        originY: 'center',
+      });
       
-      // Use fabric.Image.fromURL directly
-      fabric.Image.fromURL(
-        blobUrl, 
-        // @ts-expect-error - Fabric.js types are incorrect for fromURL callback
-        (fabricImage) => {
-          if (!canvas) {
-            console.error("Canvas no longer available");
-            URL.revokeObjectURL(blobUrl);
-            return;
-          }
-          
-          console.log("Image loaded successfully", fabricImage);
-          
-          // Get canvas dimensions
-          const canvasWidth = canvas.getWidth();
-          const canvasHeight = canvas.getHeight();
-          
-          // Get image dimensions
-          const imgWidth = fabricImage.width || 0;
-          const imgHeight = fabricImage.height || 0;
-          
-          console.log("Canvas dimensions:", canvasWidth, canvasHeight);
-          console.log("Image dimensions:", imgWidth, imgHeight);
-          
-          // Calculate scale to fit image within canvas (with some padding)
-          const padding = 20;
-          const maxWidth = canvasWidth - (padding * 2);
-          const maxHeight = canvasHeight - (padding * 2);
-          
-          let scaleX = 1;
-          let scaleY = 1;
-          
-          if (imgWidth > maxWidth) {
-            scaleX = maxWidth / imgWidth;
-          }
-          
-          if (imgHeight > maxHeight) {
-            scaleY = maxHeight / imgHeight;
-          }
-          
-          // Use the smaller scale to ensure image fits in both dimensions
-          const scale = Math.min(scaleX, scaleY);
-          
-          // Set image properties
-          fabricImage.set({
-            left: canvasWidth / 2,
-            top: canvasHeight / 2,
-            originX: 'center',
-            originY: 'center',
-            scaleX: scale,
-            scaleY: scale
-          });
-          
-          // Clear canvas and add image
-          canvas.clear();
-          canvas.add(fabricImage);
-          canvas.renderAll();
-          
-          // Add to history
-          const newHistoryItem: ImageHistory = {
-            dataUrl: blobUrl,
-            effect: 'none',
-            timestamp: Date.now(),
-            position: { left: fabricImage.left || 0, top: fabricImage.top || 0 },
-            scale: { scaleX: fabricImage.scaleX || 1, scaleY: fabricImage.scaleY || 1 }
-          };
-          
-          setImageHistory(prev => [...prev, newHistoryItem]);
-          
-          console.log("Image added to canvas and history updated");
-        },
-        {
-          crossOrigin: 'anonymous'
-        }
-      );
+      // Get canvas dimensions
+      const canvasWidth = canvas.getWidth();
+      const canvasHeight = canvas.getHeight();
+      console.log("Canvas dimensions:", canvasWidth, "x", canvasHeight);
       
-    } catch (err) {
-      console.error("Error in upload process:", err);
-    }
+      // Calculate scale to fit image within canvas (with padding)
+      const padding = 40;
+      const maxWidth = canvasWidth - padding;
+      const maxHeight = canvasHeight - padding;
+      
+      let scaleX = 1;
+      let scaleY = 1;
+      
+      if (img.width > maxWidth) {
+        scaleX = maxWidth / img.width;
+      }
+      
+      if (img.height > maxHeight) {
+        scaleY = maxHeight / img.height;
+      }
+      
+      // Use the smaller scale to ensure image fits
+      const scale = Math.min(scaleX, scaleY);
+      console.log("Applied scale factor:", scale);
+      
+      // Set image properties
+      fabricImage.set({
+        left: canvasWidth / 2,
+        top: canvasHeight / 2,
+        scaleX: scale,
+        scaleY: scale,
+        selectable: isPanMode,
+        hasControls: isPanMode,
+        hasBorders: isPanMode
+      });
+      
+      // Clear canvas and add image
+      canvas.clear();
+      canvas.add(fabricImage);
+      canvas.renderAll();
+      
+      // Add to history
+      const historyItem: ImageHistory = {
+        dataUrl: blobUrl,
+        effect: 'none',
+        timestamp: Date.now(),
+        position: { left: canvasWidth / 2, top: canvasHeight / 2 },
+        scale: { scaleX: scale, scaleY: scale }
+      };
+      
+      setImageHistory([historyItem]);
+      setCurrentEffect('none');
+      console.log("Image added to canvas and history updated");
+    };
+    
+    img.onerror = (error) => {
+      console.error("Error loading image:", error);
+      URL.revokeObjectURL(blobUrl);
+    };
+    
+    // Set source to trigger loading
+    img.src = blobUrl;
   }, [canvas, isPanMode]);
 
-  // Custom halftone filter
-  const applyHalftoneFilter = useCallback((image: FabricImage) => {
-    setIsProcessing(true);
-    
-    try {
-      console.log("Starting halftone filter application");
-      
-      // Get current image info before applying filter
-      const imgElement = image.getElement() as HTMLImageElement;
-      if (!imgElement) {
-        console.error("No image element found");
-        setIsProcessing(false);
-        return;
-      }
-      
-      console.log("Original image dimensions:", imgElement.naturalWidth, imgElement.naturalHeight);
-      const originalWidth = image.getScaledWidth();
-      const originalHeight = image.getScaledHeight();
-      const currentLeft = image.left || 0;
-      const currentTop = image.top || 0;
-      
-      console.log("Current image position:", currentLeft, currentTop);
-      console.log("Current image scale:", image.scaleX, image.scaleY);
-
-      // Create a clone of the original image to work with
-      const tempCanvas = document.createElement('canvas');
-      const ctx = tempCanvas.getContext('2d');
-      
-      if (!ctx) {
-        console.error("Failed to get 2D context");
-        setIsProcessing(false);
-        return;
-      }
-      
-      // Set canvas dimensions to match image's NATURAL dimensions
-      tempCanvas.width = imgElement.naturalWidth;
-      tempCanvas.height = imgElement.naturalHeight;
-      
-      // Draw image to canvas
-      ctx.drawImage(imgElement, 0, 0, imgElement.naturalWidth, imgElement.naturalHeight);
-      
-      const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-      const data = imageData.data;
-      const outputData = new Uint8ClampedArray(data.length);
-      
-      // Apply halftone effect
-      const { dotSize, spacing, angle } = halftoneSettings;
-      const radians = (angle * Math.PI) / 180;
-      const cos = Math.cos(radians);
-      const sin = Math.sin(radians);
-      
-      // Process image data
-      for (let y = 0; y < tempCanvas.height; y += spacing) {
-        for (let x = 0; x < tempCanvas.width; x += spacing) {
-          // Sample the pixel luminance in this region
-          let totalLuminance = 0;
-          let pixelCount = 0;
-          
-          for (let dy = 0; dy < spacing && y + dy < tempCanvas.height; dy++) {
-            for (let dx = 0; dx < spacing && x + dx < tempCanvas.width; dx++) {
-              const i = 4 * ((y + dy) * tempCanvas.width + (x + dx));
-              // Calculate luminance
-              const r = data[i];
-              const g = data[i + 1];
-              const b = data[i + 2];
-              const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-              
-              totalLuminance += luminance;
-              pixelCount++;
-            }
-          }
-          
-          // Normalized luminance in this region
-          const avgLuminance = totalLuminance / (pixelCount * 255);
-          const dotRadius = dotSize * avgLuminance;
-          
-          // Draw the dot
-          for (let dy = 0; dy < spacing && y + dy < tempCanvas.height; dy++) {
-            for (let dx = 0; dx < spacing && x + dx < tempCanvas.width; dx++) {
-              // Calculate distance from center of cell
-              const cx = spacing / 2;
-              const cy = spacing / 2;
-              
-              // Apply rotation
-              const rotX = (dx - cx) * cos - (dy - cy) * sin + cx;
-              const rotY = (dx - cx) * sin + (dy - cy) * cos + cy;
-              
-              const distance = Math.sqrt(
-                Math.pow(rotX - cx, 2) + Math.pow(rotY - cy, 2)
-              );
-              
-              const i = 4 * ((y + dy) * tempCanvas.width + (x + dx));
-              
-              if (distance <= dotRadius) {
-                // Inside the dot - black
-                outputData[i] = 0;
-                outputData[i + 1] = 0;
-                outputData[i + 2] = 0;
-                outputData[i + 3] = 255;
-              } else {
-                // Outside the dot - white
-                outputData[i] = 255;
-                outputData[i + 1] = 255;
-                outputData[i + 2] = 255;
-                outputData[i + 3] = 255;
-              }
-            }
-          }
-        }
-      }
-      
-      // Update image with halftone effect
-      const outputImageData = new ImageData(outputData, tempCanvas.width, tempCanvas.height);
-      ctx.putImageData(outputImageData, 0, 0);
-      
-      // Create new image from canvas
-      const newImg = new Image();
-      
-      // IMPORTANT: Define onload handler BEFORE setting src
-      newImg.onload = () => {
-        if (!canvas) {
-          console.error("Canvas not available");
-          setIsProcessing(false);
-          return;
-        }
-        
-        try {
-          console.log("New image loaded successfully");
-          
-          // Clean up canvas first
-          canvas.clear();
-          
-          // Create a new Fabric.js image
-          const fabricImage = new FabricImage(newImg);
-          
-          console.log("New fabric image created:", fabricImage.width, fabricImage.height);
-          
-          // Set the scale to match original dimensions
-          const scaleX = originalWidth / fabricImage.width!;
-          const scaleY = originalHeight / fabricImage.height!;
-          fabricImage.scale(Math.min(scaleX, scaleY));
-          
-          // Position at the same spot as the original
-          fabricImage.set({
-            left: currentLeft,
-            top: currentTop,
-            selectable: isPanMode,
-            hasControls: false,
-            hasBorders: isPanMode
-          });
-          
-          console.log("New image positioned at:", fabricImage.left, fabricImage.top);
-          console.log("New image scaled to:", fabricImage.scaleX, fabricImage.scaleY);
-          
-          // Save to history before updating canvas
-          const historyItem: ImageHistory = {
-            dataUrl: newImg.src,
-            effect: 'halftone',
-            timestamp: Date.now(),
-            position: { left: currentLeft, top: currentTop },
-            scale: { scaleX: fabricImage.scaleX || 1, scaleY: fabricImage.scaleY || 1 }
-          };
-          
-          setImageHistory(prev => [...prev, historyItem]);
-          
-          // Add to canvas
-          canvas.add(fabricImage);
-          canvas.renderAll();
-          
-          // Increment key to trigger animation
-          setImageKey(prevKey => prevKey + 1);
-          
-          console.log("Halftone effect applied successfully");
-          
-          setIsProcessing(false);
-        } catch (err) {
-          console.error("Error applying halftone effect (onload):", err);
-          setIsProcessing(false);
-        }
-      };
-      
-      // Set error handler
-      newImg.onerror = (err) => {
-        console.error("Error loading new image:", err);
-        setIsProcessing(false);
-      };
-      
-      // Set the source AFTER defining the onload handler
-      newImg.src = tempCanvas.toDataURL('image/png');
-      
-    } catch (error) {
-      console.error('Error applying halftone filter:', error);
-      setIsProcessing(false);
-    }
-  }, [halftoneSettings, canvas, isPanMode]);
-
-  // Custom duotone filter
-  const applyDuotoneFilter = useCallback((image: FabricImage) => {
-    setIsProcessing(true);
-    
-    try {
-      // Get current image info before applying filter
-      const imgElement = image.getElement() as HTMLImageElement;
-      const originalWidth = image.getScaledWidth();
-      const originalHeight = image.getScaledHeight();
-      const currentLeft = image.left || 0;
-      const currentTop = image.top || 0;
-      
-      const { color1, color2, intensity } = duotoneSettings;
-      
-      // Helper to convert hex to rgb
-      const hexToRgb = (hex: string) => {
-        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-        return result ? {
-          r: parseInt(result[1], 16),
-          g: parseInt(result[2], 16),
-          b: parseInt(result[3], 16)
-        } : { r: 0, g: 0, b: 0 };
-      };
-      
-      const c1 = hexToRgb(color1);
-      const c2 = hexToRgb(color2);
-      
-      // Create a clone of the original image to work with
-      const tempCanvas = document.createElement('canvas');
-      const ctx = tempCanvas.getContext('2d');
-      
-      if (!ctx) {
-        setIsProcessing(false);
-        console.error("Failed to get 2D context");
-        return;
-      }
-      
-      tempCanvas.width = imgElement.naturalWidth;
-      tempCanvas.height = imgElement.naturalHeight;
-      
-      ctx.drawImage(imgElement, 0, 0, imgElement.naturalWidth, imgElement.naturalHeight);
-      
-      const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-      const data = imageData.data;
-      
-      // Apply duotone effect
-      for (let i = 0; i < data.length; i += 4) {
-        const luminance = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) / 255;
-        
-        // Calculate color based on luminance
-        const normIntensity = intensity / 100;
-        const r = c1.r * (1 - luminance) + c2.r * luminance;
-        const g = c1.g * (1 - luminance) + c2.g * luminance;
-        const b = c1.b * (1 - luminance) + c2.b * luminance;
-        
-        // Apply with intensity
-        data[i] = Math.round(data[i] * (1 - normIntensity) + r * normIntensity);
-        data[i + 1] = Math.round(data[i + 1] * (1 - normIntensity) + g * normIntensity);
-        data[i + 2] = Math.round(data[i + 2] * (1 - normIntensity) + b * normIntensity);
-      }
-      
-      ctx.putImageData(imageData, 0, 0);
-      
-      // Create new image from canvas
-      const newImg = new Image();
-      newImg.onload = () => {
-        if (!canvas) {
-          setIsProcessing(false);
-          return;
-        }
-        
-        // Create a new Fabric.js image
-        const fabricImage = new FabricImage(newImg);
-        
-        // Set the scale to match original dimensions
-        const scaleX = originalWidth / fabricImage.width!;
-        const scaleY = originalHeight / fabricImage.height!;
-        fabricImage.scale(Math.min(scaleX, scaleY));
-        
-        // Position at the same spot as the original
-        fabricImage.set({
-          left: currentLeft,
-          top: currentTop,
-          selectable: isPanMode,
-          hasControls: false,
-          hasBorders: isPanMode
-        });
-        
-        // Save to history before updating canvas
-        const historyItem: ImageHistory = {
-          dataUrl: newImg.src,
-          effect: 'duotone',
-          timestamp: Date.now(),
-          position: { left: currentLeft, top: currentTop },
-          scale: { scaleX: fabricImage.scaleX || 1, scaleY: fabricImage.scaleY || 1 }
-        };
-        
-        setImageHistory(prev => [...prev, historyItem]);
-        
-        // Update canvas
-        canvas.clear();
-        canvas.add(fabricImage);
-        canvas.renderAll();
-        
-        // Increment key to trigger animation
-        setImageKey(prevKey => prevKey + 1);
-        
-        // Debug canvas state
-        console.log("Canvas objects before:", canvas.getObjects().length);
-        console.log("Canvas objects after:", canvas.getObjects().length);
-        console.log("Image dimensions:", fabricImage.width, fabricImage.height);
-        console.log("Image position:", fabricImage.left, fabricImage.top);
-        
-        setIsProcessing(false);
-      };
-      
-      // Set the source after defining the onload handler
-      newImg.src = tempCanvas.toDataURL('image/png');
-      
-    } catch (error) {
-      console.error('Error applying duotone filter:', error);
-      setIsProcessing(false);
-    }
-  }, [duotoneSettings, canvas, isPanMode]);
-
-  // Black and white filter
-  const applyBlackWhiteFilter = useCallback((image: FabricImage) => {
-    try {
-      // Get current image info before applying filter
-      const imgElement = image.getElement() as HTMLImageElement;
-      const originalWidth = image.getScaledWidth();
-      const originalHeight = image.getScaledHeight();
-      const currentLeft = image.left || 0;
-      const currentTop = image.top || 0;
-      
-      // Clone the current image for animation purposes
-      const tempCanvas = document.createElement('canvas');
-      const ctx = tempCanvas.getContext('2d');
-      
-      if (!ctx) {
-        console.error('Failed to get 2D context');
-        return;
-      }
-      
-      tempCanvas.width = imgElement.naturalWidth;
-      tempCanvas.height = imgElement.naturalHeight;
-      ctx.drawImage(imgElement, 0, 0, imgElement.naturalWidth, imgElement.naturalHeight);
-      
-      // Create a new fabric image with the same dimensions
-      const newImg = new Image();
-      newImg.crossOrigin = 'anonymous';
-      
-      newImg.onload = () => {
-        if (!canvas) return;
-        
-        // Create a new Fabric.js image
-        const fabricImage = new FabricImage(newImg);
-        
-        // Apply filters to the new image
-        fabricImage.filters = [
-          new filters.Grayscale(),
-          new filters.Contrast({ contrast: 0.7 }),
-          new filters.Brightness({ brightness: 0.1 })
-        ];
-        
-        // Apply filters and ensure it completes
-        fabricImage.applyFilters();
-        
-        // Set the scale to match original dimensions
-        const scaleX = originalWidth / fabricImage.width!;
-        const scaleY = originalHeight / fabricImage.height!;
-        fabricImage.scale(Math.min(scaleX, scaleY));
-        
-        // Position at the same spot as the original
-        fabricImage.set({
-          left: currentLeft,
-          top: currentTop,
-          selectable: isPanMode,
-          hasControls: false,
-          hasBorders: isPanMode
-        });
-        
-        // Save to history before updating canvas
-        const historyItem: ImageHistory = {
-          dataUrl: fabricImage.toDataURL({ format: 'png', multiplier: 1 }),
-          effect: 'blackwhite',
-          timestamp: Date.now(),
-          position: { left: currentLeft, top: currentTop },
-          scale: { scaleX: fabricImage.scaleX || 1, scaleY: fabricImage.scaleY || 1 }
-        };
-        
-        setImageHistory(prev => [...prev, historyItem]);
-        
-        // Increment key to trigger animation
-        setImageKey(prevKey => prevKey + 1);
-        
-        // Update canvas with proper cleanup
-        canvas.clear();
-        canvas.add(fabricImage);
-        canvas.renderAll();
-        
-        // Debug canvas state
-        console.log("Canvas objects before:", canvas.getObjects().length);
-        console.log("Canvas objects after:", canvas.getObjects().length);
-        console.log("Image dimensions:", fabricImage.width, fabricImage.height);
-        console.log("Image position:", fabricImage.left, fabricImage.top);
-      };
-      
-      newImg.src = tempCanvas.toDataURL('image/png');
-      
-    } catch (error) {
-      console.error('Error applying black and white filter:', error);
-    }
-  }, [canvas, isPanMode]);
-
-  // Sepia filter
-  const applySepiaFilter = useCallback((image: FabricImage) => {
-    try {
-      // Get current image info before applying filter
-      const imgElement = image.getElement() as HTMLImageElement;
-      const originalWidth = image.getScaledWidth();
-      const originalHeight = image.getScaledHeight();
-      const currentLeft = image.left || 0;
-      const currentTop = image.top || 0;
-      
-      // Clone the current image for animation purposes
-      const tempCanvas = document.createElement('canvas');
-      const ctx = tempCanvas.getContext('2d');
-      
-      if (!ctx) {
-        console.error('Failed to get 2D context');
-        return;
-      }
-      
-      tempCanvas.width = imgElement.naturalWidth;
-      tempCanvas.height = imgElement.naturalHeight;
-      ctx.drawImage(imgElement, 0, 0, imgElement.naturalWidth, imgElement.naturalHeight);
-      
-      // Create a new fabric image with the same dimensions
-      const newImg = new Image();
-      newImg.crossOrigin = 'anonymous';
-      
-      newImg.onload = () => {
-        if (!canvas) return;
-        
-        // Create a new Fabric.js image
-        const fabricImage = new FabricImage(newImg);
-        
-        // Apply filters to the new image
-        fabricImage.filters = [
-          new filters.Sepia()
-        ];
-        
-        // Apply filters and ensure it completes
-        fabricImage.applyFilters();
-        
-        // Set the scale to match original dimensions
-        const scaleX = originalWidth / fabricImage.width!;
-        const scaleY = originalHeight / fabricImage.height!;
-        fabricImage.scale(Math.min(scaleX, scaleY));
-        
-        // Position at the same spot as the original
-        fabricImage.set({
-          left: currentLeft,
-          top: currentTop,
-          selectable: isPanMode,
-          hasControls: false,
-          hasBorders: isPanMode
-        });
-        
-        // Save to history before updating canvas
-        const historyItem: ImageHistory = {
-          dataUrl: fabricImage.toDataURL({ format: 'png', multiplier: 1 }),
-          effect: 'sepia',
-          timestamp: Date.now(),
-          position: { left: currentLeft, top: currentTop },
-          scale: { scaleX: fabricImage.scaleX || 1, scaleY: fabricImage.scaleY || 1 }
-        };
-        
-        setImageHistory(prev => [...prev, historyItem]);
-        
-        // Increment key to trigger animation
-        setImageKey(prevKey => prevKey + 1);
-        
-        // Update canvas with proper cleanup
-        canvas.clear();
-        canvas.add(fabricImage);
-        canvas.renderAll();
-        
-        // Debug canvas state
-        console.log("Canvas objects before:", canvas.getObjects().length);
-        console.log("Canvas objects after:", canvas.getObjects().length);
-        console.log("Image dimensions:", fabricImage.width, fabricImage.height);
-        console.log("Image position:", fabricImage.left, fabricImage.top);
-      };
-      
-      newImg.src = tempCanvas.toDataURL('image/png');
-      
-    } catch (error) {
-      console.error('Error applying sepia filter:', error);
-    }
-  }, [canvas, isPanMode]);
-
-  // Noise filter
-  const applyNoiseFilter = useCallback((image: FabricImage) => {
-    try {
-      // Get current image info before applying filter
-      const imgElement = image.getElement() as HTMLImageElement;
-      const originalWidth = image.getScaledWidth();
-      const originalHeight = image.getScaledHeight();
-      const currentLeft = image.left || 0;
-      const currentTop = image.top || 0;
-      
-      // Clone the current image for animation purposes
-      const tempCanvas = document.createElement('canvas');
-      const ctx = tempCanvas.getContext('2d');
-      
-      if (!ctx) {
-        console.error('Failed to get 2D context');
-        return;
-      }
-      
-      tempCanvas.width = imgElement.naturalWidth;
-      tempCanvas.height = imgElement.naturalHeight;
-      ctx.drawImage(imgElement, 0, 0, imgElement.naturalWidth, imgElement.naturalHeight);
-      
-      // Create a new fabric image with the same dimensions
-      const newImg = new Image();
-      newImg.crossOrigin = 'anonymous';
-      
-      newImg.onload = () => {
-        if (!canvas) return;
-        
-        // Create a new Fabric.js image
-        const fabricImage = new FabricImage(newImg);
-        
-        // Apply filters to the new image
-        fabricImage.filters = [
-          new filters.Noise({ noise: 50 })
-        ];
-        
-        // Apply filters and ensure it completes
-        fabricImage.applyFilters();
-        
-        // Set the scale to match original dimensions
-        const scaleX = originalWidth / fabricImage.width!;
-        const scaleY = originalHeight / fabricImage.height!;
-        fabricImage.scale(Math.min(scaleX, scaleY));
-        
-        // Position at the same spot as the original
-        fabricImage.set({
-          left: currentLeft,
-          top: currentTop,
-          selectable: isPanMode,
-          hasControls: false,
-          hasBorders: isPanMode
-        });
-        
-        // Save to history before updating canvas
-        const historyItem: ImageHistory = {
-          dataUrl: fabricImage.toDataURL({ format: 'png', multiplier: 1 }),
-          effect: 'noise',
-          timestamp: Date.now(),
-          position: { left: currentLeft, top: currentTop },
-          scale: { scaleX: fabricImage.scaleX || 1, scaleY: fabricImage.scaleY || 1 }
-        };
-        
-        setImageHistory(prev => [...prev, historyItem]);
-        
-        // Increment key to trigger animation
-        setImageKey(prevKey => prevKey + 1);
-        
-        // Update canvas with proper cleanup
-        canvas.clear();
-        canvas.add(fabricImage);
-        canvas.renderAll();
-        
-        // Debug canvas state
-        console.log("Canvas objects before:", canvas.getObjects().length);
-        console.log("Canvas objects after:", canvas.getObjects().length);
-        console.log("Image dimensions:", fabricImage.width, fabricImage.height);
-        console.log("Image position:", fabricImage.left, fabricImage.top);
-      };
-      
-      newImg.src = tempCanvas.toDataURL('image/png');
-      
-    } catch (error) {
-      console.error('Error applying noise filter:', error);
-    }
-  }, [canvas, isPanMode]);
-
-  // Apply effect
-  const applyEffect = useCallback((effectType: Effect) => {
-    if (!canvas) {
-      console.error("Canvas is not initialized");
-      return;
-    }
-    
-    const objects = canvas.getObjects();
-    const image = objects[0] as FabricImage;
-    if (!image) {
-      console.error("No image found on canvas");
-      return;
-    }
-    
-    setCurrentEffect(effectType);
-    
-    if (effectType === 'none') {
-      // Reset to original
-      if (imageHistory.length > 0) {
-        const original = imageHistory[0];
-        const img = new Image();
-        img.src = original.dataUrl;
-        
-        img.onload = () => {
-          if (!canvas) return;
-          
-          try {
-            const fabricImage = new FabricImage(img);
-            
-            // Scale to fit canvas
-            const scale = Math.min(
-              (canvas.width! - 40) / fabricImage.width!,
-              (canvas.height! - 40) / fabricImage.height!
-            );
-            
-            fabricImage.scale(scale);
-            fabricImage.set({
-              left: (canvas.width! - fabricImage.width! * scale) / 2,
-              top: (canvas.height! - fabricImage.height! * scale) / 2,
-              selectable: isPanMode,
-              hasControls: false,
-              hasBorders: isPanMode
-            });
-            
-            canvas.clear();
-            canvas.add(fabricImage);
-            canvas.renderAll();
-            
-            // Increment key to trigger animation
-            setImageKey(prevKey => prevKey + 1);
-          } catch (error) {
-            console.error("Error resetting image:", error);
-          }
-        };
-      }
-      return;
-    }
-    
-    switch (effectType) {
-      case 'halftone':
-        applyHalftoneFilter(image);
-        break;
-      case 'duotone':
-        applyDuotoneFilter(image);
-        break;
-      case 'blackwhite':
-        applyBlackWhiteFilter(image);
-        break;
-      case 'sepia':
-        applySepiaFilter(image);
-        break;
-      case 'noise':
-        applyNoiseFilter(image);
-        break;
-    }
-  }, [canvas, applyHalftoneFilter, applyDuotoneFilter, applyBlackWhiteFilter, applySepiaFilter, applyNoiseFilter, imageHistory, isPanMode]);
-  
-  // Undo to previous state
+  // Handle undo
   const handleUndo = useCallback(() => {
-    if (imageHistory.length <= 1) {
-      console.log("Nothing to undo");
+    if (!canvas || !fabric || imageHistory.length <= 1) {
+      console.log("Cannot undo: No history or canvas not available");
       return;
     }
     
-    try {
-      console.log("Starting undo operation");
-      // Get previous state
-      const newHistory = [...imageHistory];
-      newHistory.pop(); // Remove current state
-      const prevState = newHistory[newHistory.length - 1];
+    console.log("Undoing last action");
+    
+    // Remove the last item from history
+    const newHistory = [...imageHistory];
+    newHistory.pop();
+    
+    // Get the previous state
+    const prevState = newHistory[newHistory.length - 1];
+    
+    if (!prevState) {
+      console.log("No previous state found");
+      return;
+    }
+    
+    console.log("Loading previous state:", prevState);
+    
+    // Load the previous image
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    img.onload = () => {
+      console.log("Previous image loaded successfully");
       
-      if (!prevState || !prevState.dataUrl) {
-        console.error("Invalid previous state");
-        return;
+      // Create fabric image
+      const fabricImage = new fabric.Image(img, {
+        originX: 'center',
+        originY: 'center'
+      });
+      
+      // Apply position and scale from history
+      if (prevState.position && prevState.scale) {
+        fabricImage.set({
+          left: prevState.position.left,
+          top: prevState.position.top,
+          scaleX: prevState.scale.scaleX,
+          scaleY: prevState.scale.scaleY,
+          selectable: isPanMode,
+          hasControls: isPanMode,
+          hasBorders: isPanMode
+        });
       }
       
-      console.log("Undoing to previous state:", prevState.effect);
+      // Clear canvas and add image
+      canvas.clear();
+      canvas.add(fabricImage);
+      canvas.renderAll();
       
-      // Load previous image using fabric.Image.fromURL
-      fabric.Image.fromURL(
-        prevState.dataUrl, 
-        // @ts-expect-error - Fabric.js types are incorrect for fromURL callback
-        (fabricImage) => {
-          if (!canvas) {
-            console.error("Canvas not available");
-            return;
-          }
-          
-          console.log("Previous image loaded for undo", fabricImage);
-          
-          // Set position and scale from history if available
-          if (prevState.position && prevState.scale) {
-            fabricImage.set({
-              left: prevState.position.left,
-              top: prevState.position.top,
-              scaleX: prevState.scale.scaleX,
-              scaleY: prevState.scale.scaleY,
-              originX: 'center',
-              originY: 'center'
-            });
-          } else {
-            // Default center position if no history data
-            const canvasWidth = canvas.getWidth();
-            const canvasHeight = canvas.getHeight();
-            
-            fabricImage.set({
-              left: canvasWidth / 2,
-              top: canvasHeight / 2,
-              originX: 'center',
-              originY: 'center'
-            });
-          }
-          
-          // Clear canvas and add image
-          canvas.clear();
-          canvas.add(fabricImage);
-          canvas.renderAll();
-          
-          console.log("Undo completed - previous state restored");
-        },
-        {
-          crossOrigin: 'anonymous'
-        }
-      );
-      
-    } catch (err) {
-      console.error("Error in handleUndo:", err);
-    }
+      // Update state
+      setImageHistory(newHistory);
+      setCurrentEffect(prevState.effect);
+      console.log("Undo completed successfully");
+    };
+    
+    img.onerror = (error) => {
+      console.error("Error loading previous image:", error);
+    };
+    
+    img.src = prevState.dataUrl;
   }, [canvas, imageHistory, isPanMode]);
 
-  // Export image
-  const handleExport = useCallback(() => {
-    if (!canvas) return;
-    
-    const link = document.createElement('a');
-    link.download = `edited-image-${Date.now()}.png`;
-    link.href = canvas.toDataURL({ 
-      format: 'png',
-      multiplier: 1
-    });
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }, [canvas]);
-
-  // Zoom controls
+  // Handle zoom in
   const handleZoomIn = useCallback(() => {
     if (!canvas) return;
     
-    let newZoom = zoomLevel * 1.2;
-    if (newZoom > 20) newZoom = 20;
+    let zoom = canvas.getZoom();
+    zoom *= 1.1;
+    if (zoom > 20) zoom = 20;
     
-    // Get canvas center
-    const center = {
-      x: canvas.width! / 2,
-      y: canvas.height! / 2
-    };
-    
-    canvas.zoomToPoint(new fabric.Point(center.x, center.y), newZoom);
-    setZoomLevel(newZoom);
-  }, [canvas, zoomLevel]);
+    canvas.setZoom(zoom);
+    setZoomLevel(zoom);
+  }, [canvas]);
 
+  // Handle zoom out
   const handleZoomOut = useCallback(() => {
     if (!canvas) return;
     
-    let newZoom = zoomLevel / 1.2;
-    if (newZoom < 0.1) newZoom = 0.1;
+    let zoom = canvas.getZoom();
+    zoom /= 1.1;
+    if (zoom < 0.1) zoom = 0.1;
     
-    // Get canvas center
-    const center = {
-      x: canvas.width! / 2,
-      y: canvas.height! / 2
-    };
-    
-    canvas.zoomToPoint(new fabric.Point(center.x, center.y), newZoom);
-    setZoomLevel(newZoom);
-  }, [canvas, zoomLevel]);
+    canvas.setZoom(zoom);
+    setZoomLevel(zoom);
+  }, [canvas]);
 
+  // Handle reset zoom
   const handleResetZoom = useCallback(() => {
     if (!canvas) return;
     
-    // Reset zoom and position
     canvas.setZoom(1);
     canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
-    
-    // Center the image
-    const objects = canvas.getObjects();
-    if (objects.length > 0) {
-      const image = objects[0] as FabricImage;
-      image.set({
-        left: (canvas.width! - image.width! * image.scaleX!) / 2,
-        top: (canvas.height! - image.height! * image.scaleY!) / 2
-      });
-    }
-    
     canvas.renderAll();
     setZoomLevel(1);
   }, [canvas]);
 
+  // Toggle pan mode
+  const handleTogglePanMode = useCallback(() => {
+    setIsPanMode(prev => !prev);
+  }, []);
+
   // Use effectState in a useEffect to track changes
   useEffect(() => {
     console.log("Current effect changed:", effectState);
-    // This ensures the variable is used and prevents the linter warning
   }, [effectState]);
 
   return (
-    <div className="h-full w-full flex bg-[#fafafa] text-[#0a0a0a] dark:bg-[#121212] dark:text-[#fafafa]">
-      {/* Left Panel */}
-      <div className="w-96 h-full flex flex-col border-r border-[#e1e1e1] dark:border-[#2a2a2a] bg-white dark:bg-[#1a1a1a]">
-        <div className="p-6 border-b border-[#e1e1e1] dark:border-[#2a2a2a]">
-          <h1 className="text-2xl font-bold">Image Editor</h1>
-          <p className="text-[#64748b] dark:text-[#a1a1aa] mt-1">Create halftones & duotones</p>
-        </div>
-        
-        <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-          {/* Upload Area */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Upload Image</CardTitle>
-              <CardDescription>Drag & drop or select a file</CardDescription>
-            </CardHeader>
-            <CardContent>
+    <div className="w-full h-full flex flex-col">
+      <Card className="w-full h-full flex flex-col">
+        <CardHeader>
+          <CardTitle>Image Editor</CardTitle>
+          <CardDescription>Upload and edit your images</CardDescription>
+        </CardHeader>
+        <CardContent className="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden">
+          <div className="w-full md:w-1/3 flex flex-col gap-4">
+            <div className="border rounded-lg p-4">
+              <h3 className="text-lg font-medium mb-2">Upload</h3>
               <UploadDropzone onUpload={handleImageUpload} />
-            </CardContent>
-          </Card>
-          
-          {/* Canvas Controls */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Canvas Controls</CardTitle>
-              <CardDescription>Zoom and pan your image</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Zoom: {Math.round(zoomLevel * 100)}%</span>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    onClick={handleZoomOut}
-                    disabled={zoomLevel <= 0.1}
-                  >
-                    <ZoomOut className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    onClick={handleZoomIn}
-                    disabled={zoomLevel >= 20}
-                  >
-                    <ZoomIn className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    onClick={handleResetZoom}
-                  >
-                    <Maximize className="h-4 w-4" />
-                  </Button>
+            </div>
+            
+            <Tabs defaultValue="effects" className="flex-1">
+              <TabsList className="grid grid-cols-2">
+                <TabsTrigger value="effects">Effects</TabsTrigger>
+                <TabsTrigger value="adjustments">Adjustments</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="effects" className="border rounded-lg p-4 h-full overflow-y-auto">
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-medium mb-2">Halftone</h3>
+                    <div className="space-y-2">
+                      <div>
+                        <Label>Dot Size</Label>
+                        <Slider 
+                          value={[halftoneSettings.dotSize]} 
+                          min={1} 
+                          max={10} 
+                          step={0.1} 
+                          onValueChange={(value) => setHalftoneSettings(prev => ({ ...prev, dotSize: value[0] }))} 
+                        />
+                      </div>
+                      <div>
+                        <Label>Spacing</Label>
+                        <Slider 
+                          value={[halftoneSettings.spacing]} 
+                          min={1} 
+                          max={10} 
+                          step={0.1} 
+                          onValueChange={(value) => setHalftoneSettings(prev => ({ ...prev, spacing: value[0] }))} 
+                        />
+                      </div>
+                      <div>
+                        <Label>Angle</Label>
+                        <Slider 
+                          value={[halftoneSettings.angle]} 
+                          min={0} 
+                          max={180} 
+                          step={1} 
+                          onValueChange={(value) => setHalftoneSettings(prev => ({ ...prev, angle: value[0] }))} 
+                        />
+                      </div>
+                      <Button className="w-full" onClick={() => setCurrentEffect('halftone')}>Apply Halftone</Button>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-lg font-medium mb-2">Duotone</h3>
+                    <div className="space-y-2">
+                      <div>
+                        <Label>Color 1</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button 
+                              variant="outline" 
+                              className="w-full h-8" 
+                              style={{ backgroundColor: duotoneSettings.color1 }}
+                            />
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <ColorPicker
+                              color={duotoneSettings.color1}
+                              onChange={(color) => setDuotoneSettings(prev => ({ ...prev, color1: color }))}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                      <div>
+                        <Label>Color 2</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button 
+                              variant="outline" 
+                              className="w-full h-8" 
+                              style={{ backgroundColor: duotoneSettings.color2 }}
+                            />
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <ColorPicker
+                              color={duotoneSettings.color2}
+                              onChange={(color) => setDuotoneSettings(prev => ({ ...prev, color2: color }))}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                      <div>
+                        <Label>Intensity</Label>
+                        <Slider 
+                          value={[duotoneSettings.intensity]} 
+                          min={0} 
+                          max={100} 
+                          step={1} 
+                          onValueChange={(value) => setDuotoneSettings(prev => ({ ...prev, intensity: value[0] }))} 
+                        />
+                      </div>
+                      <Button className="w-full" onClick={() => setCurrentEffect('duotone')}>Apply Duotone</Button>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-lg font-medium mb-2">Other Effects</h3>
+                    <div className="space-y-2">
+                      <Button className="w-full" onClick={() => setCurrentEffect('blackwhite')}>Black & White</Button>
+                      <Button className="w-full" onClick={() => setCurrentEffect('sepia')}>Sepia</Button>
+                      <div>
+                        <Label>Noise Level</Label>
+                        <Slider 
+                          value={[noiseLevel]} 
+                          min={0} 
+                          max={100} 
+                          step={1} 
+                          onValueChange={(value) => setNoiseLevel(value[0])} 
+                        />
+                      </div>
+                      <Button className="w-full" onClick={() => setCurrentEffect('noise')}>Apply Noise</Button>
+                      <Button className="w-full" onClick={() => setCurrentEffect('none')}>Remove Effects</Button>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </TabsContent>
               
-              <div className="flex items-center space-x-2">
-                <Switch 
-                  id="pan-mode" 
-                  checked={isPanMode}
-                  onCheckedChange={setIsPanMode}
-                />
-                <Label htmlFor="pan-mode" className="flex items-center gap-1">
-                  <Move className="h-4 w-4" />
-                  Pan Mode
-                </Label>
-              </div>
-              
-              <p className="text-xs text-muted-foreground">
-                Tip: Use mouse wheel to zoom in/out. Enable pan mode to move the image.
-              </p>
-            </CardContent>
-          </Card>
-          
-          {/* Effect Controls */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Effects</CardTitle>
-              <CardDescription>Apply effects to your image</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="halftone" className="w-full">
-                <TabsList className="grid grid-cols-2 mb-6">
-                  <TabsTrigger value="halftone">Halftone</TabsTrigger>
-                  <TabsTrigger value="duotone">Duotone</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="halftone" className="space-y-6">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="dotSize">Dot Size</Label>
-                      <span className="text-sm text-[#64748b] dark:text-[#a1a1aa]">
-                        {halftoneSettings.dotSize}px
-                      </span>
+              <TabsContent value="adjustments" className="border rounded-lg p-4 h-full overflow-y-auto">
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-medium mb-2">Canvas Controls</h3>
+                    <div className="flex flex-wrap gap-2">
+                      <Button onClick={handleZoomIn} size="icon">
+                        <ZoomIn className="h-4 w-4" />
+                      </Button>
+                      <Button onClick={handleZoomOut} size="icon">
+                        <ZoomOut className="h-4 w-4" />
+                      </Button>
+                      <Button onClick={handleResetZoom} size="icon">
+                        <Maximize className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        onClick={handleTogglePanMode} 
+                        size="icon"
+                        variant={isPanMode ? "default" : "outline"}
+                      >
+                        <Move className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <Slider
-                      id="dotSize"
-                      min={1}
-                      max={10}
-                      step={1}
-                      value={[halftoneSettings.dotSize]}
-                      onValueChange={(value) => setHalftoneSettings({...halftoneSettings, dotSize: value[0]})}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="spacing">Spacing</Label>
-                      <span className="text-sm text-[#64748b] dark:text-[#a1a1aa]">
-                        {halftoneSettings.spacing}px
-                      </span>
-                    </div>
-                    <Slider
-                      id="spacing"
-                      min={5}
-                      max={20}
-                      step={1}
-                      value={[halftoneSettings.spacing]}
-                      onValueChange={(value) => setHalftoneSettings({...halftoneSettings, spacing: value[0]})}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="angle">Angle</Label>
-                      <span className="text-sm text-[#64748b] dark:text-[#a1a1aa]">
-                        {halftoneSettings.angle}°
-                      </span>
-                    </div>
-                    <Slider
-                      id="angle"
-                      min={0}
-                      max={360}
-                      step={15}
-                      value={[halftoneSettings.angle]}
-                      onValueChange={(value) => setHalftoneSettings({...halftoneSettings, angle: value[0]})}
-                    />
-                  </div>
-                  
-                  <Button
-                    onClick={() => applyEffect('halftone')}
-                    className="w-full"
-                    disabled={isProcessing}
-                  >
-                    {isProcessing ? 'Processing...' : 'Apply Halftone'}
-                  </Button>
-                </TabsContent>
-                
-                <TabsContent value="duotone" className="space-y-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="color1">Color 1</Label>
-                      <ColorPicker
-                        color={duotoneSettings.color1}
-                        onChange={(color) => setDuotoneSettings({...duotoneSettings, color1: color})}
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="color2">Color 2</Label>
-                      <ColorPicker
-                        color={duotoneSettings.color2}
-                        onChange={(color) => setDuotoneSettings({...duotoneSettings, color2: color})}
-                      />
+                    <div className="mt-2">
+                      <Label>Pan Mode</Label>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <Switch 
+                          checked={isPanMode} 
+                          onCheckedChange={setIsPanMode} 
+                          id="pan-mode" 
+                        />
+                        <Label htmlFor="pan-mode">
+                          {isPanMode ? 'On' : 'Off'}
+                        </Label>
+                      </div>
                     </div>
                   </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="intensity">Intensity</Label>
-                      <span className="text-sm text-[#64748b] dark:text-[#a1a1aa]">
-                        {duotoneSettings.intensity}%
-                      </span>
-                    </div>
-                    <Slider
-                      id="intensity"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={[duotoneSettings.intensity]}
-                      onValueChange={(value) => setDuotoneSettings({...duotoneSettings, intensity: value[0]})}
-                    />
-                  </div>
-                  
-                  <Button
-                    onClick={() => applyEffect('duotone')}
-                    className="w-full"
-                    disabled={isProcessing}
-                  >
-                    {isProcessing ? 'Processing...' : 'Apply Duotone'}
-                  </Button>
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
-          
-          {/* Quick Effects */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Effects</CardTitle>
-              <CardDescription>One-click transformations</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-2">
-                <Button 
-                  variant="outline" 
-                  onClick={() => applyEffect('blackwhite')}
-                  className="h-auto py-2"
-                >
-                  Black & White
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => applyEffect('sepia')}
-                  className="h-auto py-2"
-                >
-                  Sepia
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => applyEffect('noise')}
-                  className="h-auto py-2"
-                >
-                  Noise
-                </Button>
-                <Button 
-                  variant="outline"
-                  onClick={() => applyEffect('none')}
-                  className="h-auto py-2"
-                >
-                  Reset
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-        
-        <div className="p-6 border-t border-[#e1e1e1] dark:border-[#2a2a2a]">
-          <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              onClick={handleUndo}
-              disabled={imageHistory.length <= 1}
-              className="flex-1"
-            >
-              <Undo className="w-4 h-4 mr-2" />
-              Undo
-            </Button>
-            <Button 
-              onClick={handleExport} 
-              className="flex-1"
-              disabled={!canvas || canvas.getObjects().length === 0}
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export
-            </Button>
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
-        </div>
-      </div>
-      
-      {/* Main Canvas Area */}
-      <div className="flex-1 p-6 flex items-center justify-center bg-[#f5f5f5] dark:bg-[#161616]">
-        <div 
-          ref={canvasContainerRef}
-          key={imageKey}
-          className="w-full h-full rounded-xl border-2 border-dashed border-[#e1e1e1] dark:border-[#2a2a2a] overflow-hidden bg-white dark:bg-black shadow-sm transition-all duration-500"
-        >
-          <canvas ref={canvasRef} className="w-full h-full" />
-        </div>
-      </div>
+          
+          <div className="w-full md:w-2/3 flex flex-col gap-4">
+            <div className="flex justify-between items-center">
+              <Button 
+                onClick={handleUndo} 
+                disabled={imageHistory.length <= 1}
+                variant="outline"
+              >
+                <Undo className="h-4 w-4 mr-2" />
+                Undo
+              </Button>
+              <Button variant="outline">
+                <Download className="h-4 w-4 mr-2" />
+                Download
+              </Button>
+            </div>
+            
+            <div 
+              ref={canvasContainerRef} 
+              className="flex-1 border rounded-lg overflow-hidden bg-gray-100 relative"
+              style={{ minHeight: '500px' }}
+            >
+              <canvas 
+                ref={canvasRef} 
+                id={`fabric-canvas-${imageKey}`}
+                className="absolute inset-0"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
