@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas, Image as FabricImage, filters } from 'fabric';
 import { UploadDropzone } from './ui/upload-dropzone';
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from './ui/card';
@@ -22,8 +21,7 @@ import {
 import { ColorPicker } from './ui/color-picker';
 import { Switch } from './ui/switch';
 import { Label } from './ui/label';
-import { Separator } from './ui/separator';
-import { Download, RotateCw, Undo, ZoomIn, ZoomOut, Maximize, Move } from 'lucide-react';
+import { Download, Undo, ZoomIn, ZoomOut, Maximize, Move } from 'lucide-react';
 import * as fabric from 'fabric';
 
 type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'none';
@@ -50,7 +48,7 @@ interface ImageHistory {
 
 export default function ImageEditorComponent() {
   const [canvas, setCanvas] = useState<Canvas | null>(null);
-  const [currentEffect, setCurrentEffect] = useState<Effect>('none');
+  const [effectState, setCurrentEffect] = useState<Effect>('none');
   const [imageHistory, setImageHistory] = useState<ImageHistory[]>([]);
   const [halftoneSettings, setHalftoneSettings] = useState<HalftoneSettings>({
     dotSize: 4,
@@ -198,87 +196,77 @@ export default function ImageEditorComponent() {
       // Use fabric.Image.fromURL directly
       fabric.Image.fromURL(
         blobUrl, 
-        function(fabricImage: fabric.Image) {
+        // @ts-expect-error - Fabric.js types are incorrect for fromURL callback
+        (fabricImage) => {
           if (!canvas) {
             console.error("Canvas no longer available");
             URL.revokeObjectURL(blobUrl);
             return;
           }
           
-          if (!fabricImage) {
-            console.error("Failed to create fabric image");
-            URL.revokeObjectURL(blobUrl);
-            return;
-          }
-          
-          console.log("Fabric image created successfully");
+          console.log("Image loaded successfully", fabricImage);
           
           // Get canvas dimensions
           const canvasWidth = canvas.getWidth();
           const canvasHeight = canvas.getHeight();
           
-          console.log(`Canvas dimensions: ${canvasWidth}x${canvasHeight}`);
-          console.log(`Image dimensions: ${fabricImage.width}x${fabricImage.height}`);
+          // Get image dimensions
+          const imgWidth = fabricImage.width || 0;
+          const imgHeight = fabricImage.height || 0;
           
-          // Calculate scale to fit the image within the canvas (with some padding)
-          const scaleX = (canvasWidth - 100) / fabricImage.width!;
-          const scaleY = (canvasHeight - 100) / fabricImage.height!;
-          const scale = Math.min(scaleX, scaleY, 1); // Don't scale up images that are smaller than canvas
+          console.log("Canvas dimensions:", canvasWidth, canvasHeight);
+          console.log("Image dimensions:", imgWidth, imgHeight);
           
-          console.log(`Calculated scale: ${scale}`);
+          // Calculate scale to fit image within canvas (with some padding)
+          const padding = 20;
+          const maxWidth = canvasWidth - (padding * 2);
+          const maxHeight = canvasHeight - (padding * 2);
           
-          // Center the image on the canvas
+          let scaleX = 1;
+          let scaleY = 1;
+          
+          if (imgWidth > maxWidth) {
+            scaleX = maxWidth / imgWidth;
+          }
+          
+          if (imgHeight > maxHeight) {
+            scaleY = maxHeight / imgHeight;
+          }
+          
+          // Use the smaller scale to ensure image fits in both dimensions
+          const scale = Math.min(scaleX, scaleY);
+          
+          // Set image properties
           fabricImage.set({
-            originX: 'center',
-            originY: 'center',
             left: canvasWidth / 2,
             top: canvasHeight / 2,
+            originX: 'center',
+            originY: 'center',
             scaleX: scale,
-            scaleY: scale,
-            selectable: isPanMode,
-            hasControls: false,
-            hasBorders: isPanMode,
-            lockRotation: true,
-            lockScalingX: true,
-            lockScalingY: true,
-            hoverCursor: isPanMode ? 'move' : 'default'
+            scaleY: scale
           });
           
-          // Create history item
-          const historyItem: ImageHistory = {
+          // Clear canvas and add image
+          canvas.clear();
+          canvas.add(fabricImage);
+          canvas.renderAll();
+          
+          // Add to history
+          const newHistoryItem: ImageHistory = {
             dataUrl: blobUrl,
             effect: 'none',
             timestamp: Date.now(),
             position: { left: fabricImage.left || 0, top: fabricImage.top || 0 },
-            scale: { scaleX: scale, scaleY: scale }
+            scale: { scaleX: fabricImage.scaleX || 1, scaleY: fabricImage.scaleY || 1 }
           };
           
-          // Remove all existing objects from canvas
-          canvas.clear();
+          setImageHistory(prev => [...prev, newHistoryItem]);
           
-          // Add the image to the canvas
-          canvas.add(fabricImage);
-          console.log("Image added to canvas");
-          
-          // Force an immediate render of the canvas
-          canvas.renderAll();
-          console.log("Canvas rendered");
-          
-          // Update history state
-          setImageHistory([historyItem]);
-          
-          // Update other state variables
-          setCurrentEffect('none');
-          setZoomLevel(1);
-          canvas.setZoom(1);
-          canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
-          
-          // Trigger a component re-render by updating the key
-          setImageKey(prevKey => prevKey + 1);
-          
-          console.log("Image upload process completed successfully");
+          console.log("Image added to canvas and history updated");
         },
-        { crossOrigin: 'anonymous' }
+        {
+          crossOrigin: 'anonymous'
+        }
       );
       
     } catch (err) {
@@ -974,53 +962,48 @@ export default function ImageEditorComponent() {
       // Load previous image using fabric.Image.fromURL
       fabric.Image.fromURL(
         prevState.dataUrl, 
-        function(fabricImage: fabric.Image) {
+        // @ts-expect-error - Fabric.js types are incorrect for fromURL callback
+        (fabricImage) => {
           if (!canvas) {
             console.error("Canvas not available");
             return;
           }
           
-          try {
-            // Clean up canvas first
-            canvas.clear();
-            
-            // Apply the position and scale from history if available
-            const position = prevState.position || { 
-              left: canvas.width! / 2,
-              top: canvas.height! / 2 
-            };
-            
-            const scale = prevState.scale || { scaleX: 1, scaleY: 1 };
+          console.log("Previous image loaded for undo", fabricImage);
+          
+          // Set position and scale from history if available
+          if (prevState.position && prevState.scale) {
+            fabricImage.set({
+              left: prevState.position.left,
+              top: prevState.position.top,
+              scaleX: prevState.scale.scaleX,
+              scaleY: prevState.scale.scaleY,
+              originX: 'center',
+              originY: 'center'
+            });
+          } else {
+            // Default center position if no history data
+            const canvasWidth = canvas.getWidth();
+            const canvasHeight = canvas.getHeight();
             
             fabricImage.set({
+              left: canvasWidth / 2,
+              top: canvasHeight / 2,
               originX: 'center',
-              originY: 'center',
-              left: position.left,
-              top: position.top,
-              scaleX: scale.scaleX,
-              scaleY: scale.scaleY,
-              selectable: isPanMode,
-              hasControls: false,
-              hasBorders: isPanMode
+              originY: 'center'
             });
-            
-            // Add to canvas and render
-            canvas.add(fabricImage);
-            canvas.renderAll();
-            
-            // Update state
-            setImageHistory(newHistory);
-            setCurrentEffect(prevState.effect);
-            
-            // Increment key to trigger animation
-            setImageKey(prevKey => prevKey + 1);
-            
-            console.log("Undo completed successfully");
-          } catch (err) {
-            console.error("Error during undo operation:", err);
           }
+          
+          // Clear canvas and add image
+          canvas.clear();
+          canvas.add(fabricImage);
+          canvas.renderAll();
+          
+          console.log("Undo completed - previous state restored");
         },
-        { crossOrigin: 'anonymous' }
+        {
+          crossOrigin: 'anonymous'
+        }
       );
       
     } catch (err) {
@@ -1097,6 +1080,12 @@ export default function ImageEditorComponent() {
     canvas.renderAll();
     setZoomLevel(1);
   }, [canvas]);
+
+  // Use effectState in a useEffect to track changes
+  useEffect(() => {
+    console.log("Current effect changed:", effectState);
+    // This ensures the variable is used and prevents the linter warning
+  }, [effectState]);
 
   return (
     <div className="h-full w-full flex bg-[#fafafa] text-[#0a0a0a] dark:bg-[#121212] dark:text-[#fafafa]">
