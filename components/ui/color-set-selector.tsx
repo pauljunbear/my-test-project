@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect } from 'react';
 import { Button } from './button';
 import { Label } from './label';
@@ -171,20 +173,13 @@ export function ColorSetSelector({
             ))}
           </div>
           
-          {previewMode && hoveredColor && (
-            <div className="mt-2 flex justify-between">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleColorMouseLeave}
-              >
-                Cancel
-              </Button>
+          {hoveredColor && (
+            <div className="mt-2 flex justify-end">
               <Button 
                 size="sm" 
                 onClick={() => onSelectColor(hoveredColor)}
               >
-                Apply Color
+                Apply
               </Button>
             </div>
           )}
@@ -216,20 +211,13 @@ export function ColorSetSelector({
             </div>
           </div>
           
-          {previewMode && hoveredPair && (
-            <div className="mt-2 flex justify-between">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handlePairMouseLeave}
-              >
-                Cancel
-              </Button>
+          {hoveredPair && (
+            <div className="mt-2 flex justify-end">
               <Button 
                 size="sm" 
                 onClick={() => onSelectPair(hoveredPair.color1, hoveredPair.color2)}
               >
-                Apply Duotone
+                Apply
               </Button>
             </div>
           )}

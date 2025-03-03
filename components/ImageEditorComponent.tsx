@@ -1,13 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+"use client";
+
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { UploadDropzone } from './ui/upload-dropzone';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from './ui/card';
 import { Button } from './ui/button';
+import { Slider } from './ui/slider';
 import {
   Tabs,
   TabsContent,
@@ -15,17 +11,21 @@ import {
   TabsTrigger,
 } from './ui/tabs';
 import {
-  Slider
-} from './ui/slider';
-import { ColorPicker } from './ui/color-picker';
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from './ui/card';
 import { Label } from './ui/label';
-import { Download, Undo, Plus, Trash } from 'lucide-react';
-import { 
-  Popover,
-  PopoverContent,
-  PopoverTrigger
-} from './ui/popover';
+import { Download, Undo, X } from 'lucide-react';
 import { ColorSetSelector } from './ui/color-set-selector';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 
 // Define types
 type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'none';
@@ -43,6 +43,14 @@ interface DuotoneSettings {
   intensity: number;
 }
 
+interface NoiseSettings {
+  level: number;
+}
+
+interface EmptySettings {}
+
+type EffectSettings = HalftoneSettings | DuotoneSettings | NoiseSettings | EmptySettings;
+
 interface ImageHistory {
   dataUrl: string;
   effects: AppliedEffect[];
@@ -51,443 +59,447 @@ interface ImageHistory {
 
 interface AppliedEffect {
   type: Effect;
-  settings?: HalftoneSettings | DuotoneSettings | { noiseLevel: number };
+  settings: EffectSettings;
 }
 
 export default function ImageEditorComponent() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
+  // Canvas references
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const hiddenCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  
+  // Image and effect state
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [currentEffect, setCurrentEffect] = useState<Effect>('none');
   const [appliedEffects, setAppliedEffects] = useState<AppliedEffect[]>([]);
   const [imageHistory, setImageHistory] = useState<ImageHistory[]>([]);
-  const [noiseLevel, setNoiseLevel] = useState(25);
-  const [previewMode, setPreviewMode] = useState(false);
-  const [, setPreviewEffect] = useState<AppliedEffect | null>(null);
   
+  // Effect-specific settings
   const [halftoneSettings, setHalftoneSettings] = useState<HalftoneSettings>({
     dotSize: 3,
-    spacing: 6,
+    spacing: 5,
     angle: 45,
     shape: 'circle'
   });
   
   const [duotoneSettings, setDuotoneSettings] = useState<DuotoneSettings>({
-    color1: '#000000',
-    color2: '#FFFFFF',
+    color1: '#0000ff',
+    color2: '#ff0000',
     intensity: 0.5
   });
   
-  // Refs
-  const originalImageRef = useRef<HTMLImageElement | null>(null);
+  const [noiseLevel, setNoiseLevel] = useState(0.5);
   
-  // Handle image upload
+  // Debounce function for handling frequent updates
+  function useDebounce<T>(value: T, delay: number): T {
+    const [debouncedValue, setDebouncedValue] = useState<T>(value);
+    
+    useEffect(() => {
+      const handler = setTimeout(() => {
+        setDebouncedValue(value);
+      }, delay);
+      
+      return () => {
+        clearTimeout(handler);
+      };
+    }, [value, delay]);
+    
+    return debouncedValue;
+  }
+  
+  // Debounced values to prevent too many re-renders
+  const debouncedHalftoneSettings = useDebounce(halftoneSettings, 100);
+  const debouncedDuotoneSettings = useDebounce(duotoneSettings, 100);
+  const debouncedNoiseLevel = useDebounce(noiseLevel, 100);
+  
+  // Handle file upload
   const handleImageUpload = (file: File) => {
     const reader = new FileReader();
-    
     reader.onload = (e) => {
-      if (!e.target?.result) return;
-      
-      const img = new Image();
-      img.onload = () => {
-        setImage(img);
-        originalImageRef.current = img;
-        
-        // Reset effects and history
-        setAppliedEffects([]);
-        setCurrentEffect('none');
-        setPreviewMode(false);
-        
-        // Initialize canvas with the image
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        
-        // Set initial history
-        const newHistory: ImageHistory = {
-          dataUrl: canvas.toDataURL('image/png'),
-          effects: [],
-          timestamp: Date.now()
+      if (e.target?.result) {
+        const img = new Image();
+        img.onload = () => {
+          setImage(img);
+          
+          // Setup canvas size
+          if (canvasRef.current && hiddenCanvasRef.current) {
+            const aspectRatio = img.width / img.height;
+            const canvasWidth = 800;
+            const canvasHeight = canvasWidth / aspectRatio;
+            
+            canvasRef.current.width = canvasWidth;
+            canvasRef.current.height = canvasHeight;
+            hiddenCanvasRef.current.width = canvasWidth;
+            hiddenCanvasRef.current.height = canvasHeight;
+            
+            // Initial render of the image
+            renderCanvas();
+            
+            // Add to history
+            const newHistory: ImageHistory = {
+              dataUrl: canvasRef.current.toDataURL('image/png'),
+              effects: [],
+              timestamp: Date.now()
+            };
+            
+            setImageHistory([newHistory]);
+          }
         };
-        
-        setImageHistory([newHistory]);
-        
-        // Render the canvas
-        renderCanvas();
-      };
-      
-      img.src = e.target.result as string;
+        img.src = e.target.result as string;
+      }
     };
-    
     reader.readAsDataURL(file);
   };
   
-  // Function to render the canvas with current effects
-  const renderCanvas = () => {
+  // Function to apply a single effect to image data
+  const applyEffect = (imageData: ImageData, effect: AppliedEffect): ImageData => {
+    const { type, settings } = effect;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) return imageData;
+    
+    ctx.putImageData(imageData, 0, 0);
+    
+    switch (type) {
+      case 'halftone':
+        return applyHalftoneEffect(ctx, imageData, settings as HalftoneSettings);
+      case 'duotone':
+        return applyDuotoneEffect(ctx, imageData, settings as DuotoneSettings);
+      case 'blackwhite':
+        return applyBlackAndWhiteEffect(ctx, imageData);
+      case 'sepia':
+        return applySepiaEffect(ctx, imageData);
+      case 'noise':
+        return applyNoiseEffect(ctx, imageData, (settings as NoiseSettings).level);
+      default:
+        return imageData;
+    }
+  };
+  
+  // Effect application functions
+  const applyHalftoneEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, settings: HalftoneSettings): ImageData => {
+    const { dotSize, spacing, angle, shape } = settings;
+    
+    // Convert to grayscale first
+    const grayscaleData = new Uint8ClampedArray(imageData.data);
+    for (let i = 0; i < grayscaleData.length; i += 4) {
+      const avg = (grayscaleData[i] + grayscaleData[i + 1] + grayscaleData[i + 2]) / 3;
+      grayscaleData[i] = grayscaleData[i + 1] = grayscaleData[i + 2] = avg;
+    }
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    
+    // Create a new ImageData with grayscale values
+    const tempData = new ImageData(grayscaleData, imageData.width, imageData.height);
+    ctx.putImageData(tempData, 0, 0);
+    
+    // Clear again and draw halftone pattern
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    
+    // Set drawing style
+    ctx.fillStyle = 'black';
+    ctx.strokeStyle = 'black';
+    
+    // Angle in radians
+    const radians = angle * Math.PI / 180;
+    
+    // Loop through the image with spacing intervals
+    for (let y = spacing; y < ctx.canvas.height; y += spacing) {
+      for (let x = spacing; x < ctx.canvas.width; x += spacing) {
+        // Rotate coordinates
+        const rotatedX = x * Math.cos(radians) - y * Math.sin(radians);
+        const rotatedY = x * Math.sin(radians) + y * Math.cos(radians);
+        
+        // Sample the grayscale value at this point
+        const pixelIndex = (Math.floor(y) * imageData.width + Math.floor(x)) * 4;
+        const grayValue = grayscaleData[pixelIndex] / 255;
+        
+        // Calculate size based on gray value (invert for proper effect)
+        const size = dotSize * (1 - grayValue);
+        
+        if (size > 0) {
+          ctx.beginPath();
+          
+          switch (shape) {
+            case 'circle':
+              ctx.arc(rotatedX, rotatedY, size, 0, Math.PI * 2);
+              ctx.fill();
+              break;
+            case 'square':
+              ctx.fillRect(rotatedX - size / 2, rotatedY - size / 2, size, size);
+              break;
+            case 'line':
+              ctx.lineWidth = size;
+              ctx.beginPath();
+              ctx.moveTo(rotatedX - spacing / 2, rotatedY);
+              ctx.lineTo(rotatedX + spacing / 2, rotatedY);
+              ctx.stroke();
+              break;
+          }
+        }
+      }
+    }
+    
+    return ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+  };
+  
+  const applyDuotoneEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, settings: DuotoneSettings): ImageData => {
+    const { color1, color2, intensity } = settings;
+    
+    // Parse colors
+    const parseColor = (color: string) => {
+      const r = parseInt(color.slice(1, 3), 16);
+      const g = parseInt(color.slice(3, 5), 16);
+      const b = parseInt(color.slice(5, 7), 16);
+      return { r, g, b };
+    };
+    
+    const c1 = parseColor(color1);
+    const c2 = parseColor(color2);
+    
+    // Create a new array for the output data
+    const outputData = new Uint8ClampedArray(imageData.data);
+    
+    // Apply duotone effect
+    for (let i = 0; i < outputData.length; i += 4) {
+      const avg = (imageData.data[i] + imageData.data[i + 1] + imageData.data[i + 2]) / 3;
+      
+      // Normalize to [0, 1]
+      const t = avg / 255;
+      
+      // Interpolate between the two colors
+      outputData[i] = c1.r * (1 - t) + c2.r * t;
+      outputData[i + 1] = c1.g * (1 - t) + c2.g * t;
+      outputData[i + 2] = c1.b * (1 - t) + c2.b * t;
+      
+      // Apply intensity - blend with original
+      if (intensity < 1) {
+        outputData[i] = outputData[i] * intensity + imageData.data[i] * (1 - intensity);
+        outputData[i + 1] = outputData[i + 1] * intensity + imageData.data[i + 1] * (1 - intensity);
+        outputData[i + 2] = outputData[i + 2] * intensity + imageData.data[i + 2] * (1 - intensity);
+      }
+    }
+    
+    return new ImageData(outputData, imageData.width, imageData.height);
+  };
+  
+  const applyBlackAndWhiteEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData): ImageData => {
+    const outputData = new Uint8ClampedArray(imageData.data);
+    
+    for (let i = 0; i < outputData.length; i += 4) {
+      const avg = (imageData.data[i] + imageData.data[i + 1] + imageData.data[i + 2]) / 3;
+      outputData[i] = outputData[i + 1] = outputData[i + 2] = avg;
+    }
+    
+    return new ImageData(outputData, imageData.width, imageData.height);
+  };
+  
+  const applySepiaEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData): ImageData => {
+    const outputData = new Uint8ClampedArray(imageData.data);
+    
+    for (let i = 0; i < outputData.length; i += 4) {
+      const r = imageData.data[i];
+      const g = imageData.data[i + 1];
+      const b = imageData.data[i + 2];
+      
+      outputData[i] = Math.min(255, (r * 0.393) + (g * 0.769) + (b * 0.189));
+      outputData[i + 1] = Math.min(255, (r * 0.349) + (g * 0.686) + (b * 0.168));
+      outputData[i + 2] = Math.min(255, (r * 0.272) + (g * 0.534) + (b * 0.131));
+    }
+    
+    return new ImageData(outputData, imageData.width, imageData.height);
+  };
+  
+  const applyNoiseEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, settings: number): ImageData => {
+    const outputData = new Uint8ClampedArray(imageData.data);
+    const amount = settings * 50; // Scale to appropriate noise level
+    
+    for (let i = 0; i < outputData.length; i += 4) {
+      // Generate random noise
+      const noise = Math.random() * amount - amount / 2;
+      
+      // Add noise to each channel
+      outputData[i] = Math.min(255, Math.max(0, imageData.data[i] + noise));
+      outputData[i + 1] = Math.min(255, Math.max(0, imageData.data[i + 1] + noise));
+      outputData[i + 2] = Math.min(255, Math.max(0, imageData.data[i + 2] + noise));
+    }
+    
+    return new ImageData(outputData, imageData.width, imageData.height);
+  };
+  
+  // Apply all effects to the canvas
+  const renderCanvas = useCallback(() => {
+    if (!canvasRef.current || !hiddenCanvasRef.current || !image) return;
+    
     const canvas = canvasRef.current;
     const hiddenCanvas = hiddenCanvasRef.current;
-    
-    if (!canvas || !hiddenCanvas || !image) return;
-    
     const ctx = canvas.getContext('2d');
     const hiddenCtx = hiddenCanvas.getContext('2d');
     
     if (!ctx || !hiddenCtx) return;
     
-    // Set canvas dimensions to match the image
-    canvas.width = image.width;
-    canvas.height = image.height;
-    hiddenCanvas.width = image.width;
-    hiddenCanvas.height = image.height;
-    
-    // Draw the original image on the hidden canvas
+    // Clear the canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     hiddenCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    
+    // Draw the original image to the hidden canvas
     hiddenCtx.drawImage(image, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
     
-    // Get the image data
-    const imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    // Get the image data from the hidden canvas
+    let imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
     
-    // Apply all effects
-    let processedImageData = imageData;
+    // Apply all effects in sequence
     for (const effect of appliedEffects) {
-      processedImageData = applyEffectToImageData(
-        effect, 
-        processedImageData, 
-        hiddenCtx, 
-        hiddenCanvas.width, 
-        hiddenCanvas.height
-      );
+      imageData = applyEffect(imageData, effect);
     }
     
-    // Put the processed image data back on the canvas
-    ctx.putImageData(processedImageData, 0, 0);
-  };
+    // Draw the processed image data to the visible canvas
+    ctx.putImageData(imageData, 0, 0);
+  }, [appliedEffects, image]);
   
-  // Preview the current effect without applying it
-  const previewCurrentEffect = () => {
-    if (!image || currentEffect === 'none') return;
+  // Preview the current effect based on selected settings
+  const previewCurrentEffect = useCallback(() => {
+    if (!canvasRef.current || !hiddenCanvasRef.current || !image || currentEffect === 'none') return;
     
-    const effectToPreview: AppliedEffect = {
-      type: currentEffect
-    };
-    
-    if (currentEffect === 'halftone') {
-      effectToPreview.settings = { ...halftoneSettings };
-    } else if (currentEffect === 'duotone') {
-      effectToPreview.settings = { ...duotoneSettings };
-    } else if (currentEffect === 'noise') {
-      effectToPreview.settings = { noiseLevel };
-    }
-    
-    setPreviewEffect(effectToPreview);
-    setPreviewMode(true);
-    
-    // Apply the preview effect to the canvas
     const canvas = canvasRef.current;
     const hiddenCanvas = hiddenCanvasRef.current;
-    
-    if (!canvas || !hiddenCanvas || !image) return;
-    
     const ctx = canvas.getContext('2d');
     const hiddenCtx = hiddenCanvas.getContext('2d');
     
     if (!ctx || !hiddenCtx) return;
     
-    // Set canvas dimensions to match the image
-    canvas.width = image.width;
-    canvas.height = image.height;
-    hiddenCanvas.width = image.width;
-    hiddenCanvas.height = image.height;
-    
-    // Draw the original image on the hidden canvas
+    // Clear the hidden canvas
     hiddenCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    
+    // Draw the original image to the hidden canvas
     hiddenCtx.drawImage(image, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
     
-    // Get the image data
-    const imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    // Get the image data from the hidden canvas
+    let imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
     
-    // Apply all existing effects
-    let processedImageData = imageData;
+    // First apply all existing effects
     for (const effect of appliedEffects) {
-      processedImageData = applyEffectToImageData(
-        effect, 
-        processedImageData, 
-        hiddenCtx, 
-        hiddenCanvas.width, 
-        hiddenCanvas.height
-      );
+      imageData = applyEffect(imageData, effect);
     }
     
-    // Apply the preview effect
-    processedImageData = applyEffectToImageData(
-      effectToPreview, 
-      processedImageData, 
-      hiddenCtx, 
-      hiddenCanvas.width, 
-      hiddenCanvas.height
-    );
+    // Then apply the current effect with current settings
+    let currentEffectObj: AppliedEffect;
     
-    // Put the processed image data back on the canvas
-    ctx.putImageData(processedImageData, 0, 0);
-  };
-  
-  // Cancel the preview and revert to the original image with applied effects
-  const cancelPreview = () => {
-    setPreviewMode(false);
-    setPreviewEffect(null);
-    
-    // Redraw the canvas with only the applied effects
-    renderCanvas();
-  };
-
-  // Apply the current effect
-  const applyEffect = () => {
-    if (!image || currentEffect === 'none') return;
-    
-    const newEffect: AppliedEffect = {
-      type: currentEffect
-    };
-    
-    if (currentEffect === 'halftone') {
-      newEffect.settings = { ...halftoneSettings };
-    } else if (currentEffect === 'duotone') {
-      newEffect.settings = { ...duotoneSettings };
-    } else if (currentEffect === 'noise') {
-      newEffect.settings = { noiseLevel };
+    switch (currentEffect) {
+      case 'halftone':
+        currentEffectObj = { type: 'halftone', settings: debouncedHalftoneSettings };
+        break;
+      case 'duotone':
+        currentEffectObj = { type: 'duotone', settings: debouncedDuotoneSettings };
+        break;
+      case 'blackwhite':
+        currentEffectObj = { type: 'blackwhite', settings: {} };
+        break;
+      case 'sepia':
+        currentEffectObj = { type: 'sepia', settings: {} };
+        break;
+      case 'noise':
+        currentEffectObj = { 
+          type: 'noise', 
+          settings: { level: debouncedNoiseLevel } 
+        };
+        break;
+      default:
+        return;
     }
     
-    setAppliedEffects(prev => [...prev, newEffect]);
-    setPreviewMode(false);
-    setPreviewEffect(null);
-  };
+    imageData = applyEffect(imageData, currentEffectObj);
+    
+    // Draw the processed image data to the visible canvas
+    ctx.putImageData(imageData, 0, 0);
+  }, [
+    appliedEffects, 
+    image, 
+    currentEffect, 
+    debouncedHalftoneSettings, 
+    debouncedDuotoneSettings, 
+    debouncedNoiseLevel
+  ]);
   
-  // Remove an effect from the applied effects
-  const removeEffect = (index: number) => {
-    setAppliedEffects(prev => prev.filter((_, i) => i !== index));
-  };
-  
-  // Effect to update canvas when image or effects change
+  // Effect to update canvas when effects or settings change
   useEffect(() => {
-    if (!image) return;
+    if (currentEffect === 'none') {
+      renderCanvas();
+    } else {
+      previewCurrentEffect();
+    }
+  }, [
+    renderCanvas, 
+    previewCurrentEffect, 
+    currentEffect, 
+    debouncedHalftoneSettings, 
+    debouncedDuotoneSettings, 
+    debouncedNoiseLevel
+  ]);
+  
+  // Function to save the current effect to the appliedEffects list
+  const saveCurrentEffect = () => {
+    if (!image || currentEffect === 'none') return;
     
-    // If we're in preview mode, don't re-render the canvas
-    if (previewMode) return;
+    let newEffect: AppliedEffect;
     
-    renderCanvas();
+    switch (currentEffect) {
+      case 'halftone':
+        newEffect = { type: 'halftone', settings: { ...halftoneSettings } };
+        break;
+      case 'duotone':
+        newEffect = { type: 'duotone', settings: { ...duotoneSettings } };
+        break;
+      case 'blackwhite':
+        newEffect = { type: 'blackwhite', settings: {} };
+        break;
+      case 'sepia':
+        newEffect = { type: 'sepia', settings: {} };
+        break;
+      case 'noise':
+        newEffect = { 
+          type: 'noise', 
+          settings: { level: noiseLevel } 
+        };
+        break;
+      default:
+        return;
+    }
     
-    // Save the current state to history if effects changed
-    if (imageHistory.length > 0 && 
-        JSON.stringify(imageHistory[imageHistory.length - 1].effects) !== JSON.stringify(appliedEffects)) {
+    // Add the new effect to the list
+    const newEffects = [...appliedEffects, newEffect];
+    setAppliedEffects(newEffects);
+    
+    // Save to history
+    if (canvasRef.current) {
       const newHistory: ImageHistory = {
-        dataUrl: canvasRef.current?.toDataURL('image/png') || '',
-        effects: [...appliedEffects],
+        dataUrl: canvasRef.current.toDataURL('image/png'),
+        effects: newEffects,
         timestamp: Date.now()
       };
       
       setImageHistory(prev => [...prev, newHistory]);
     }
-  }, [appliedEffects, image, imageHistory, previewMode]);
-  
-  // Function to apply a single effect to image data
-  const applyEffectToImageData = (
-    effect: AppliedEffect, 
-    imageData: ImageData, 
-    ctx: CanvasRenderingContext2D,
-    width: number,
-    height: number
-  ): ImageData => {
-    const data = imageData.data;
     
-    if (effect.type === 'duotone') {
-      const settings = effect.settings as DuotoneSettings;
-      
-      // Parse hex colors to RGB
-      const parseColor = (hex: string) => {
-        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-        return result ? {
-          r: parseInt(result[1], 16),
-          g: parseInt(result[2], 16),
-          b: parseInt(result[3], 16)
-        } : { r: 0, g: 0, b: 0 };
-      };
-      
-      const color1 = parseColor(settings.color1);
-      const color2 = parseColor(settings.color2);
-      
-      // Apply duotone effect
-      for (let i = 0; i < data.length; i += 4) {
-        // Calculate grayscale value
-        const gray = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) / 255;
-        
-        // Mix colors based on gray value
-        data[i] = Math.round(color1.r * (1 - gray) + color2.r * gray);   // Red
-        data[i + 1] = Math.round(color1.g * (1 - gray) + color2.g * gray); // Green
-        data[i + 2] = Math.round(color1.b * (1 - gray) + color2.b * gray); // Blue
-        
-        // Apply intensity
-        if (settings.intensity < 1) {
-          const originalWeight = 1 - settings.intensity;
-          data[i] = Math.round(data[i] * settings.intensity + imageData.data[i] * originalWeight);
-          data[i + 1] = Math.round(data[i + 1] * settings.intensity + imageData.data[i + 1] * originalWeight);
-          data[i + 2] = Math.round(data[i + 2] * settings.intensity + imageData.data[i + 2] * originalWeight);
-        }
-      }
-      
-      ctx.putImageData(imageData, 0, 0);
-      return ctx.getImageData(0, 0, width, height);
-      
-    } else if (effect.type === 'halftone') {
-      const settings = effect.settings as HalftoneSettings;
-      
-      // Create a new canvas for the halftone effect
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = width;
-      tempCanvas.height = height;
-      const tempCtx = tempCanvas.getContext('2d');
-      if (!tempCtx) return imageData;
-      
-      // Put the current image data on the temp canvas
-      tempCtx.putImageData(imageData, 0, 0);
-      
-      // Get grayscale data
-      const grayscaleData: number[] = [];
-      for (let i = 0; i < data.length; i += 4) {
-        const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
-        grayscaleData.push(gray);
-      }
-      
-      // Clear the context for halftone effect
-      ctx.clearRect(0, 0, width, height);
-      
-      // Apply halftone effect
-      const spacing = settings.spacing; // Dot spacing
-      const size = settings.dotSize; // Max dot size
-      const radians = (settings.angle * Math.PI) / 180;
-      
-      // Set white background for halftone effect
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, width, height);
-      ctx.fillStyle = 'black';
-      
-      for (let y = 0; y < height; y += spacing) {
-        for (let x = 0; x < width; x += spacing) {
-          // Get the grayscale value at this position
-          const pixelIndex = (y * width + x) * 4;
-          const grayIndex = Math.floor(pixelIndex / 4);
-          
-          if (grayIndex < grayscaleData.length) {
-            const gray = grayscaleData[grayIndex];
-            // Calculate dot size based on grayscale value (darker = larger dot)
-            const dotSize = (255 - gray) * size / 255;
-            
-            if (dotSize > 0) {
-              // Draw the dot
-              ctx.beginPath();
-              
-              if (settings.shape === 'circle') {
-                ctx.arc(x, y, dotSize / 2, 0, Math.PI * 2);
-              } else if (settings.shape === 'square') {
-                ctx.rect(x - dotSize / 2, y - dotSize / 2, dotSize, dotSize);
-              } else if (settings.shape === 'line') {
-                const startX = x - (dotSize / 2) * Math.cos(radians);
-                const startY = y - (dotSize / 2) * Math.sin(radians);
-                const endX = x + (dotSize / 2) * Math.cos(radians);
-                const endY = y + (dotSize / 2) * Math.sin(radians);
-                
-                ctx.moveTo(startX, startY);
-                ctx.lineTo(endX, endY);
-                ctx.lineWidth = Math.max(1, dotSize / 3);
-              }
-              
-              ctx.fill();
-              if (settings.shape === 'line') {
-                ctx.stroke();
-              }
-            }
-          }
-        }
-      }
-      
-      return ctx.getImageData(0, 0, width, height);
-      
-    } else if (effect.type === 'blackwhite') {
-      // Apply black and white effect
-      for (let i = 0; i < data.length; i += 4) {
-        const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
-        data[i] = gray;     // Red
-        data[i + 1] = gray; // Green
-        data[i + 2] = gray; // Blue
-      }
-      
-      ctx.putImageData(imageData, 0, 0);
-      return ctx.getImageData(0, 0, width, height);
-      
-    } else if (effect.type === 'sepia') {
-      // Apply sepia effect
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        
-        data[i] = Math.min(255, (r * 0.393) + (g * 0.769) + (b * 0.189));     // Red
-        data[i + 1] = Math.min(255, (r * 0.349) + (g * 0.686) + (b * 0.168)); // Green
-        data[i + 2] = Math.min(255, (r * 0.272) + (g * 0.534) + (b * 0.131)); // Blue
-      }
-      
-      ctx.putImageData(imageData, 0, 0);
-      return ctx.getImageData(0, 0, width, height);
-      
-    } else if (effect.type === 'noise') {
-      const settings = effect.settings as { noiseLevel: number };
-      
-      // Apply noise effect
-      for (let i = 0; i < data.length; i += 4) {
-        if (i % 4 < 3) { // Skip alpha channel
-          const noise = (Math.random() - 0.5) * settings.noiseLevel;
-          data[i] = Math.max(0, Math.min(255, data[i] + noise));
-          data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
-          data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
-        }
-      }
-      
-      ctx.putImageData(imageData, 0, 0);
-      return ctx.getImageData(0, 0, width, height);
-    }
-    
-    return imageData;
+    // Reset the current effect
+    setCurrentEffect('none');
   };
   
-  // Handle undo
+  // Handle undo action
   const handleUndo = () => {
     if (imageHistory.length <= 1) return;
     
     // Remove the last item from history
     const newHistory = [...imageHistory];
     newHistory.pop();
+    
+    // Update the history and applied effects
     setImageHistory(newHistory);
-    
-    // Set the applied effects to the previous state
-    const previousState = newHistory[newHistory.length - 1];
-    setAppliedEffects(previousState.effects);
-    
-    // If we're back to the original image, reset
-    if (newHistory.length === 1) {
-      const img = new Image();
-      img.onload = () => {
-        setImage(img);
-        originalImageRef.current = img;
-      };
-      img.src = previousState.dataUrl;
-    }
-  };
-  
-  // Download the processed image
-  const handleDownload = () => {
-    if (!canvasRef.current) return;
-    
-    const link = document.createElement('a');
-    link.download = `edited-image.png`;
-    link.href = canvasRef.current.toDataURL('image/png');
-    link.click();
+    setAppliedEffects(newHistory[newHistory.length - 1].effects);
   };
   
   // Handle color selection from the color library
@@ -503,73 +515,6 @@ export default function ImageEditorComponent() {
     }
   };
   
-  // Preview a color from the color library
-  const handlePreviewColor = (color: string) => {
-    if (!image) return;
-    
-    // Store current settings to restore later
-    const tempEffect: AppliedEffect = {
-      type: 'duotone',
-      settings: {
-        color1: color,
-        color2: duotoneSettings.color2,
-        intensity: duotoneSettings.intensity
-      }
-    };
-    
-    // Apply preview
-    setPreviewMode(true);
-    setPreviewEffect(tempEffect);
-    
-    // Apply the preview effect to the canvas
-    const canvas = canvasRef.current;
-    const hiddenCanvas = hiddenCanvasRef.current;
-    
-    if (!canvas || !hiddenCanvas || !image) return;
-    
-    const ctx = canvas.getContext('2d');
-    const hiddenCtx = hiddenCanvas.getContext('2d');
-    
-    if (!ctx || !hiddenCtx) return;
-    
-    // Set canvas dimensions to match the image
-    canvas.width = image.width;
-    canvas.height = image.height;
-    hiddenCanvas.width = image.width;
-    hiddenCanvas.height = image.height;
-    
-    // Draw the original image on the hidden canvas
-    hiddenCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
-    hiddenCtx.drawImage(image, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
-    
-    // Get the image data
-    const imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
-    
-    // Apply all existing effects
-    let processedImageData = imageData;
-    for (const effect of appliedEffects) {
-      processedImageData = applyEffectToImageData(
-        effect, 
-        processedImageData, 
-        hiddenCtx, 
-        hiddenCanvas.width, 
-        hiddenCanvas.height
-      );
-    }
-    
-    // Apply the preview effect
-    processedImageData = applyEffectToImageData(
-      tempEffect, 
-      processedImageData, 
-      hiddenCtx, 
-      hiddenCanvas.width, 
-      hiddenCanvas.height
-    );
-    
-    // Put the processed image data back on the canvas
-    ctx.putImageData(processedImageData, 0, 0);
-  };
-
   // Handle duotone pair selection from the color library
   const handleDuotonePairSelect = (color1: string, color2: string) => {
     setDuotoneSettings(prev => ({ 
@@ -584,396 +529,256 @@ export default function ImageEditorComponent() {
     }
   };
   
-  // Preview a duotone pair from the color library
-  const handlePreviewDuotonePair = (color1: string, color2: string) => {
-    if (!image) return;
+  // Download the edited image
+  const handleDownload = () => {
+    if (!canvasRef.current) return;
     
-    // Store current settings to restore later
-    const tempEffect: AppliedEffect = {
-      type: 'duotone',
-      settings: {
-        color1: color1,
-        color2: color2,
-        intensity: duotoneSettings.intensity
-      }
-    };
-    
-    // Apply preview
-    setPreviewMode(true);
-    setPreviewEffect(tempEffect);
-    
-    // Apply the preview effect to the canvas
-    const canvas = canvasRef.current;
-    const hiddenCanvas = hiddenCanvasRef.current;
-    
-    if (!canvas || !hiddenCanvas || !image) return;
-    
-    const ctx = canvas.getContext('2d');
-    const hiddenCtx = hiddenCanvas.getContext('2d');
-    
-    if (!ctx || !hiddenCtx) return;
-    
-    // Set canvas dimensions to match the image
-    canvas.width = image.width;
-    canvas.height = image.height;
-    hiddenCanvas.width = image.width;
-    hiddenCanvas.height = image.height;
-    
-    // Draw the original image on the hidden canvas
-    hiddenCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
-    hiddenCtx.drawImage(image, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
-    
-    // Get the image data
-    const imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
-    
-    // Apply all existing effects
-    let processedImageData = imageData;
-    for (const effect of appliedEffects) {
-      processedImageData = applyEffectToImageData(
-        effect, 
-        processedImageData, 
-        hiddenCtx, 
-        hiddenCanvas.width, 
-        hiddenCanvas.height
-      );
-    }
-    
-    // Apply the preview effect
-    processedImageData = applyEffectToImageData(
-      tempEffect, 
-      processedImageData, 
-      hiddenCtx, 
-      hiddenCanvas.width, 
-      hiddenCanvas.height
-    );
-    
-    // Put the processed image data back on the canvas
-    ctx.putImageData(processedImageData, 0, 0);
+    const link = document.createElement('a');
+    link.download = 'edited-image.png';
+    link.href = canvasRef.current.toDataURL('image/png');
+    link.click();
   };
   
   return (
-    <div className="container mx-auto p-4 h-full">
-      <Card className="w-full h-full flex flex-col">
-        <CardHeader className="pb-2">
-          <CardTitle>Image Editor</CardTitle>
-          <CardDescription>Upload an image and apply multiple effects</CardDescription>
-        </CardHeader>
-        <CardContent className="flex-1 flex flex-col md:flex-row gap-4 p-2 overflow-hidden">
-          <div className="w-full md:w-3/4 flex flex-col">
-            <div className="flex justify-between mb-2">
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="icon"
-                  onClick={handleUndo}
-                  disabled={imageHistory.length <= 1}
-                >
-                  <Undo className="h-4 w-4" />
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="icon"
-                  onClick={handleDownload}
-                  disabled={!image}
-                >
-                  <Download className="h-4 w-4" />
-                </Button>
-              </div>
+    <div className="flex flex-col h-full">
+      {/* Hidden canvas for processing */}
+      <canvas ref={hiddenCanvasRef} style={{ display: 'none' }} />
+      
+      <div className="flex flex-col md:flex-row h-full gap-4">
+        {/* Main image display area */}
+        <div className="flex-1 flex items-center justify-center bg-muted/20 border rounded-lg overflow-hidden">
+          {!image ? (
+            <UploadDropzone
+              onUpload={(file: File) => handleImageUpload(file)}
+            />
+          ) : (
+            <div className="relative w-full h-full flex items-center justify-center p-4">
+              <canvas
+                ref={canvasRef}
+                className="max-w-full max-h-full object-contain shadow-lg"
+              />
             </div>
-            <div className="flex-1 bg-gray-100 rounded-md overflow-hidden relative flex items-center justify-center">
-              {!image && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <UploadDropzone onUpload={handleImageUpload} />
+          )}
+        </div>
+        
+        {/* Controls sidebar */}
+        <div className="w-full md:w-80 h-full shrink-0">
+          <Tabs defaultValue="effects">
+            <TabsList className="w-full">
+              <TabsTrigger value="effects" className="flex-1">Effects</TabsTrigger>
+              <TabsTrigger value="colors" className="flex-1">Colors</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="effects" className="h-full">
+              {image && (
+                <div className="space-y-4">
+                  {/* Effect controls */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Applied Effects</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {appliedEffects.length > 0 ? (
+                        <div className="space-y-2">
+                          {appliedEffects.map((effect, index) => (
+                            <div key={index} className="flex justify-between items-center bg-muted/50 p-2 rounded text-sm">
+                              <span className="capitalize">{effect.type}</span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => {
+                                  const newEffects = [...appliedEffects];
+                                  newEffects.splice(index, 1);
+                                  setAppliedEffects(newEffects);
+                                }}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                          {appliedEffects.length > 0 && (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="mt-2 w-full"
+                              onClick={handleUndo}
+                            >
+                              <Undo className="h-4 w-4 mr-2" />
+                              Undo Last Effect
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-center text-muted-foreground text-sm p-2">
+                          No effects applied yet.
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                  
+                  {/* Effect type selector */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Effect Type</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Select 
+                        value={currentEffect} 
+                        onValueChange={(value) => setCurrentEffect(value as Effect)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select effect" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          <SelectItem value="halftone">Halftone</SelectItem>
+                          <SelectItem value="duotone">Duotone</SelectItem>
+                          <SelectItem value="blackwhite">Black & White</SelectItem>
+                          <SelectItem value="sepia">Sepia</SelectItem>
+                          <SelectItem value="noise">Noise</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      
+                      {/* Effect specific controls */}
+                      {currentEffect === 'halftone' && (
+                        <div className="mt-4 space-y-4">
+                          <div>
+                            <Label htmlFor="dotSize">Dot Size: {halftoneSettings.dotSize.toFixed(1)}</Label>
+                            <Slider
+                              id="dotSize"
+                              min={1}
+                              max={10}
+                              step={0.5}
+                              value={[halftoneSettings.dotSize]}
+                              onValueChange={(value) => setHalftoneSettings(prev => ({ ...prev, dotSize: value[0] }))}
+                              className="mt-1"
+                            />
+                          </div>
+                          
+                          <div>
+                            <Label htmlFor="spacing">Spacing: {halftoneSettings.spacing}</Label>
+                            <Slider
+                              id="spacing"
+                              min={5}
+                              max={20}
+                              step={1}
+                              value={[halftoneSettings.spacing]}
+                              onValueChange={(value) => setHalftoneSettings(prev => ({ ...prev, spacing: value[0] }))}
+                              className="mt-1"
+                            />
+                          </div>
+                          
+                          <div>
+                            <Label htmlFor="angle">Angle: {halftoneSettings.angle}°</Label>
+                            <Slider
+                              id="angle"
+                              min={0}
+                              max={90}
+                              step={5}
+                              value={[halftoneSettings.angle]}
+                              onValueChange={(value) => setHalftoneSettings(prev => ({ ...prev, angle: value[0] }))}
+                              className="mt-1"
+                            />
+                          </div>
+                          
+                          <div>
+                            <Label htmlFor="shape">Shape</Label>
+                            <Select 
+                              value={halftoneSettings.shape} 
+                              onValueChange={(value) => setHalftoneSettings(prev => ({ ...prev, shape: value as 'circle' | 'square' | 'line' }))}
+                            >
+                              <SelectTrigger id="shape" className="mt-1">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="circle">Circle</SelectItem>
+                                <SelectItem value="square">Square</SelectItem>
+                                <SelectItem value="line">Line</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {currentEffect === 'duotone' && (
+                        <div className="mt-4 space-y-4">
+                          <div>
+                            <Label htmlFor="intensity">Intensity: {Math.round(duotoneSettings.intensity * 100)}%</Label>
+                            <Slider
+                              id="intensity"
+                              min={0}
+                              max={1}
+                              step={0.1}
+                              value={[duotoneSettings.intensity]}
+                              onValueChange={(value) => setDuotoneSettings(prev => ({ ...prev, intensity: value[0] }))}
+                              className="mt-1"
+                            />
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label>Color Library</Label>
+                            <ColorSetSelector 
+                              onSelectColor={handleColorSelect}
+                              onSelectPair={handleDuotonePairSelect}
+                              selectedColor={duotoneSettings.color1}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      
+                      {currentEffect === 'noise' && (
+                        <div className="mt-4">
+                          <Label htmlFor="noise-level">Noise Level: {Math.round(noiseLevel * 100)}%</Label>
+                          <Slider
+                            id="noise-level"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={[noiseLevel]}
+                            onValueChange={(value) => setNoiseLevel(value[0])}
+                            className="mt-1"
+                          />
+                        </div>
+                      )}
+                      
+                      {currentEffect !== 'none' && (
+                        <div className="mt-4 flex justify-end">
+                          <Button
+                            onClick={saveCurrentEffect}
+                            disabled={!image}
+                          >
+                            Apply Effect
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                  
+                  {/* Download button */}
+                  <Button
+                    variant="outline"
+                    className="w-full mt-4"
+                    onClick={handleDownload}
+                    disabled={!image}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Image
+                  </Button>
                 </div>
               )}
-              <canvas ref={canvasRef} className="max-w-full max-h-full" />
-              <canvas ref={hiddenCanvasRef} className="hidden" />
-            </div>
-          </div>
-          
-          <div className="w-full md:w-1/4 overflow-y-auto">
-            <Tabs defaultValue="effects">
-              <TabsList className="w-full">
-                <TabsTrigger value="effects" className="flex-1">Effects</TabsTrigger>
-                <TabsTrigger value="colors" className="flex-1">Colors</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="effects" className="space-y-4 mt-2">
-                {/* Applied Effects List */}
-                {image && (
-                  <div className="mb-4 border-b pb-2">
-                    <h3 className="text-sm font-medium mb-1">Applied Effects:</h3>
-                    {appliedEffects.length === 0 ? (
-                      <p className="text-sm text-gray-500">No effects applied yet</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {appliedEffects.map((effect, index) => (
-                          <div 
-                            key={`${effect.type}-${index}`} 
-                            className="bg-gray-200 rounded-md px-2 py-1 text-xs flex items-center gap-1"
-                          >
-                            <span>{effect.type}</span>
-                            <button 
-                              onClick={() => removeEffect(index)}
-                              className="text-red-500 hover:text-red-700"
-                            >
-                              <Trash className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Black & White</Label>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setCurrentEffect('blackwhite')}
-                      className={currentEffect === 'blackwhite' ? "bg-blue-100" : ""}
-                      disabled={!image}
-                    >
-                      Select
-                    </Button>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <Label>Sepia</Label>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setCurrentEffect('sepia')}
-                      className={currentEffect === 'sepia' ? "bg-blue-100" : ""}
-                      disabled={!image}
-                    >
-                      Select
-                    </Button>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <Label>Noise</Label>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setCurrentEffect('noise')}
-                      className={currentEffect === 'noise' ? "bg-blue-100" : ""}
-                      disabled={!image}
-                    >
-                      Select
-                    </Button>
-                  </div>
-                  
-                  {currentEffect === 'noise' && (
-                    <div className="pt-2">
-                      <Label>Noise Level: {noiseLevel}</Label>
-                      <Slider
-                        value={[noiseLevel]}
-                        min={0}
-                        max={100}
-                        step={1}
-                        onValueChange={(value) => setNoiseLevel(value[0])}
-                      />
-                    </div>
-                  )}
-                  
-                  <div className="flex items-center justify-between">
-                    <Label>Halftone</Label>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setCurrentEffect('halftone')}
-                      className={currentEffect === 'halftone' ? "bg-blue-100" : ""}
-                      disabled={!image}
-                    >
-                      Select
-                    </Button>
-                  </div>
-                  
-                  {currentEffect === 'halftone' && (
-                    <div className="space-y-2 pt-2">
-                      <div>
-                        <Label>Dot Size: {halftoneSettings.dotSize}</Label>
-                        <Slider
-                          value={[halftoneSettings.dotSize]}
-                          min={1}
-                          max={10}
-                          step={0.5}
-                          onValueChange={(value) => setHalftoneSettings(prev => ({ ...prev, dotSize: value[0] }))}
-                        />
-                      </div>
-                      <div>
-                        <Label>Spacing: {halftoneSettings.spacing}</Label>
-                        <Slider
-                          value={[halftoneSettings.spacing]}
-                          min={3}
-                          max={15}
-                          step={1}
-                          onValueChange={(value) => setHalftoneSettings(prev => ({ ...prev, spacing: value[0] }))}
-                        />
-                      </div>
-                      <div>
-                        <Label>Angle: {halftoneSettings.angle}°</Label>
-                        <Slider
-                          value={[halftoneSettings.angle]}
-                          min={0}
-                          max={180}
-                          step={5}
-                          onValueChange={(value) => setHalftoneSettings(prev => ({ ...prev, angle: value[0] }))}
-                        />
-                      </div>
-                      <div>
-                        <Label>Shape:</Label>
-                        <select 
-                          value={halftoneSettings.shape} 
-                          onChange={(e) => setHalftoneSettings(prev => ({ 
-                            ...prev, 
-                            shape: e.target.value as 'circle' | 'square' | 'line' 
-                          }))}
-                          className="w-full p-2 border border-gray-300 rounded mt-1"
-                        >
-                          <option value="circle">Circle</option>
-                          <option value="square">Square</option>
-                          <option value="line">Line</option>
-                        </select>
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div className="flex items-center justify-between">
-                    <Label>Duotone</Label>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setCurrentEffect('duotone')}
-                      className={currentEffect === 'duotone' ? "bg-blue-100" : ""}
-                      disabled={!image}
-                    >
-                      Select
-                    </Button>
-                  </div>
-                  
-                  {currentEffect === 'duotone' && (
-                    <div className="space-y-2 pt-2">
-                      <div>
-                        <Label>Color 1</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button 
-                              variant="outline" 
-                              className="w-full h-8 mt-1" 
-                              style={{ backgroundColor: duotoneSettings.color1 }}
-                            />
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <ColorPicker
-                              color={duotoneSettings.color1}
-                              onChange={(color) => setDuotoneSettings(prev => ({ ...prev, color1: color }))}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                      <div>
-                        <Label>Color 2</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button 
-                              variant="outline" 
-                              className="w-full h-8 mt-1" 
-                              style={{ backgroundColor: duotoneSettings.color2 }}
-                            />
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <ColorPicker
-                              color={duotoneSettings.color2}
-                              onChange={(color) => setDuotoneSettings(prev => ({ ...prev, color2: color }))}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                      <div>
-                        <Label>Intensity: {duotoneSettings.intensity.toFixed(1)}</Label>
-                        <Slider
-                          value={[duotoneSettings.intensity * 100]}
-                          min={0}
-                          max={100}
-                          step={10}
-                          onValueChange={(value) => setDuotoneSettings(prev => ({ 
-                            ...prev, 
-                            intensity: value[0] / 100 
-                          }))}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Preview and Apply Effect Buttons */}
-                  <div className="flex gap-2 mt-4">
-                    <Button 
-                      className="flex-1"
-                      variant="outline"
-                      onClick={previewMode ? cancelPreview : previewCurrentEffect}
-                      disabled={!image || currentEffect === 'none'}
-                    >
-                      {previewMode ? "Cancel Preview" : "Preview Effect"}
-                    </Button>
-                    
-                    <Button 
-                      className="flex-1"
-                      onClick={applyEffect}
-                      disabled={!image || currentEffect === 'none'}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Effect
-                    </Button>
-                  </div>
-                </div>
-              </TabsContent>
-              
-              <TabsContent value="colors" className="space-y-4 mt-2">
-                <ColorSetSelector 
-                  onSelectColor={handleColorSelect}
-                  onSelectPair={handleDuotonePairSelect}
-                  onPreviewColor={handlePreviewColor}
-                  onPreviewPair={handlePreviewDuotonePair}
-                  onCancelPreview={cancelPreview}
-                  selectedColor={currentEffect === 'duotone' ? duotoneSettings.color1 : undefined}
-                  previewMode={!!image}
-                />
-                
-                {currentEffect === 'duotone' && (
-                  <div className="mt-4 space-y-2 border-t pt-4">
-                    <h3 className="text-sm font-medium">Duotone Settings</h3>
-                    <div>
-                      <Label>Intensity: {duotoneSettings.intensity.toFixed(1)}</Label>
-                      <Slider
-                        value={[duotoneSettings.intensity * 100]}
-                        min={0}
-                        max={100}
-                        step={10}
-                        onValueChange={(value) => setDuotoneSettings(prev => ({ 
-                          ...prev, 
-                          intensity: value[0] / 100 
-                        }))}
-                      />
-                    </div>
-                    <Button 
-                      className="w-full mt-2"
-                      onClick={applyEffect}
-                      disabled={!image}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Color Effect
-                    </Button>
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
-          </div>
-        </CardContent>
-      </Card>
+            </TabsContent>
+            
+            <TabsContent value="colors" className="h-full">
+              <ColorSetSelector 
+                onSelectColor={handleColorSelect}
+                onSelectPair={handleDuotonePairSelect}
+                selectedColor={currentEffect === 'duotone' ? duotoneSettings.color1 : undefined}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
     </div>
   );
 }
