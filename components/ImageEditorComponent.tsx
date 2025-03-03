@@ -5,12 +5,6 @@ import { UploadDropzone } from './ui/upload-dropzone';
 import { Button } from './ui/button';
 import { Slider } from './ui/slider';
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from './ui/tabs';
-import {
   Card,
   CardContent,
   CardHeader,
@@ -62,32 +56,47 @@ interface AppliedEffect {
   settings: EffectSettings;
 }
 
+// Define the color set selector props based on how we're using it
+interface DuotoneColorProps {
+  color1: string;
+  color2: string;
+  onColor1Change: (color: string) => void;
+  onColor2Change: (color: string) => void;
+}
+
 export default function ImageEditorComponent() {
   // Canvas references
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const hiddenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   
-  // Image and effect state
+  // State for the app
   const [image, setImage] = useState<HTMLImageElement | null>(null);
-  const [currentEffect, setCurrentEffect] = useState<Effect>('none');
+  const [originalImageData, setOriginalImageData] = useState<ImageData | null>(null);
   const [appliedEffects, setAppliedEffects] = useState<AppliedEffect[]>([]);
-  const [imageHistory, setImageHistory] = useState<ImageHistory[]>([]);
+  const [currentEffect, setCurrentEffect] = useState<Effect>('none');
+  const [history, setHistory] = useState<ImageHistory[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
   
-  // Effect-specific settings
+  // Effect settings state
   const [halftoneSettings, setHalftoneSettings] = useState<HalftoneSettings>({
-    dotSize: 3,
+    dotSize: 2,
     spacing: 5,
     angle: 45,
     shape: 'circle'
   });
   
   const [duotoneSettings, setDuotoneSettings] = useState<DuotoneSettings>({
-    color1: '#0000ff',
-    color2: '#ff0000',
-    intensity: 0.5
+    color1: '#000000',
+    color2: '#ffffff',
+    intensity: 100
   });
   
-  const [noiseLevel, setNoiseLevel] = useState(0.5);
+  const [noiseLevel, setNoiseLevel] = useState<number>(20);
+  
+  // Use debounce for better performance
+  const debouncedHalftoneSettings = useDebounce(halftoneSettings, 200);
+  const debouncedDuotoneSettings = useDebounce(duotoneSettings, 200);
+  const debouncedNoiseLevel = useDebounce(noiseLevel, 200);
   
   // Debounce function for handling frequent updates
   function useDebounce<T>(value: T, delay: number): T {
@@ -106,49 +115,138 @@ export default function ImageEditorComponent() {
     return debouncedValue;
   }
   
-  // Debounced values to prevent too many re-renders
-  const debouncedHalftoneSettings = useDebounce(halftoneSettings, 100);
-  const debouncedDuotoneSettings = useDebounce(duotoneSettings, 100);
-  const debouncedNoiseLevel = useDebounce(noiseLevel, 100);
-  
-  // Handle file upload
+  // Image upload handler with fixed scaling
   const handleImageUpload = (file: File) => {
     const reader = new FileReader();
+    
     reader.onload = (e) => {
-      if (e.target?.result) {
-        const img = new Image();
-        img.onload = () => {
-          setImage(img);
+      const img = new Image();
+      img.onload = () => {
+        setImage(img);
+        
+        // Reset all effects and state
+        setAppliedEffects([]);
+        setCurrentEffect('none');
+        setHistory([]);
+        setHistoryIndex(-1);
+        
+        // Initialize canvas with proper scaling
+        if (canvasRef.current) {
+          const canvas = canvasRef.current;
+          const ctx = canvas.getContext('2d');
           
-          // Setup canvas size
-          if (canvasRef.current && hiddenCanvasRef.current) {
-            const aspectRatio = img.width / img.height;
-            const canvasWidth = 800;
-            const canvasHeight = canvasWidth / aspectRatio;
+          if (ctx) {
+            // Set canvas dimensions based on image aspect ratio
+            const containerWidth = canvas.parentElement?.clientWidth || 800;
+            const containerHeight = canvas.parentElement?.clientHeight || 600;
             
-            canvasRef.current.width = canvasWidth;
-            canvasRef.current.height = canvasHeight;
-            hiddenCanvasRef.current.width = canvasWidth;
-            hiddenCanvasRef.current.height = canvasHeight;
+            const scale = Math.min(
+              containerWidth / img.width,
+              containerHeight / img.height
+            ) * 0.9; // 90% of container to leave some margin
             
-            // Initial render of the image
-            renderCanvas();
+            canvas.width = img.width * scale;
+            canvas.height = img.height * scale;
             
-            // Add to history
-            const newHistory: ImageHistory = {
-              dataUrl: canvasRef.current.toDataURL('image/png'),
-              effects: [],
-              timestamp: Date.now()
-            };
+            // Clear canvas and draw image centered
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
             
-            setImageHistory([newHistory]);
+            // Store the original image data for resetting between effects
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            setOriginalImageData(imageData);
           }
-        };
-        img.src = e.target.result as string;
-      }
+        }
+      };
+      
+      img.src = e.target?.result as string;
     };
+    
     reader.readAsDataURL(file);
   };
+  
+  // Reset to original image before applying new effect
+  const resetToOriginal = useCallback(() => {
+    if (canvasRef.current && originalImageData) {
+      const ctx = canvasRef.current.getContext('2d');
+      if (ctx) {
+        ctx.putImageData(originalImageData, 0, 0);
+        return true;
+      }
+    }
+    return false;
+  }, [originalImageData]);
+  
+  // Apply effect with reset first
+  const applyEffectWithReset = useCallback(() => {
+    if (!image || !resetToOriginal()) return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let currentEffectObj: AppliedEffect | null = null;
+    
+    switch (currentEffect) {
+      case 'halftone':
+        currentEffectObj = {
+          type: 'halftone',
+          settings: debouncedHalftoneSettings
+        };
+        break;
+      case 'duotone':
+        currentEffectObj = {
+          type: 'duotone',
+          settings: debouncedDuotoneSettings
+        };
+        break;
+      case 'blackwhite':
+        currentEffectObj = { type: 'blackwhite', settings: {} };
+        break;
+      case 'sepia':
+        currentEffectObj = { type: 'sepia', settings: {} };
+        break;
+      case 'noise':
+        currentEffectObj = { 
+          type: 'noise', 
+          settings: { level: debouncedNoiseLevel } 
+        };
+        break;
+      default:
+        return;
+    }
+    
+    if (currentEffectObj) {
+      imageData = applyEffect(imageData, currentEffectObj);
+      ctx.putImageData(imageData, 0, 0);
+    }
+  }, [
+    image, 
+    currentEffect, 
+    debouncedHalftoneSettings, 
+    debouncedDuotoneSettings, 
+    debouncedNoiseLevel,
+    resetToOriginal
+  ]);
+  
+  // Effect to update canvas when effects or settings change
+  useEffect(() => {
+    if (currentEffect === 'none') {
+      resetToOriginal();
+    } else {
+      applyEffectWithReset();
+    }
+  }, [
+    currentEffect, 
+    debouncedHalftoneSettings, 
+    debouncedDuotoneSettings, 
+    debouncedNoiseLevel,
+    resetToOriginal,
+    applyEffectWithReset
+  ]);
   
   // Function to apply a single effect to image data
   const applyEffect = (imageData: ImageData, effect: AppliedEffect): ImageData => {
@@ -361,98 +459,24 @@ export default function ImageEditorComponent() {
     ctx.putImageData(imageData, 0, 0);
   }, [appliedEffects, image]);
   
-  // Preview the current effect based on selected settings
-  const previewCurrentEffect = useCallback(() => {
-    if (!canvasRef.current || !hiddenCanvasRef.current || !image || currentEffect === 'none') return;
-    
-    const canvas = canvasRef.current;
-    const hiddenCanvas = hiddenCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const hiddenCtx = hiddenCanvas.getContext('2d');
-    
-    if (!ctx || !hiddenCtx) return;
-    
-    // Clear the hidden canvas
-    hiddenCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
-    
-    // Draw the original image to the hidden canvas
-    hiddenCtx.drawImage(image, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
-    
-    // Get the image data from the hidden canvas
-    let imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
-    
-    // First apply all existing effects
-    for (const effect of appliedEffects) {
-      imageData = applyEffect(imageData, effect);
-    }
-    
-    // Then apply the current effect with current settings
-    let currentEffectObj: AppliedEffect;
-    
-    switch (currentEffect) {
-      case 'halftone':
-        currentEffectObj = { type: 'halftone', settings: debouncedHalftoneSettings };
-        break;
-      case 'duotone':
-        currentEffectObj = { type: 'duotone', settings: debouncedDuotoneSettings };
-        break;
-      case 'blackwhite':
-        currentEffectObj = { type: 'blackwhite', settings: {} };
-        break;
-      case 'sepia':
-        currentEffectObj = { type: 'sepia', settings: {} };
-        break;
-      case 'noise':
-        currentEffectObj = { 
-          type: 'noise', 
-          settings: { level: debouncedNoiseLevel } 
-        };
-        break;
-      default:
-        return;
-    }
-    
-    imageData = applyEffect(imageData, currentEffectObj);
-    
-    // Draw the processed image data to the visible canvas
-    ctx.putImageData(imageData, 0, 0);
-  }, [
-    appliedEffects, 
-    image, 
-    currentEffect, 
-    debouncedHalftoneSettings, 
-    debouncedDuotoneSettings, 
-    debouncedNoiseLevel
-  ]);
-  
-  // Effect to update canvas when effects or settings change
-  useEffect(() => {
-    if (currentEffect === 'none') {
-      renderCanvas();
-    } else {
-      previewCurrentEffect();
-    }
-  }, [
-    renderCanvas, 
-    previewCurrentEffect, 
-    currentEffect, 
-    debouncedHalftoneSettings, 
-    debouncedDuotoneSettings, 
-    debouncedNoiseLevel
-  ]);
-  
-  // Function to save the current effect to the appliedEffects list
-  const saveCurrentEffect = () => {
+  // Apply effect to history
+  const handleApplyEffect = useCallback(() => {
     if (!image || currentEffect === 'none') return;
     
     let newEffect: AppliedEffect;
     
     switch (currentEffect) {
       case 'halftone':
-        newEffect = { type: 'halftone', settings: { ...halftoneSettings } };
+        newEffect = {
+          type: 'halftone',
+          settings: halftoneSettings
+        };
         break;
       case 'duotone':
-        newEffect = { type: 'duotone', settings: { ...duotoneSettings } };
+        newEffect = {
+          type: 'duotone',
+          settings: duotoneSettings
+        };
         break;
       case 'blackwhite':
         newEffect = { type: 'blackwhite', settings: {} };
@@ -482,65 +506,67 @@ export default function ImageEditorComponent() {
         timestamp: Date.now()
       };
       
-      setImageHistory(prev => [...prev, newHistory]);
+      // Truncate future history if we're not at the latest point
+      const newHistoryList = history.slice(0, historyIndex + 1).concat([newHistory]);
+      setHistory(newHistoryList);
+      setHistoryIndex(newHistoryList.length - 1);
+      
+      // Update original image data for next effect
+      const ctx = canvasRef.current.getContext('2d');
+      if (ctx) {
+        setOriginalImageData(ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height));
+      }
     }
     
-    // Reset the current effect
+    // Reset current effect
     setCurrentEffect('none');
-  };
+  }, [
+    image, 
+    currentEffect, 
+    halftoneSettings, 
+    duotoneSettings, 
+    noiseLevel, 
+    appliedEffects, 
+    history, 
+    historyIndex
+  ]);
   
   // Handle undo action
   const handleUndo = () => {
-    if (imageHistory.length <= 1) return;
+    if (history.length <= 1) return;
     
     // Remove the last item from history
-    const newHistory = [...imageHistory];
+    const newHistory = [...history];
     newHistory.pop();
     
     // Update the history and applied effects
-    setImageHistory(newHistory);
+    setHistory(newHistory);
     setAppliedEffects(newHistory[newHistory.length - 1].effects);
   };
   
-  // Handle color selection from the color library
-  const handleColorSelect = (color: string) => {
+  // Color handling functions
+  const handleColorSelect = useCallback((color: string) => {
     if (currentEffect === 'duotone') {
       setDuotoneSettings(prev => ({ ...prev, color1: color }));
     }
-    
-    // If no effect is selected, automatically set to duotone
-    if (currentEffect === 'none' && image) {
-      setCurrentEffect('duotone');
-      setDuotoneSettings(prev => ({ ...prev, color1: color }));
-    }
-  };
-  
-  // Handle duotone pair selection from the color library
-  const handleDuotonePairSelect = (color1: string, color2: string) => {
-    setDuotoneSettings(prev => ({ 
-      ...prev, 
-      color1, 
-      color2 
-    }));
-    
-    // If no effect is selected, automatically set to duotone
-    if (currentEffect === 'none' && image) {
-      setCurrentEffect('duotone');
-    }
-  };
+  }, [currentEffect]);
+
+  const handleDuotonePairSelect = useCallback((color1: string, color2: string) => {
+    setDuotoneSettings(prev => ({ ...prev, color1, color2 }));
+  }, []);
   
   // Download the edited image
   const handleDownload = () => {
-    if (!canvasRef.current) return;
-    
-    const link = document.createElement('a');
-    link.download = 'edited-image.png';
-    link.href = canvasRef.current.toDataURL('image/png');
-    link.click();
+    if (canvasRef.current) {
+      const link = document.createElement('a');
+      link.download = 'edited-image.png';
+      link.href = canvasRef.current.toDataURL('image/png');
+      link.click();
+    }
   };
   
   return (
-    <div className="flex flex-col h-full">
+    <div className="w-full h-full flex flex-col space-y-4">
       {/* Hidden canvas for processing */}
       <canvas ref={hiddenCanvasRef} style={{ display: 'none' }} />
       
@@ -561,222 +587,207 @@ export default function ImageEditorComponent() {
           )}
         </div>
         
-        {/* Controls sidebar */}
-        <div className="w-full md:w-80 h-full shrink-0">
-          <Tabs defaultValue="effects">
-            <TabsList className="w-full">
-              <TabsTrigger value="effects" className="flex-1">Effects</TabsTrigger>
-              <TabsTrigger value="colors" className="flex-1">Colors</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="effects" className="h-full">
-              {image && (
+        {/* Controls panel */}
+        <div className="w-full md:w-80 flex flex-col gap-4">
+          {/* Effects Stack */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Image Effects</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Applied Effects Section */}
+              <div>
+                <h3 className="text-lg font-medium mb-2">Applied Effects</h3>
+                {appliedEffects.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No effects applied yet.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {appliedEffects.map((effect, index) => (
+                      <li key={index} className="flex items-center justify-between bg-muted p-2 rounded-md">
+                        <span className="capitalize">{effect.type}</span>
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => {
+                            const newEffects = [...appliedEffects];
+                            newEffects.splice(index, 1);
+                            setAppliedEffects(newEffects);
+                            renderCanvas();
+                          }}
+                          className="h-8 w-8"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              
+              {/* Effect Type Selection */}
+              <div>
+                <Label htmlFor="effect-type" className="text-lg font-medium mb-2">Effect Type</Label>
+                <Select
+                  value={currentEffect}
+                  onValueChange={(value: Effect) => setCurrentEffect(value)}
+                >
+                  <SelectTrigger id="effect-type">
+                    <SelectValue placeholder="Select effect" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="halftone">Halftone</SelectItem>
+                    <SelectItem value="duotone">Duotone</SelectItem>
+                    <SelectItem value="blackwhite">Black & White</SelectItem>
+                    <SelectItem value="sepia">Sepia</SelectItem>
+                    <SelectItem value="noise">Noise</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {/* Effect Controls */}
+              {currentEffect === 'halftone' && (
                 <div className="space-y-4">
-                  {/* Effect controls */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Applied Effects</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {appliedEffects.length > 0 ? (
-                        <div className="space-y-2">
-                          {appliedEffects.map((effect, index) => (
-                            <div key={index} className="flex justify-between items-center bg-muted/50 p-2 rounded text-sm">
-                              <span className="capitalize">{effect.type}</span>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={() => {
-                                  const newEffects = [...appliedEffects];
-                                  newEffects.splice(index, 1);
-                                  setAppliedEffects(newEffects);
-                                }}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ))}
-                          {appliedEffects.length > 0 && (
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className="mt-2 w-full"
-                              onClick={handleUndo}
-                            >
-                              <Undo className="h-4 w-4 mr-2" />
-                              Undo Last Effect
-                            </Button>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="text-center text-muted-foreground text-sm p-2">
-                          No effects applied yet.
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label htmlFor="dot-size">Dot Size: {halftoneSettings.dotSize.toFixed(1)}</Label>
+                    </div>
+                    <Slider
+                      id="dot-size"
+                      min={0.5}
+                      max={10}
+                      step={0.1}
+                      value={[halftoneSettings.dotSize]}
+                      onValueChange={(values) => setHalftoneSettings({...halftoneSettings, dotSize: values[0]})}
+                    />
+                  </div>
                   
-                  {/* Effect type selector */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Effect Type</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Select 
-                        value={currentEffect} 
-                        onValueChange={(value) => setCurrentEffect(value as Effect)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select effect" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          <SelectItem value="halftone">Halftone</SelectItem>
-                          <SelectItem value="duotone">Duotone</SelectItem>
-                          <SelectItem value="blackwhite">Black & White</SelectItem>
-                          <SelectItem value="sepia">Sepia</SelectItem>
-                          <SelectItem value="noise">Noise</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      
-                      {/* Effect specific controls */}
-                      {currentEffect === 'halftone' && (
-                        <div className="mt-4 space-y-4">
-                          <div>
-                            <Label htmlFor="dotSize">Dot Size: {halftoneSettings.dotSize.toFixed(1)}</Label>
-                            <Slider
-                              id="dotSize"
-                              min={1}
-                              max={10}
-                              step={0.5}
-                              value={[halftoneSettings.dotSize]}
-                              onValueChange={(value) => setHalftoneSettings(prev => ({ ...prev, dotSize: value[0] }))}
-                              className="mt-1"
-                            />
-                          </div>
-                          
-                          <div>
-                            <Label htmlFor="spacing">Spacing: {halftoneSettings.spacing}</Label>
-                            <Slider
-                              id="spacing"
-                              min={5}
-                              max={20}
-                              step={1}
-                              value={[halftoneSettings.spacing]}
-                              onValueChange={(value) => setHalftoneSettings(prev => ({ ...prev, spacing: value[0] }))}
-                              className="mt-1"
-                            />
-                          </div>
-                          
-                          <div>
-                            <Label htmlFor="angle">Angle: {halftoneSettings.angle}°</Label>
-                            <Slider
-                              id="angle"
-                              min={0}
-                              max={90}
-                              step={5}
-                              value={[halftoneSettings.angle]}
-                              onValueChange={(value) => setHalftoneSettings(prev => ({ ...prev, angle: value[0] }))}
-                              className="mt-1"
-                            />
-                          </div>
-                          
-                          <div>
-                            <Label htmlFor="shape">Shape</Label>
-                            <Select 
-                              value={halftoneSettings.shape} 
-                              onValueChange={(value) => setHalftoneSettings(prev => ({ ...prev, shape: value as 'circle' | 'square' | 'line' }))}
-                            >
-                              <SelectTrigger id="shape" className="mt-1">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="circle">Circle</SelectItem>
-                                <SelectItem value="square">Square</SelectItem>
-                                <SelectItem value="line">Line</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {currentEffect === 'duotone' && (
-                        <div className="mt-4 space-y-4">
-                          <div>
-                            <Label htmlFor="intensity">Intensity: {Math.round(duotoneSettings.intensity * 100)}%</Label>
-                            <Slider
-                              id="intensity"
-                              min={0}
-                              max={1}
-                              step={0.1}
-                              value={[duotoneSettings.intensity]}
-                              onValueChange={(value) => setDuotoneSettings(prev => ({ ...prev, intensity: value[0] }))}
-                              className="mt-1"
-                            />
-                          </div>
-                          
-                          <div className="space-y-2">
-                            <Label>Color Library</Label>
-                            <ColorSetSelector 
-                              onSelectColor={handleColorSelect}
-                              onSelectPair={handleDuotonePairSelect}
-                              selectedColor={duotoneSettings.color1}
-                            />
-                          </div>
-                        </div>
-                      )}
-                      
-                      {currentEffect === 'noise' && (
-                        <div className="mt-4">
-                          <Label htmlFor="noise-level">Noise Level: {Math.round(noiseLevel * 100)}%</Label>
-                          <Slider
-                            id="noise-level"
-                            min={0}
-                            max={1}
-                            step={0.05}
-                            value={[noiseLevel]}
-                            onValueChange={(value) => setNoiseLevel(value[0])}
-                            className="mt-1"
-                          />
-                        </div>
-                      )}
-                      
-                      {currentEffect !== 'none' && (
-                        <div className="mt-4 flex justify-end">
-                          <Button
-                            onClick={saveCurrentEffect}
-                            disabled={!image}
-                          >
-                            Apply Effect
-                          </Button>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label htmlFor="spacing">Spacing: {halftoneSettings.spacing}</Label>
+                    </div>
+                    <Slider
+                      id="spacing"
+                      min={1}
+                      max={20}
+                      step={1}
+                      value={[halftoneSettings.spacing]}
+                      onValueChange={(values) => setHalftoneSettings({...halftoneSettings, spacing: values[0]})}
+                    />
+                  </div>
                   
-                  {/* Download button */}
-                  <Button
-                    variant="outline"
-                    className="w-full mt-4"
-                    onClick={handleDownload}
-                    disabled={!image}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download Image
-                  </Button>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label htmlFor="angle">Angle: {halftoneSettings.angle}°</Label>
+                    </div>
+                    <Slider
+                      id="angle"
+                      min={0}
+                      max={180}
+                      step={1}
+                      value={[halftoneSettings.angle]}
+                      onValueChange={(values) => setHalftoneSettings({...halftoneSettings, angle: values[0]})}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="shape">Shape</Label>
+                    <Select
+                      value={halftoneSettings.shape}
+                      onValueChange={(value: 'circle' | 'square' | 'line') => 
+                        setHalftoneSettings({...halftoneSettings, shape: value})}
+                    >
+                      <SelectTrigger id="shape">
+                        <SelectValue placeholder="Select shape" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="circle">Circle</SelectItem>
+                        <SelectItem value="square">Square</SelectItem>
+                        <SelectItem value="line">Line</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               )}
-            </TabsContent>
+              
+              {currentEffect === 'duotone' && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label htmlFor="intensity">Intensity: {duotoneSettings.intensity}%</Label>
+                    </div>
+                    <Slider
+                      id="intensity"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={[duotoneSettings.intensity]}
+                      onValueChange={(values) => setDuotoneSettings({...duotoneSettings, intensity: values[0]})}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label>Colors</Label>
+                    <ColorSetSelector
+                      onSelectColor={handleColorSelect}
+                      onSelectPair={handleDuotonePairSelect}
+                      selectedColor={duotoneSettings.color1}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {currentEffect === 'noise' && (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <Label htmlFor="noise-level">Noise Level: {noiseLevel}%</Label>
+                  </div>
+                  <Slider
+                    id="noise-level"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={[noiseLevel]}
+                    onValueChange={(values) => setNoiseLevel(values[0])}
+                  />
+                </div>
+              )}
+              
+              {/* Apply Effect Button */}
+              {currentEffect !== 'none' && (
+                <Button 
+                  onClick={handleApplyEffect} 
+                  className="w-full"
+                >
+                  Apply Effect
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+          
+          {/* History buttons */}
+          <div className="flex space-x-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleUndo}
+              disabled={historyIndex <= 0}
+              title="Undo"
+            >
+              <Undo className="h-4 w-4" />
+            </Button>
             
-            <TabsContent value="colors" className="h-full">
-              <ColorSetSelector 
-                onSelectColor={handleColorSelect}
-                onSelectPair={handleDuotonePairSelect}
-                selectedColor={currentEffect === 'duotone' ? duotoneSettings.color1 : undefined}
-              />
-            </TabsContent>
-          </Tabs>
+            {image && (
+              <Button 
+                variant="outline" 
+                className="flex-1"
+                onClick={handleDownload}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download Image
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>
