@@ -618,25 +618,38 @@ export default function ImageEditorComponent() {
     
     // Create a new ImageData with grayscale values
     const tempData = new ImageData(grayscaleData, imageData.width, imageData.height);
+    
+    // First draw the grayscale version as a base
     ctx.putImageData(tempData, 0, 0);
     
-    // Clear again and draw halftone pattern
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    // Create an offscreen canvas for the halftone pattern
+    const offscreenCanvas = document.createElement('canvas');
+    offscreenCanvas.width = ctx.canvas.width;
+    offscreenCanvas.height = ctx.canvas.height;
+    const offCtx = offscreenCanvas.getContext('2d');
+    
+    if (!offCtx) {
+      console.error('Could not get offscreen canvas context');
+      return imageData;
+    }
+    
+    // Clear offscreen canvas
+    offCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+    
+    // Fill with white background
+    offCtx.fillStyle = 'white';
+    offCtx.fillRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
     
     // Set drawing style
-    ctx.fillStyle = 'black';
-    ctx.strokeStyle = 'black';
+    offCtx.fillStyle = 'black';
+    offCtx.strokeStyle = 'black';
     
     // Angle in radians
     const radians = angle * Math.PI / 180;
     
-    // Loop through the image with spacing intervals
-    for (let y = spacing; y < ctx.canvas.height; y += spacing) {
-      for (let x = spacing; x < ctx.canvas.width; x += spacing) {
-        // Rotate coordinates
-        const rotatedX = x * Math.cos(radians) - y * Math.sin(radians);
-        const rotatedY = x * Math.sin(radians) + y * Math.cos(radians);
-        
+    // Loop through the image with spacing intervals (using original coordinates)
+    for (let y = 0; y < ctx.canvas.height; y += spacing) {
+      for (let x = 0; x < ctx.canvas.width; x += spacing) {
         // Sample the grayscale value at this point
         const pixelIndex = (Math.floor(y) * imageData.width + Math.floor(x)) * 4;
         
@@ -652,28 +665,46 @@ export default function ImageEditorComponent() {
         const size = dotSize * (grayValue > threshold ? (1 - grayValue) * 0.8 + 0.2 : 0);
         
         if (size > 0) {
-          ctx.beginPath();
+          offCtx.save();
+          
+          // First translate to where the dot should be
+          offCtx.translate(x, y);
+          
+          // Only apply rotation if needed
+          if (angle !== 0) {
+            // For individual elements, rotate around their center
+            offCtx.rotate(radians);
+          }
+          
+          offCtx.beginPath();
           
           switch (shape) {
             case 'circle':
-              ctx.arc(rotatedX, rotatedY, size, 0, Math.PI * 2);
-              ctx.fill();
+              offCtx.arc(0, 0, size, 0, Math.PI * 2);
+              offCtx.fill();
               break;
             case 'square':
-              ctx.fillRect(rotatedX - size, rotatedY - size, size * 2, size * 2);
+              offCtx.fillRect(-size, -size, size * 2, size * 2);
               break;
             case 'line':
-              ctx.lineWidth = size;
-              ctx.beginPath();
-              ctx.moveTo(rotatedX - spacing / 2, rotatedY);
-              ctx.lineTo(rotatedX + spacing / 2, rotatedY);
-              ctx.stroke();
+              offCtx.lineWidth = size;
+              offCtx.beginPath();
+              offCtx.moveTo(-spacing / 2, 0);
+              offCtx.lineTo(spacing / 2, 0);
+              offCtx.stroke();
               break;
           }
+          
+          offCtx.restore();
         }
       }
     }
     
+    // Draw the halftone pattern from the offscreen canvas onto the main canvas
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.drawImage(offscreenCanvas, 0, 0);
+    
+    // Return the new image data
     return ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
   };
   
