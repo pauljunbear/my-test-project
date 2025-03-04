@@ -184,6 +184,35 @@ export default function ImageEditorComponent() {
     reader.readAsDataURL(file);
   };
   
+  // Function to apply a single effect to image data
+  const applyEffect = (imageData: ImageData, effect: AppliedEffect): ImageData => {
+    const { type, settings } = effect;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) return imageData;
+    
+    ctx.putImageData(imageData, 0, 0);
+    
+    switch (type) {
+      case 'halftone':
+        return applyHalftoneEffect(ctx, imageData, settings as HalftoneSettings);
+      case 'duotone':
+        return applyDuotoneEffect(ctx, imageData, settings as DuotoneSettings);
+      case 'blackwhite':
+        return applyBlackAndWhiteEffect(ctx, imageData);
+      case 'sepia':
+        return applySepiaEffect(ctx, imageData);
+      case 'noise':
+        return applyNoiseEffect(ctx, imageData, (settings as NoiseSettings).level);
+      default:
+        return imageData;
+    }
+  };
+  
   // Reset to original image before applying new effect
   const resetToOriginal = useCallback(() => {
     if (canvasRef.current && originalImageData) {
@@ -248,7 +277,8 @@ export default function ImageEditorComponent() {
     debouncedHalftoneSettings, 
     debouncedDuotoneSettings, 
     debouncedNoiseLevel,
-    resetToOriginal
+    resetToOriginal,
+    applyEffect
   ]);
   
   // Effect to update canvas when effects or settings change
@@ -269,35 +299,6 @@ export default function ImageEditorComponent() {
     applyEffectWithReset,
     image
   ]);
-  
-  // Function to apply a single effect to image data
-  const applyEffect = (imageData: ImageData, effect: AppliedEffect): ImageData => {
-    const { type, settings } = effect;
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = imageData.width;
-    canvas.height = imageData.height;
-    const ctx = canvas.getContext('2d');
-    
-    if (!ctx) return imageData;
-    
-    ctx.putImageData(imageData, 0, 0);
-    
-    switch (type) {
-      case 'halftone':
-        return applyHalftoneEffect(ctx, imageData, settings as HalftoneSettings);
-      case 'duotone':
-        return applyDuotoneEffect(ctx, imageData, settings as DuotoneSettings);
-      case 'blackwhite':
-        return applyBlackAndWhiteEffect(ctx, imageData);
-      case 'sepia':
-        return applySepiaEffect(ctx, imageData);
-      case 'noise':
-        return applyNoiseEffect(ctx, imageData, (settings as NoiseSettings).level);
-      default:
-        return imageData;
-    }
-  };
   
   // Effect application functions
   const applyHalftoneEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, settings: HalftoneSettings): ImageData => {
@@ -613,7 +614,7 @@ export default function ImageEditorComponent() {
     
     // Draw the final result to the visible canvas
     ctx.putImageData(imageData, 0, 0);
-  }, [appliedEffects, originalImageData, image]);
+  }, [appliedEffects, originalImageData, image, applyEffect]);
   
   // Update canvas when applied effects change
   useEffect(() => {
