@@ -60,7 +60,6 @@ export default function ImageEditorComponent() {
   // Refs for DOM elements
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   
   // State for the app
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -117,6 +116,12 @@ export default function ImageEditorComponent() {
       return;
     }
     
+    // Ensure all canvas references are available
+    if (!canvasRef.current || !hiddenCanvasRef.current) {
+      console.error("Canvas references not available at start of upload");
+      return;
+    }
+    
     const reader = new FileReader();
     
     reader.onload = (e) => {
@@ -133,6 +138,11 @@ export default function ImageEditorComponent() {
       // Set up onload handler before setting src
       img.onload = () => {
         console.log(`Image loaded with natural dimensions: ${img.naturalWidth}x${img.naturalHeight}`);
+        
+        if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+          console.error("Image has invalid dimensions (0 width or height)");
+          return;
+        }
         
         // Store the image for later use
         setImage(img);
@@ -153,8 +163,8 @@ export default function ImageEditorComponent() {
         }
         
         // Get the 2D contexts
-        const ctx = canvas.getContext('2d');
-        const hiddenCtx = hiddenCanvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const hiddenCtx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
         
         if (!ctx || !hiddenCtx) {
           console.error("Failed to get canvas contexts");
@@ -162,20 +172,11 @@ export default function ImageEditorComponent() {
         }
         
         // Calculate appropriate dimensions
-        // Force calculation of container dimensions to be more reliable
-        const container = containerRef.current;
-        if (!container) {
-          console.error("Container element not found");
-          return;
-        }
+        // Hard-code reasonable dimensions for testing
+        const maxWidth = 800;
+        const maxHeight = 600;
         
-        console.log(`Raw container dimensions: ${container.clientWidth}x${container.clientHeight}`);
-        
-        // Ensure we have some reasonable dimensions if container is not sized correctly
-        const maxWidth = Math.max(container.clientWidth - 32, 300);
-        const maxHeight = Math.max(container.clientHeight - 32, 300);
-        
-        console.log(`Adjusted container dimensions: ${maxWidth}x${maxHeight}`);
+        console.log(`Using fixed dimensions for testing: ${maxWidth}x${maxHeight}`);
         
         // Calculate scaled dimensions while maintaining aspect ratio
         let width, height;
@@ -220,7 +221,7 @@ export default function ImageEditorComponent() {
         hiddenCtx.clearRect(0, 0, width, height);
         
         try {
-          // Fill with white first to ensure background (important for transparent PNGs)
+          // Fill with white first to ensure background
           ctx.fillStyle = 'white';
           ctx.fillRect(0, 0, width, height);
           hiddenCtx.fillStyle = 'white';
@@ -233,25 +234,33 @@ export default function ImageEditorComponent() {
           hiddenCtx.drawImage(img, 0, 0, width, height);
           console.log("Image drawn on hidden canvas");
           
-          // Verify canvas content
-          try {
-            const testData = ctx.getImageData(0, 0, 10, 10);
-            console.log("Main canvas data sample:", testData.data.slice(0, 20));
-          } catch (err) {
-            console.error("Error retrieving test data from main canvas:", err);
-          }
-          
-          // Store original image data for future use
-          const imageData = hiddenCtx.getImageData(0, 0, width, height);
-          setOriginalImageData(imageData);
-          console.log(`Stored original image data: ${imageData.width}x${imageData.height}`);
-          
-          // Verify image data is valid
-          if (imageData.data.some(val => val !== 0)) {
-            console.log("Image data contains non-zero values (good)");
-          } else {
-            console.warn("Image data appears to be empty or all zeros");
-          }
+          // CRITICAL: Use timeout to ensure the image has time to render before reading pixel data
+          setTimeout(() => {
+            try {
+              console.log("Reading image data after timeout");
+              // Store original image data for future use
+              const imageData = hiddenCtx.getImageData(0, 0, width, height);
+              
+              // Log the first few pixels to verify data
+              const firstPixels = [];
+              for (let i = 0; i < 40; i += 4) {
+                firstPixels.push(`(${imageData.data[i]},${imageData.data[i+1]},${imageData.data[i+2]},${imageData.data[i+3]})`);
+              }
+              console.log("First 10 RGBA pixels:", firstPixels.join(' '));
+              
+              setOriginalImageData(imageData);
+              console.log(`Stored original image data: ${imageData.width}x${imageData.height}`);
+              
+              // Verify image data is valid
+              if (imageData.data.some(val => val !== 0)) {
+                console.log("Image data contains non-zero values (good)");
+              } else {
+                console.warn("Image data appears to be empty or all zeros");
+              }
+            } catch (error) {
+              console.error("Error capturing image data:", error);
+            }
+          }, 100);
         } catch (error) {
           console.error("Error drawing image to canvas:", error);
         }
@@ -267,6 +276,11 @@ export default function ImageEditorComponent() {
       
       // Set the source to trigger loading
       img.src = e.target.result as string;
+      
+      // Force decode the image
+      img.decode().catch(err => {
+        console.error("Error decoding image:", err);
+      });
     };
     
     reader.onerror = (error) => {
@@ -277,7 +291,7 @@ export default function ImageEditorComponent() {
   };
   
   // Function to apply a single effect to image data
-  const applyEffect = (imageData: ImageData, effect: AppliedEffect): ImageData => {
+  const applyEffect = useCallback((imageData: ImageData, effect: AppliedEffect): ImageData => {
     const { type, settings } = effect;
     
     const canvas = document.createElement('canvas');
@@ -288,6 +302,8 @@ export default function ImageEditorComponent() {
     if (!ctx) return imageData;
     
     ctx.putImageData(imageData, 0, 0);
+    
+    console.log(`Applying effect: ${type} with settings:`, settings);
     
     switch (type) {
       case 'halftone':
@@ -303,7 +319,7 @@ export default function ImageEditorComponent() {
       default:
         return imageData;
     }
-  };
+  }, []);
   
   // Reset to original image before applying new effect
   const resetToOriginal = useCallback(() => {
@@ -393,7 +409,7 @@ export default function ImageEditorComponent() {
   ]);
   
   // Improved renderAllEffects function
-  const renderAllEffects = () => {
+  const renderAllEffects = useCallback(() => {
     console.log("Rendering all effects to canvas");
     
     // Verify required resources are available
@@ -454,7 +470,7 @@ export default function ImageEditorComponent() {
     } catch (error) {
       console.error("Error rendering effects:", error);
     }
-  };
+  }, [appliedEffects, originalImageData, image, applyEffect]);
   
   // Update canvas when applied effects change
   useEffect(() => {
@@ -462,7 +478,7 @@ export default function ImageEditorComponent() {
       console.log("Effects changed, re-rendering canvas");
       renderAllEffects();
     }
-  }, [appliedEffects, originalImageData, image]);
+  }, [appliedEffects, originalImageData, image, renderAllEffects]);
   
   // Apply effect to history
   const handleApplyEffect = useCallback(() => {
@@ -869,25 +885,22 @@ export default function ImageEditorComponent() {
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
-              <div 
-                className="relative flex items-center justify-center image-container"
-                style={{ 
-                  width: '100%',
-                  height: '100%',
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  overflow: 'auto'
-                }}
-                ref={containerRef}
-              >
+              <div className="relative">
+                {/* Debug info in development */}
+                <div className="text-xs text-gray-500 mb-2 absolute top-0 left-0">
+                  {process.env.NODE_ENV === 'development' && image && (
+                    <span>Image: {image.naturalWidth}x{image.naturalHeight}</span>
+                  )}
+                </div>
+                
                 <canvas
                   ref={canvasRef}
-                  className="shadow-md"
+                  className="shadow-md bg-white border border-gray-200"
                   style={{
                     imageRendering: 'pixelated',
-                    backgroundColor: '#ffffff',
-                    border: '1px solid rgba(0,0,0,0.1)',
-                    display: 'block'
+                    display: 'block',
+                    maxWidth: '100%',
+                    maxHeight: '70vh'
                   }}
                 />
               </div>
