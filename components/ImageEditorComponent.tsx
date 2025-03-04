@@ -129,26 +129,34 @@ export default function ImageEditorComponent() {
           
           if (ctx) {
             // Get the container dimensions
-            const container = canvas.parentElement;
-            const containerWidth = container?.clientWidth || 800;
-            const containerHeight = container?.clientHeight || 600;
+            const container = canvas.parentElement?.parentElement;
+            if (!container) return;
+            
+            // Get the actual available space
+            const containerWidth = container.clientWidth - 32; // Account for padding
+            const containerHeight = container.clientHeight - 32;
             
             // Calculate dimensions while maintaining aspect ratio
-            let width = img.width;
-            let height = img.height;
+            const imageAspectRatio = img.width / img.height;
+            const containerAspectRatio = containerWidth / containerHeight;
             
-            // Scale down if image is larger than container
-            if (width > containerWidth || height > containerHeight) {
-              const ratio = Math.min(containerWidth / width, containerHeight / height);
-              width *= ratio;
-              height *= ratio;
+            let width, height;
+            
+            if (imageAspectRatio > containerAspectRatio) {
+              // Image is wider than container
+              width = containerWidth;
+              height = containerWidth / imageAspectRatio;
+            } else {
+              // Image is taller than container
+              height = containerHeight;
+              width = containerHeight * imageAspectRatio;
             }
             
-            // Set canvas dimensions to match image
+            // Set canvas dimensions
             canvas.width = width;
             canvas.height = height;
             
-            // Clear canvas and draw image
+            // Clear and draw image
             ctx.clearRect(0, 0, width, height);
             ctx.drawImage(img, 0, 0, width, height);
             
@@ -605,148 +613,157 @@ export default function ImageEditorComponent() {
         </div>
       </div>
       
-      <div className="flex flex-col md:flex-row h-full gap-4">
+      <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0">
         {/* Main image display area */}
-        <div className="flex-1 flex items-center justify-center bg-muted/20 border rounded-lg overflow-hidden">
+        <div className="flex-1 flex flex-col bg-muted/20 border rounded-lg overflow-hidden">
           {!image ? (
-            <UploadDropzone
-              onUpload={(file: File) => handleImageUpload(file)}
-            />
-          ) : (
-            <div className="relative w-full h-full flex items-center justify-center p-4">
-              <canvas
-                ref={canvasRef}
-                className="max-w-full max-h-full object-contain"
-                style={{ imageRendering: 'pixelated' }}
+            <div className="flex-1 flex items-center justify-center">
+              <UploadDropzone
+                onUpload={(file: File) => handleImageUpload(file)}
               />
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center p-4">
+              <div className="relative max-w-full max-h-full flex items-center justify-center">
+                <canvas
+                  ref={canvasRef}
+                  className="max-w-full max-h-full"
+                  style={{
+                    imageRendering: 'pixelated',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                  }}
+                />
+              </div>
             </div>
           )}
         </div>
         
         {/* Effect Controls Panel */}
         {currentEffect !== 'none' && (
-          <Card className="w-full md:w-80">
-            <CardHeader>
-              <CardTitle>Effect Settings</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Effect-specific controls */}
-              {currentEffect === 'halftone' && (
-                <div className="space-y-4">
+          <div className="w-full md:w-80 flex-shrink-0">
+            <Card>
+              <CardHeader>
+                <CardTitle>Effect Settings</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Effect-specific controls */}
+                {currentEffect === 'halftone' && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <Label htmlFor="dot-size">Dot Size: {halftoneSettings.dotSize.toFixed(1)}</Label>
+                      </div>
+                      <Slider
+                        id="dot-size"
+                        min={0.5}
+                        max={10}
+                        step={0.1}
+                        value={[halftoneSettings.dotSize]}
+                        onValueChange={(values) => setHalftoneSettings({...halftoneSettings, dotSize: values[0]})}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <Label htmlFor="spacing">Spacing: {halftoneSettings.spacing}</Label>
+                      </div>
+                      <Slider
+                        id="spacing"
+                        min={1}
+                        max={20}
+                        step={1}
+                        value={[halftoneSettings.spacing]}
+                        onValueChange={(values) => setHalftoneSettings({...halftoneSettings, spacing: values[0]})}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <Label htmlFor="angle">Angle: {halftoneSettings.angle}°</Label>
+                      </div>
+                      <Slider
+                        id="angle"
+                        min={0}
+                        max={180}
+                        step={1}
+                        value={[halftoneSettings.angle]}
+                        onValueChange={(values) => setHalftoneSettings({...halftoneSettings, angle: values[0]})}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="shape">Shape</Label>
+                      <Select
+                        value={halftoneSettings.shape}
+                        onValueChange={(value: 'circle' | 'square' | 'line') => 
+                          setHalftoneSettings({...halftoneSettings, shape: value})}
+                      >
+                        <SelectTrigger id="shape">
+                          <SelectValue placeholder="Select shape" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="circle">Circle</SelectItem>
+                          <SelectItem value="square">Square</SelectItem>
+                          <SelectItem value="line">Line</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+                
+                {currentEffect === 'duotone' && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <Label htmlFor="intensity">Intensity: {duotoneSettings.intensity}%</Label>
+                      </div>
+                      <Slider
+                        id="intensity"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={[duotoneSettings.intensity]}
+                        onValueChange={(values) => setDuotoneSettings({...duotoneSettings, intensity: values[0]})}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Colors</Label>
+                      <ColorSetSelector
+                        onSelectColor={handleColorSelect}
+                        onSelectPair={handleDuotonePairSelect}
+                        selectedColor={duotoneSettings.color1}
+                      />
+                    </div>
+                  </div>
+                )}
+                
+                {currentEffect === 'noise' && (
                   <div className="space-y-2">
                     <div className="flex justify-between">
-                      <Label htmlFor="dot-size">Dot Size: {halftoneSettings.dotSize.toFixed(1)}</Label>
+                      <Label htmlFor="noise-level">Noise Level: {noiseLevel}%</Label>
                     </div>
                     <Slider
-                      id="dot-size"
-                      min={0.5}
-                      max={10}
-                      step={0.1}
-                      value={[halftoneSettings.dotSize]}
-                      onValueChange={(values) => setHalftoneSettings({...halftoneSettings, dotSize: values[0]})}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label htmlFor="spacing">Spacing: {halftoneSettings.spacing}</Label>
-                    </div>
-                    <Slider
-                      id="spacing"
-                      min={1}
-                      max={20}
-                      step={1}
-                      value={[halftoneSettings.spacing]}
-                      onValueChange={(values) => setHalftoneSettings({...halftoneSettings, spacing: values[0]})}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label htmlFor="angle">Angle: {halftoneSettings.angle}°</Label>
-                    </div>
-                    <Slider
-                      id="angle"
-                      min={0}
-                      max={180}
-                      step={1}
-                      value={[halftoneSettings.angle]}
-                      onValueChange={(values) => setHalftoneSettings({...halftoneSettings, angle: values[0]})}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="shape">Shape</Label>
-                    <Select
-                      value={halftoneSettings.shape}
-                      onValueChange={(value: 'circle' | 'square' | 'line') => 
-                        setHalftoneSettings({...halftoneSettings, shape: value})}
-                    >
-                      <SelectTrigger id="shape">
-                        <SelectValue placeholder="Select shape" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="circle">Circle</SelectItem>
-                        <SelectItem value="square">Square</SelectItem>
-                        <SelectItem value="line">Line</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-              
-              {currentEffect === 'duotone' && (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label htmlFor="intensity">Intensity: {duotoneSettings.intensity}%</Label>
-                    </div>
-                    <Slider
-                      id="intensity"
+                      id="noise-level"
                       min={0}
                       max={100}
                       step={1}
-                      value={[duotoneSettings.intensity]}
-                      onValueChange={(values) => setDuotoneSettings({...duotoneSettings, intensity: values[0]})}
+                      value={[noiseLevel]}
+                      onValueChange={(values) => setNoiseLevel(values[0])}
                     />
                   </div>
-                  
-                  <div className="space-y-2">
-                    <Label>Colors</Label>
-                    <ColorSetSelector
-                      onSelectColor={handleColorSelect}
-                      onSelectPair={handleDuotonePairSelect}
-                      selectedColor={duotoneSettings.color1}
-                    />
-                  </div>
-                </div>
-              )}
-              
-              {currentEffect === 'noise' && (
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <Label htmlFor="noise-level">Noise Level: {noiseLevel}%</Label>
-                  </div>
-                  <Slider
-                    id="noise-level"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={[noiseLevel]}
-                    onValueChange={(values) => setNoiseLevel(values[0])}
-                  />
-                </div>
-              )}
-              
-              {/* Apply Effect Button */}
-              <Button 
-                onClick={handleApplyEffect} 
-                className="w-full"
-              >
-                Apply Effect
-              </Button>
-            </CardContent>
-          </Card>
+                )}
+                
+                {/* Apply Effect Button */}
+                <Button 
+                  onClick={handleApplyEffect} 
+                  className="w-full"
+                >
+                  Apply Effect
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         )}
       </div>
     </div>
