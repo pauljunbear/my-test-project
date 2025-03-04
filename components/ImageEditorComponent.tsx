@@ -107,18 +107,42 @@ export default function ImageEditorComponent() {
     return debouncedValue;
   }
   
+  // Use effect to handle initialization
+  useEffect(() => {
+    console.log("Component initialized");
+  }, []);
+  
+  // Function to add current state to history
+  const addToHistory = useCallback(() => {
+    if (!canvasRef.current) return;
+    
+    try {
+      const dataUrl = canvasRef.current.toDataURL('image/png');
+      
+      // Create new history entry
+      const newHistory: ImageHistory = {
+        dataUrl,
+        effects: appliedEffects,
+        timestamp: Date.now()
+      };
+      
+      // Truncate future history if we're not at the latest point
+      const newHistoryList = history.slice(0, historyIndex + 1).concat([newHistory]);
+      setHistory(newHistoryList);
+      setHistoryIndex(newHistoryList.length - 1);
+      
+      console.log("Added to history, new length:", newHistoryList.length);
+    } catch (error) {
+      console.error("Error adding to history:", error);
+    }
+  }, [appliedEffects, history, historyIndex]);
+  
   // Image upload handler with improved initialization
-  const handleImageUpload = (file: File) => {
+  const handleImageUpload = useCallback((file: File) => {
     console.log(`Starting upload for file: ${file.name} (${file.size} bytes, type: ${file.type})`);
     
     if (!file.type.startsWith('image/')) {
       console.error("Not a valid image file");
-      return;
-    }
-    
-    // Ensure all canvas references are available
-    if (!canvasRef.current || !hiddenCanvasRef.current) {
-      console.error("Canvas references not available at start of upload");
       return;
     }
     
@@ -153,117 +177,87 @@ export default function ImageEditorComponent() {
         setHistory([]);
         setHistoryIndex(-1);
         
-        // Get the canvas elements
-        const canvas = canvasRef.current;
-        const hiddenCanvas = hiddenCanvasRef.current;
-        
-        if (!canvas || !hiddenCanvas) {
-          console.error("Canvas references are not available");
-          return;
-        }
-        
-        // Get the 2D contexts
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        const hiddenCtx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
-        
-        if (!ctx || !hiddenCtx) {
-          console.error("Failed to get canvas contexts");
-          return;
-        }
-        
-        // Calculate appropriate dimensions
-        // Hard-code reasonable dimensions for testing
-        const maxWidth = 800;
-        const maxHeight = 600;
-        
-        console.log(`Using fixed dimensions for testing: ${maxWidth}x${maxHeight}`);
-        
-        // Calculate scaled dimensions while maintaining aspect ratio
-        let width: number, height: number;
-        const aspectRatio = img.naturalWidth / img.naturalHeight;
-        
-        if (aspectRatio > 1) {
-          // Image is wider than tall
-          width = Math.min(img.naturalWidth, maxWidth);
-          height = width / aspectRatio;
+        // Use setTimeout to ensure the canvas refs are available after state updates
+        setTimeout(() => {
+          // Get the canvas elements
+          const canvas = canvasRef.current;
+          const hiddenCanvas = hiddenCanvasRef.current;
           
-          // If height exceeds maxHeight, scale down
-          if (height > maxHeight) {
-            height = maxHeight;
+          if (!canvas || !hiddenCanvas) {
+            console.error("Canvas references are not available after delay");
+            return;
+          }
+          
+          // Get the 2D contexts
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          const hiddenCtx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
+          
+          if (!ctx || !hiddenCtx) {
+            console.error("Failed to get canvas contexts");
+            return;
+          }
+          
+          // Set fixed dimensions
+          const maxWidth = 800;
+          const maxHeight = 600;
+          
+          console.log(`Using fixed dimensions: ${maxWidth}x${maxHeight}`);
+          
+          // Calculate scaled dimensions while maintaining aspect ratio
+          let width: number, height: number;
+          const aspectRatio = img.naturalWidth / img.naturalHeight;
+          
+          if (aspectRatio > 1) {
+            // Image is wider than tall
+            width = Math.min(img.naturalWidth, maxWidth);
+            height = width / aspectRatio;
+          } else {
+            // Image is taller than wide or square
+            height = Math.min(img.naturalHeight, maxHeight);
             width = height * aspectRatio;
           }
-        } else {
-          // Image is taller than wide or square
-          height = Math.min(img.naturalHeight, maxHeight);
-          width = height * aspectRatio;
           
-          // If width exceeds maxWidth, scale down
-          if (width > maxWidth) {
-            width = maxWidth;
-            height = width / aspectRatio;
-          }
-        }
-        
-        // Convert to integer to avoid subpixel rendering issues
-        width = Math.floor(width);
-        height = Math.floor(height);
-        
-        console.log(`Setting canvas dimensions to: ${width}x${height}`);
-        
-        // Set canvas dimensions
-        canvas.width = width;
-        canvas.height = height;
-        hiddenCanvas.width = width;
-        hiddenCanvas.height = height;
-        
-        // Clear both canvases before drawing
-        ctx.clearRect(0, 0, width, height);
-        hiddenCtx.clearRect(0, 0, width, height);
-        
-        try {
-          // Fill with white first to ensure background
-          ctx.fillStyle = 'white';
+          // Convert to integer to avoid subpixel rendering issues
+          width = Math.floor(width);
+          height = Math.floor(height);
+          
+          console.log(`Setting canvas dimensions to: ${width}x${height}`);
+          
+          // Set canvas dimensions
+          canvas.width = width;
+          canvas.height = height;
+          hiddenCanvas.width = width;
+          hiddenCanvas.height = height;
+          
+          // Fill with white background
+          ctx.fillStyle = '#FFFFFF';
           ctx.fillRect(0, 0, width, height);
-          hiddenCtx.fillStyle = 'white';
+          hiddenCtx.fillStyle = '#FFFFFF';
           hiddenCtx.fillRect(0, 0, width, height);
           
-          // Draw the image with proper scaling
-          ctx.drawImage(img, 0, 0, width, height);
-          console.log("Image drawn on main canvas");
-          
-          hiddenCtx.drawImage(img, 0, 0, width, height);
-          console.log("Image drawn on hidden canvas");
-          
-          // CRITICAL: Use timeout to ensure the image has time to render before reading pixel data
-          setTimeout(() => {
-            try {
-              console.log("Reading image data after timeout");
-              // Store original image data for future use
-              const imageData = hiddenCtx.getImageData(0, 0, width, height);
-              
-              // Log the first few pixels to verify data
-              const firstPixels = [];
-              for (let i = 0; i < 40; i += 4) {
-                firstPixels.push(`(${imageData.data[i]},${imageData.data[i+1]},${imageData.data[i+2]},${imageData.data[i+3]})`);
-              }
-              console.log("First 10 RGBA pixels:", firstPixels.join(' '));
-              
-              setOriginalImageData(imageData);
-              console.log(`Stored original image data: ${imageData.width}x${imageData.height}`);
-              
-              // Verify image data is valid
-              if (imageData.data.some(val => val !== 0)) {
-                console.log("Image data contains non-zero values (good)");
-              } else {
-                console.warn("Image data appears to be empty or all zeros");
-              }
-            } catch (error) {
-              console.error("Error capturing image data:", error);
-            }
-          }, 100);
-        } catch (error) {
-          console.error("Error drawing image to canvas:", error);
-        }
+          // Now draw the image
+          try {
+            ctx.drawImage(img, 0, 0, width, height);
+            console.log("Image drawn on main canvas");
+            
+            hiddenCtx.drawImage(img, 0, 0, width, height);
+            console.log("Image drawn on hidden canvas");
+            
+            // Get image data from hidden canvas
+            const imageData = hiddenCtx.getImageData(0, 0, width, height);
+            setOriginalImageData(imageData);
+            
+            console.log(`Stored original image data: ${imageData.width}x${imageData.height}`);
+            console.log("First pixel color:", 
+              imageData.data[0], 
+              imageData.data[1], 
+              imageData.data[2], 
+              imageData.data[3]
+            );
+          } catch (error) {
+            console.error("Error drawing image:", error);
+          }
+        }, 100); // Small delay to ensure state updates have completed
       };
       
       // Set up error handler
@@ -271,7 +265,7 @@ export default function ImageEditorComponent() {
         console.error("Error loading image:", error);
       };
       
-      // Force CORS handling to be permissive
+      // Set cross-origin to anonymous
       img.crossOrigin = "anonymous";
       
       // Set the source to trigger loading
@@ -288,7 +282,7 @@ export default function ImageEditorComponent() {
     };
     
     reader.readAsDataURL(file);
-  };
+  }, []);
   
   // Function to apply a single effect to image data
   const applyEffect = useCallback((imageData: ImageData, effect: AppliedEffect): ImageData => {
@@ -424,8 +418,8 @@ export default function ImageEditorComponent() {
     }
     
     // Get the 2D rendering contexts
-    const ctx = canvasRef.current.getContext('2d');
-    const hiddenCtx = hiddenCanvasRef.current.getContext('2d');
+    const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
+    const hiddenCtx = hiddenCanvasRef.current.getContext('2d', { willReadFrequently: true });
     
     if (!ctx || !hiddenCtx) {
       console.error("Failed to get 2D contexts");
@@ -445,6 +439,12 @@ export default function ImageEditorComponent() {
         canvasRef.current.width = originalImageData.width;
         canvasRef.current.height = originalImageData.height;
       }
+      
+      // Fill with white background first
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      hiddenCtx.fillStyle = '#FFFFFF';
+      hiddenCtx.fillRect(0, 0, hiddenCanvasRef.current.width, hiddenCanvasRef.current.height);
       
       // Reset to original image
       hiddenCtx.putImageData(originalImageData, 0, 0);
@@ -480,77 +480,41 @@ export default function ImageEditorComponent() {
     }
   }, [appliedEffects, originalImageData, image, renderAllEffects]);
   
-  // Apply effect to history
+  // Handle apply effect button click
   const handleApplyEffect = useCallback(() => {
-    if (!image || currentEffect === 'none') return;
+    if (!currentEffect || currentEffect === 'none') return;
     
-    let newEffect: AppliedEffect;
+    let effectSettings: EffectSettings;
     
+    // Construct the appropriate settings based on the current effect
     switch (currentEffect) {
       case 'halftone':
-        newEffect = {
-          type: 'halftone',
-          settings: halftoneSettings
-        };
+        effectSettings = halftoneSettings;
         break;
       case 'duotone':
-        newEffect = {
-          type: 'duotone',
-          settings: duotoneSettings
-        };
-        break;
-      case 'blackwhite':
-        newEffect = { type: 'blackwhite', settings: {} };
-        break;
-      case 'sepia':
-        newEffect = { type: 'sepia', settings: {} };
+        effectSettings = duotoneSettings;
         break;
       case 'noise':
-        newEffect = { 
-          type: 'noise', 
-          settings: { level: noiseLevel } 
-        };
+        effectSettings = { level: noiseLevel };
         break;
       default:
-        return;
+        effectSettings = {};
     }
     
-    // Add the new effect to the list
-    const newEffects = [...appliedEffects, newEffect];
-    setAppliedEffects(newEffects);
+    // Create a new effect
+    const newEffect: AppliedEffect = {
+      type: currentEffect,
+      settings: effectSettings
+    };
     
-    // Save to history
-    if (canvasRef.current) {
-      const newHistory: ImageHistory = {
-        dataUrl: canvasRef.current.toDataURL('image/png'),
-        effects: newEffects,
-        timestamp: Date.now()
-      };
-      
-      // Truncate future history if we're not at the latest point
-      const newHistoryList = history.slice(0, historyIndex + 1).concat([newHistory]);
-      setHistory(newHistoryList);
-      setHistoryIndex(newHistoryList.length - 1);
-      
-      // Update original image data for next effect
-      const ctx = canvasRef.current.getContext('2d');
-      if (ctx) {
-        setOriginalImageData(ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height));
-      }
-    }
+    // Add to applied effects
+    setAppliedEffects(prev => [...prev, newEffect]);
     
-    // Reset current effect
-    setCurrentEffect('none');
-  }, [
-    image, 
-    currentEffect, 
-    halftoneSettings, 
-    duotoneSettings, 
-    noiseLevel, 
-    appliedEffects, 
-    history, 
-    historyIndex
-  ]);
+    // Add to history
+    addToHistory();
+    
+    console.log(`Applied ${currentEffect} effect`, newEffect);
+  }, [currentEffect, halftoneSettings, duotoneSettings, noiseLevel, addToHistory]);
   
   // Handle undo action
   const handleUndo = () => {
@@ -884,23 +848,15 @@ export default function ImageEditorComponent() {
               />
             </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
-              <div className="relative">
-                {/* Debug info in development */}
-                <div className="text-xs text-gray-500 mb-2 absolute top-0 left-0">
-                  {process.env.NODE_ENV === 'development' && image && (
-                    <span>Image: {image.naturalWidth}x{image.naturalHeight}</span>
-                  )}
-                </div>
-                
+            <div className="flex-1 flex items-center justify-center p-6">
+              <div className="relative bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
                 <canvas
                   ref={canvasRef}
-                  className="shadow-md bg-white border border-gray-200"
                   style={{
-                    imageRendering: 'pixelated',
+                    imageRendering: 'auto',
                     display: 'block',
                     maxWidth: '100%',
-                    maxHeight: '70vh'
+                    maxHeight: '70vh',
                   }}
                 />
               </div>
