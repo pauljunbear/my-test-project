@@ -11,7 +11,7 @@ import {
   CardTitle,
 } from './ui/card';
 import { Label } from './ui/label';
-import { Download, Undo, X } from 'lucide-react';
+import { Download, Undo } from 'lucide-react';
 import { ColorSetSelector } from './ui/color-set-selector';
 import {
   Select,
@@ -54,14 +54,6 @@ interface ImageHistory {
 interface AppliedEffect {
   type: Effect;
   settings: EffectSettings;
-}
-
-// Define the color set selector props based on how we're using it
-interface DuotoneColorProps {
-  color1: string;
-  color2: string;
-  onColor1Change: (color: string) => void;
-  onColor2Change: (color: string) => void;
 }
 
 export default function ImageEditorComponent() {
@@ -136,24 +128,32 @@ export default function ImageEditorComponent() {
           const ctx = canvas.getContext('2d');
           
           if (ctx) {
-            // Set canvas dimensions based on image aspect ratio
-            const containerWidth = canvas.parentElement?.clientWidth || 800;
-            const containerHeight = canvas.parentElement?.clientHeight || 600;
+            // Get the container dimensions
+            const container = canvas.parentElement;
+            const containerWidth = container?.clientWidth || 800;
+            const containerHeight = container?.clientHeight || 600;
             
-            const scale = Math.min(
-              containerWidth / img.width,
-              containerHeight / img.height
-            ) * 0.9; // 90% of container to leave some margin
+            // Calculate dimensions while maintaining aspect ratio
+            let width = img.width;
+            let height = img.height;
             
-            canvas.width = img.width * scale;
-            canvas.height = img.height * scale;
+            // Scale down if image is larger than container
+            if (width > containerWidth || height > containerHeight) {
+              const ratio = Math.min(containerWidth / width, containerHeight / height);
+              width *= ratio;
+              height *= ratio;
+            }
             
-            // Clear canvas and draw image centered
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            // Set canvas dimensions to match image
+            canvas.width = width;
+            canvas.height = height;
             
-            // Store the original image data for resetting between effects
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            // Clear canvas and draw image
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Store the original image data
+            const imageData = ctx.getImageData(0, 0, width, height);
             setOriginalImageData(imageData);
           }
         }
@@ -429,36 +429,6 @@ export default function ImageEditorComponent() {
     return new ImageData(outputData, imageData.width, imageData.height);
   };
   
-  // Apply all effects to the canvas
-  const renderCanvas = useCallback(() => {
-    if (!canvasRef.current || !hiddenCanvasRef.current || !image) return;
-    
-    const canvas = canvasRef.current;
-    const hiddenCanvas = hiddenCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const hiddenCtx = hiddenCanvas.getContext('2d');
-    
-    if (!ctx || !hiddenCtx) return;
-    
-    // Clear the canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    hiddenCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
-    
-    // Draw the original image to the hidden canvas
-    hiddenCtx.drawImage(image, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
-    
-    // Get the image data from the hidden canvas
-    let imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
-    
-    // Apply all effects in sequence
-    for (const effect of appliedEffects) {
-      imageData = applyEffect(imageData, effect);
-    }
-    
-    // Draw the processed image data to the visible canvas
-    ctx.putImageData(imageData, 0, 0);
-  }, [appliedEffects, image]);
-  
   // Apply effect to history
   const handleApplyEffect = useCallback(() => {
     if (!image || currentEffect === 'none') return;
@@ -570,6 +540,71 @@ export default function ImageEditorComponent() {
       {/* Hidden canvas for processing */}
       <canvas ref={hiddenCanvasRef} style={{ display: 'none' }} />
       
+      {/* Effect Navigation Bar */}
+      <div className="flex items-center justify-between p-2 bg-muted rounded-lg">
+        <div className="flex space-x-2">
+          <Button
+            variant={currentEffect === 'none' ? 'default' : 'outline'}
+            onClick={() => setCurrentEffect('none')}
+          >
+            Original
+          </Button>
+          <Button
+            variant={currentEffect === 'halftone' ? 'default' : 'outline'}
+            onClick={() => setCurrentEffect('halftone')}
+          >
+            Halftone
+          </Button>
+          <Button
+            variant={currentEffect === 'duotone' ? 'default' : 'outline'}
+            onClick={() => setCurrentEffect('duotone')}
+          >
+            Duotone
+          </Button>
+          <Button
+            variant={currentEffect === 'blackwhite' ? 'default' : 'outline'}
+            onClick={() => setCurrentEffect('blackwhite')}
+          >
+            B&W
+          </Button>
+          <Button
+            variant={currentEffect === 'sepia' ? 'default' : 'outline'}
+            onClick={() => setCurrentEffect('sepia')}
+          >
+            Sepia
+          </Button>
+          <Button
+            variant={currentEffect === 'noise' ? 'default' : 'outline'}
+            onClick={() => setCurrentEffect('noise')}
+          >
+            Noise
+          </Button>
+        </div>
+        
+        <div className="flex space-x-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleUndo}
+            disabled={historyIndex <= 0}
+            title="Undo"
+          >
+            <Undo className="h-4 w-4" />
+          </Button>
+          
+          {image && (
+            <Button 
+              variant="outline"
+              onClick={handleDownload}
+              className="flex items-center"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Download
+            </Button>
+          )}
+        </div>
+      </div>
+      
       <div className="flex flex-col md:flex-row h-full gap-4">
         {/* Main image display area */}
         <div className="flex-1 flex items-center justify-center bg-muted/20 border rounded-lg overflow-hidden">
@@ -581,71 +616,21 @@ export default function ImageEditorComponent() {
             <div className="relative w-full h-full flex items-center justify-center p-4">
               <canvas
                 ref={canvasRef}
-                className="max-w-full max-h-full object-contain shadow-lg"
+                className="max-w-full max-h-full object-contain"
+                style={{ imageRendering: 'pixelated' }}
               />
             </div>
           )}
         </div>
         
-        {/* Controls panel */}
-        <div className="w-full md:w-80 flex flex-col gap-4">
-          {/* Effects Stack */}
-          <Card>
+        {/* Effect Controls Panel */}
+        {currentEffect !== 'none' && (
+          <Card className="w-full md:w-80">
             <CardHeader>
-              <CardTitle>Image Effects</CardTitle>
+              <CardTitle>Effect Settings</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Applied Effects Section */}
-              <div>
-                <h3 className="text-lg font-medium mb-2">Applied Effects</h3>
-                {appliedEffects.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No effects applied yet.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {appliedEffects.map((effect, index) => (
-                      <li key={index} className="flex items-center justify-between bg-muted p-2 rounded-md">
-                        <span className="capitalize">{effect.type}</span>
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={() => {
-                            const newEffects = [...appliedEffects];
-                            newEffects.splice(index, 1);
-                            setAppliedEffects(newEffects);
-                            renderCanvas();
-                          }}
-                          className="h-8 w-8"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              
-              {/* Effect Type Selection */}
-              <div>
-                <Label htmlFor="effect-type" className="text-lg font-medium mb-2">Effect Type</Label>
-                <Select
-                  value={currentEffect}
-                  onValueChange={(value: Effect) => setCurrentEffect(value)}
-                >
-                  <SelectTrigger id="effect-type">
-                    <SelectValue placeholder="Select effect" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    <SelectItem value="halftone">Halftone</SelectItem>
-                    <SelectItem value="duotone">Duotone</SelectItem>
-                    <SelectItem value="blackwhite">Black & White</SelectItem>
-                    <SelectItem value="sepia">Sepia</SelectItem>
-                    <SelectItem value="noise">Noise</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              {/* Effect Controls */}
+              {/* Effect-specific controls */}
               {currentEffect === 'halftone' && (
                 <div className="space-y-4">
                   <div className="space-y-2">
@@ -754,41 +739,15 @@ export default function ImageEditorComponent() {
               )}
               
               {/* Apply Effect Button */}
-              {currentEffect !== 'none' && (
-                <Button 
-                  onClick={handleApplyEffect} 
-                  className="w-full"
-                >
-                  Apply Effect
-                </Button>
-              )}
+              <Button 
+                onClick={handleApplyEffect} 
+                className="w-full"
+              >
+                Apply Effect
+              </Button>
             </CardContent>
           </Card>
-          
-          {/* History buttons */}
-          <div className="flex space-x-2">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handleUndo}
-              disabled={historyIndex <= 0}
-              title="Undo"
-            >
-              <Undo className="h-4 w-4" />
-            </Button>
-            
-            {image && (
-              <Button 
-                variant="outline" 
-                className="flex-1"
-                onClick={handleDownload}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Download Image
-              </Button>
-            )}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
