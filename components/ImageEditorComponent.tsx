@@ -179,7 +179,7 @@ export default function ImageEditorComponent() {
         console.log(`Using fixed dimensions for testing: ${maxWidth}x${maxHeight}`);
         
         // Calculate scaled dimensions while maintaining aspect ratio
-        let width, height;
+        let width: number, height: number;
         const aspectRatio = img.naturalWidth / img.naturalHeight;
         
         if (aspectRatio > 1) {
