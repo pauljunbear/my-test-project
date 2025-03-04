@@ -113,6 +113,7 @@ export default function ImageEditorComponent() {
     
     reader.onload = (e) => {
       const img = new Image();
+      
       img.onload = () => {
         setImage(img);
         
@@ -123,18 +124,20 @@ export default function ImageEditorComponent() {
         setHistoryIndex(-1);
         
         // Initialize canvas with proper scaling
-        if (canvasRef.current) {
+        if (canvasRef.current && hiddenCanvasRef.current) {
           const canvas = canvasRef.current;
+          const hiddenCanvas = hiddenCanvasRef.current;
           const ctx = canvas.getContext('2d');
+          const hiddenCtx = hiddenCanvas.getContext('2d');
           
-          if (ctx) {
+          if (ctx && hiddenCtx) {
             // Get the container dimensions
-            const container = canvas.parentElement?.parentElement;
+            const container = canvas.parentElement?.parentElement?.parentElement;
             if (!container) return;
             
             // Get the actual available space
-            const containerWidth = container.clientWidth - 32; // Account for padding
-            const containerHeight = container.clientHeight - 32;
+            const containerWidth = container.clientWidth - 48; // Account for padding
+            const containerHeight = container.clientHeight - 48;
             
             // Calculate dimensions while maintaining aspect ratio
             const imageAspectRatio = img.width / img.height;
@@ -155,14 +158,22 @@ export default function ImageEditorComponent() {
             // Set canvas dimensions
             canvas.width = width;
             canvas.height = height;
+            hiddenCanvas.width = width;
+            hiddenCanvas.height = height;
             
             // Clear and draw image
             ctx.clearRect(0, 0, width, height);
             ctx.drawImage(img, 0, 0, width, height);
             
+            // Also draw on hidden canvas
+            hiddenCtx.clearRect(0, 0, width, height);
+            hiddenCtx.drawImage(img, 0, 0, width, height);
+            
             // Store the original image data
             const imageData = ctx.getImageData(0, 0, width, height);
             setOriginalImageData(imageData);
+            
+            console.log("Image loaded successfully:", width, height);
           }
         }
       };
@@ -242,18 +253,21 @@ export default function ImageEditorComponent() {
   
   // Effect to update canvas when effects or settings change
   useEffect(() => {
-    if (currentEffect === 'none') {
+    if (currentEffect === 'none' || !image) {
       resetToOriginal();
-    } else {
-      applyEffectWithReset();
+      return;
     }
+    
+    // Apply live preview effect
+    applyEffectWithReset();
   }, [
     currentEffect, 
     debouncedHalftoneSettings, 
     debouncedDuotoneSettings, 
     debouncedNoiseLevel,
     resetToOriginal,
-    applyEffectWithReset
+    applyEffectWithReset,
+    image
   ]);
   
   // Function to apply a single effect to image data
@@ -289,11 +303,25 @@ export default function ImageEditorComponent() {
   const applyHalftoneEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, settings: HalftoneSettings): ImageData => {
     const { dotSize, spacing, angle, shape } = settings;
     
+    // Create a Bayer matrix for ordered dithering (4x4)
+    const bayerMatrix4x4 = [
+      [ 1,  9,  3, 11],
+      [13,  5, 15,  7],
+      [ 4, 12,  2, 10],
+      [16,  8, 14,  6]
+    ].map(row => row.map(val => val / 17)); // Normalize to [0, 1] range
+    
     // Convert to grayscale first
     const grayscaleData = new Uint8ClampedArray(imageData.data);
     for (let i = 0; i < grayscaleData.length; i += 4) {
-      const avg = (grayscaleData[i] + grayscaleData[i + 1] + grayscaleData[i + 2]) / 3;
-      grayscaleData[i] = grayscaleData[i + 1] = grayscaleData[i + 2] = avg;
+      // Apply grayscale formula: gray = 0.299 × r + 0.587 × g + 0.114 × b
+      const r = grayscaleData[i] / 255;
+      const g = grayscaleData[i + 1] / 255;
+      const b = grayscaleData[i + 2] / 255;
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      
+      const grayValue = Math.round(gray * 255);
+      grayscaleData[i] = grayscaleData[i + 1] = grayscaleData[i + 2] = grayValue;
     }
     
     // Clear canvas
@@ -322,10 +350,17 @@ export default function ImageEditorComponent() {
         
         // Sample the grayscale value at this point
         const pixelIndex = (Math.floor(y) * imageData.width + Math.floor(x)) * 4;
+        
+        // Apply Bayer dithering
+        const i = Math.floor(y) % 4;
+        const j = Math.floor(x) % 4;
+        const threshold = bayerMatrix4x4[i][j];
+        
         const grayValue = grayscaleData[pixelIndex] / 255;
         
         // Calculate size based on gray value (invert for proper effect)
-        const size = dotSize * (1 - grayValue);
+        // Use dithering threshold to create a more detailed pattern
+        const size = dotSize * (grayValue > threshold ? (1 - grayValue) * 0.8 + 0.2 : 0);
         
         if (size > 0) {
           ctx.beginPath();
@@ -336,7 +371,7 @@ export default function ImageEditorComponent() {
               ctx.fill();
               break;
             case 'square':
-              ctx.fillRect(rotatedX - size / 2, rotatedY - size / 2, size, size);
+              ctx.fillRect(rotatedX - size, rotatedY - size, size * 2, size * 2);
               break;
             case 'line':
               ctx.lineWidth = size;
@@ -356,38 +391,45 @@ export default function ImageEditorComponent() {
   const applyDuotoneEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, settings: DuotoneSettings): ImageData => {
     const { color1, color2, intensity } = settings;
     
-    // Parse colors
+    // Parse colors to RGB components
     const parseColor = (color: string) => {
-      const r = parseInt(color.slice(1, 3), 16);
-      const g = parseInt(color.slice(3, 5), 16);
-      const b = parseInt(color.slice(5, 7), 16);
-      return { r, g, b };
+      const r = parseInt(color.slice(1, 3), 16) / 255;
+      const g = parseInt(color.slice(3, 5), 16) / 255;
+      const b = parseInt(color.slice(5, 7), 16) / 255;
+      return [r, g, b];
     };
     
-    const c1 = parseColor(color1);
-    const c2 = parseColor(color2);
+    const c1 = parseColor(color1); // Shadow color
+    const c2 = parseColor(color2); // Highlight color
     
-    // Create a new array for the output data
-    const outputData = new Uint8ClampedArray(imageData.data);
+    // Create a new array for the modified pixel data
+    const data = imageData.data;
+    const outputData = new Uint8ClampedArray(data.length);
     
-    // Apply duotone effect
-    for (let i = 0; i < outputData.length; i += 4) {
-      const avg = (imageData.data[i] + imageData.data[i + 1] + imageData.data[i + 2]) / 3;
+    // Apply the duotone effect to each pixel
+    for (let i = 0; i < data.length; i += 4) {
+      // Get the RGB values for the current pixel
+      const r = data[i] / 255;
+      const g = data[i + 1] / 255;
+      const b = data[i + 2] / 255;
       
-      // Normalize to [0, 1]
-      const t = avg / 255;
+      // Convert to grayscale using the precise formula 
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
       
-      // Interpolate between the two colors
-      outputData[i] = c1.r * (1 - t) + c2.r * t;
-      outputData[i + 1] = c1.g * (1 - t) + c2.g * t;
-      outputData[i + 2] = c1.b * (1 - t) + c2.b * t;
+      // Apply intensity adjustment
+      const adjustedGray = Math.pow(gray, (intensity / 50) * 0.8 + 0.6);
       
-      // Apply intensity - blend with original
-      if (intensity < 1) {
-        outputData[i] = outputData[i] * intensity + imageData.data[i] * (1 - intensity);
-        outputData[i + 1] = outputData[i + 1] * intensity + imageData.data[i + 1] * (1 - intensity);
-        outputData[i + 2] = outputData[i + 2] * intensity + imageData.data[i + 2] * (1 - intensity);
-      }
+      // Map the grayscale value to the two colors
+      // p' = (1 - gray) × c1 + gray × c2
+      const r_out = Math.round(((1 - adjustedGray) * c1[0] + adjustedGray * c2[0]) * 255);
+      const g_out = Math.round(((1 - adjustedGray) * c1[1] + adjustedGray * c2[1]) * 255);
+      const b_out = Math.round(((1 - adjustedGray) * c1[2] + adjustedGray * c2[2]) * 255);
+      
+      // Set the output pixel values
+      outputData[i] = r_out;
+      outputData[i + 1] = g_out;
+      outputData[i + 2] = b_out;
+      outputData[i + 3] = data[i + 3]; // Keep original alpha
     }
     
     return new ImageData(outputData, imageData.width, imageData.height);
@@ -522,16 +564,21 @@ export default function ImageEditorComponent() {
     setAppliedEffects(newHistory[newHistory.length - 1].effects);
   };
   
-  // Color handling functions
-  const handleColorSelect = useCallback((color: string) => {
-    if (currentEffect === 'duotone') {
-      setDuotoneSettings(prev => ({ ...prev, color1: color }));
-    }
-  }, [currentEffect]);
-
-  const handleDuotonePairSelect = useCallback((color1: string, color2: string) => {
-    setDuotoneSettings(prev => ({ ...prev, color1, color2 }));
-  }, []);
+  // Color selection handlers for duotone effect
+  const handleColorSelect = (color: string) => {
+    setDuotoneSettings({
+      ...duotoneSettings,
+      color1: color
+    });
+  };
+  
+  const handleDuotonePairSelect = (color1: string, color2: string) => {
+    setDuotoneSettings({
+      ...duotoneSettings,
+      color1,
+      color2
+    });
+  };
   
   // Download the edited image
   const handleDownload = () => {
@@ -543,6 +590,36 @@ export default function ImageEditorComponent() {
     }
   };
   
+  // Render all applied effects to the canvas
+  const renderAllEffects = useCallback(() => {
+    if (!canvasRef.current || !hiddenCanvasRef.current || !originalImageData || !image) return;
+    
+    const canvas = canvasRef.current;
+    const hiddenCanvas = hiddenCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const hiddenCtx = hiddenCanvas.getContext('2d');
+    
+    if (!ctx || !hiddenCtx) return;
+    
+    // Reset to original image
+    hiddenCtx.putImageData(originalImageData, 0, 0);
+    
+    // Apply all effects in sequence
+    let imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+    
+    for (const effect of appliedEffects) {
+      imageData = applyEffect(imageData, effect);
+    }
+    
+    // Draw the final result to the visible canvas
+    ctx.putImageData(imageData, 0, 0);
+  }, [appliedEffects, originalImageData, image]);
+  
+  // Update canvas when applied effects change
+  useEffect(() => {
+    renderAllEffects();
+  }, [appliedEffects, renderAllEffects]);
+  
   return (
     <div className="w-full h-full flex flex-col space-y-4">
       {/* Hidden canvas for processing */}
@@ -550,7 +627,7 @@ export default function ImageEditorComponent() {
       
       {/* Effect Navigation Bar */}
       <div className="flex items-center justify-between p-2 bg-muted rounded-lg">
-        <div className="flex space-x-2">
+        <div className="flex space-x-2 overflow-x-auto pb-1">
           <Button
             variant={currentEffect === 'none' ? 'default' : 'outline'}
             onClick={() => setCurrentEffect('none')}
@@ -638,9 +715,44 @@ export default function ImageEditorComponent() {
           )}
         </div>
         
-        {/* Effect Controls Panel */}
-        {currentEffect !== 'none' && (
-          <div className="w-full md:w-80 flex-shrink-0">
+        {/* Side Panel */}
+        <div className="w-full md:w-80 flex-shrink-0 flex flex-col gap-4">
+          {/* Applied Effects List */}
+          {image && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Applied Effects</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {appliedEffects.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No effects applied yet.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {appliedEffects.map((effect, index) => (
+                      <li key={index} className="flex items-center justify-between bg-muted p-2 rounded-md">
+                        <span className="capitalize">{effect.type}</span>
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => {
+                            const newEffects = [...appliedEffects];
+                            newEffects.splice(index, 1);
+                            setAppliedEffects(newEffects);
+                          }}
+                          className="h-8 w-8 text-destructive"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          )}
+          
+          {/* Effect Controls Panel */}
+          {currentEffect !== 'none' && (
             <Card>
               <CardHeader>
                 <CardTitle>Effect Settings</CardTitle>
@@ -650,44 +762,38 @@ export default function ImageEditorComponent() {
                 {currentEffect === 'halftone' && (
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <Label htmlFor="dot-size">Dot Size: {halftoneSettings.dotSize.toFixed(1)}</Label>
-                      </div>
-                      <Slider
+                      <Label htmlFor="dot-size">Dot Size ({halftoneSettings.dotSize})</Label>
+                      <Slider 
                         id="dot-size"
-                        min={0.5}
-                        max={10}
-                        step={0.1}
-                        value={[halftoneSettings.dotSize]}
-                        onValueChange={(values) => setHalftoneSettings({...halftoneSettings, dotSize: values[0]})}
+                        min={0.5} 
+                        max={5} 
+                        step={0.1} 
+                        value={[halftoneSettings.dotSize]} 
+                        onValueChange={([value]) => setHalftoneSettings({...halftoneSettings, dotSize: value})}
                       />
                     </div>
                     
                     <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <Label htmlFor="spacing">Spacing: {halftoneSettings.spacing}</Label>
-                      </div>
-                      <Slider
+                      <Label htmlFor="spacing">Spacing ({halftoneSettings.spacing})</Label>
+                      <Slider 
                         id="spacing"
-                        min={1}
-                        max={20}
-                        step={1}
-                        value={[halftoneSettings.spacing]}
-                        onValueChange={(values) => setHalftoneSettings({...halftoneSettings, spacing: values[0]})}
+                        min={3} 
+                        max={20} 
+                        step={1} 
+                        value={[halftoneSettings.spacing]} 
+                        onValueChange={([value]) => setHalftoneSettings({...halftoneSettings, spacing: value})}
                       />
                     </div>
                     
                     <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <Label htmlFor="angle">Angle: {halftoneSettings.angle}°</Label>
-                      </div>
-                      <Slider
+                      <Label htmlFor="angle">Angle ({halftoneSettings.angle}°)</Label>
+                      <Slider 
                         id="angle"
-                        min={0}
-                        max={180}
-                        step={1}
-                        value={[halftoneSettings.angle]}
-                        onValueChange={(values) => setHalftoneSettings({...halftoneSettings, angle: values[0]})}
+                        min={0} 
+                        max={180} 
+                        step={5} 
+                        value={[halftoneSettings.angle]} 
+                        onValueChange={([value]) => setHalftoneSettings({...halftoneSettings, angle: value})}
                       />
                     </div>
                     
@@ -696,7 +802,8 @@ export default function ImageEditorComponent() {
                       <Select
                         value={halftoneSettings.shape}
                         onValueChange={(value: 'circle' | 'square' | 'line') => 
-                          setHalftoneSettings({...halftoneSettings, shape: value})}
+                          setHalftoneSettings({...halftoneSettings, shape: value})
+                        }
                       >
                         <SelectTrigger id="shape">
                           <SelectValue placeholder="Select shape" />
@@ -714,42 +821,40 @@ export default function ImageEditorComponent() {
                 {currentEffect === 'duotone' && (
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <Label htmlFor="intensity">Intensity: {duotoneSettings.intensity}%</Label>
-                      </div>
-                      <Slider
+                      <Label htmlFor="intensity">Intensity ({duotoneSettings.intensity}%)</Label>
+                      <Slider 
                         id="intensity"
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={[duotoneSettings.intensity]}
-                        onValueChange={(values) => setDuotoneSettings({...duotoneSettings, intensity: values[0]})}
+                        min={0} 
+                        max={100} 
+                        step={1} 
+                        value={[duotoneSettings.intensity]} 
+                        onValueChange={([value]) => setDuotoneSettings({...duotoneSettings, intensity: value})}
                       />
                     </div>
                     
                     <div className="space-y-2">
                       <Label>Colors</Label>
-                      <ColorSetSelector
-                        onSelectColor={handleColorSelect}
-                        onSelectPair={handleDuotonePairSelect}
-                        selectedColor={duotoneSettings.color1}
-                      />
+                      <div className="flex gap-4">
+                        <ColorSetSelector 
+                          onSelectColor={handleColorSelect}
+                          onSelectPair={handleDuotonePairSelect}
+                          selectedColor={duotoneSettings.color1}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
                 
                 {currentEffect === 'noise' && (
                   <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label htmlFor="noise-level">Noise Level: {noiseLevel}%</Label>
-                    </div>
-                    <Slider
+                    <Label htmlFor="noise-level">Noise Level ({noiseLevel}%)</Label>
+                    <Slider 
                       id="noise-level"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={[noiseLevel]}
-                      onValueChange={(values) => setNoiseLevel(values[0])}
+                      min={1} 
+                      max={100} 
+                      step={1} 
+                      value={[noiseLevel]} 
+                      onValueChange={([value]) => setNoiseLevel(value)}
                     />
                   </div>
                 )}
@@ -763,8 +868,8 @@ export default function ImageEditorComponent() {
                 </Button>
               </CardContent>
             </Card>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
