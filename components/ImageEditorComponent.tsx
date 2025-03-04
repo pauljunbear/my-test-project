@@ -109,12 +109,15 @@ export default function ImageEditorComponent() {
   
   // Image upload handler with fixed scaling
   const handleImageUpload = (file: File) => {
+    console.log("Starting image upload for file:", file.name);
     const reader = new FileReader();
     
     reader.onload = (e) => {
       const img = new Image();
+      console.log("FileReader loaded");
       
       img.onload = () => {
+        console.log("Image loaded with dimensions:", img.width, "x", img.height);
         setImage(img);
         
         // Reset all effects and state
@@ -131,13 +134,18 @@ export default function ImageEditorComponent() {
           const hiddenCtx = hiddenCanvas.getContext('2d');
           
           if (ctx && hiddenCtx) {
-            // Get the container dimensions
-            const container = canvas.parentElement?.parentElement?.parentElement;
-            if (!container) return;
+            // Get the container dimensions - be more careful about references
+            const container = canvas.closest('.flex-1.flex');
+            if (!container) {
+              console.error("Could not find container element");
+              return;
+            }
             
-            // Get the actual available space
-            const containerWidth = container.clientWidth - 48; // Account for padding
-            const containerHeight = container.clientHeight - 48;
+            console.log("Container dimensions:", container.clientWidth, "x", container.clientHeight);
+            
+            // Get the actual available space with safety margins
+            const containerWidth = container.clientWidth - 40;  // Account for padding
+            const containerHeight = container.clientHeight - 40;
             
             // Calculate dimensions while maintaining aspect ratio
             const imageAspectRatio = img.width / img.height;
@@ -147,13 +155,19 @@ export default function ImageEditorComponent() {
             
             if (imageAspectRatio > containerAspectRatio) {
               // Image is wider than container
-              width = containerWidth;
-              height = containerWidth / imageAspectRatio;
+              width = Math.min(containerWidth, 1200); // Cap max width
+              height = width / imageAspectRatio;
             } else {
               // Image is taller than container
-              height = containerHeight;
-              width = containerHeight * imageAspectRatio;
+              height = Math.min(containerHeight, 1200); // Cap max height
+              width = height * imageAspectRatio;
             }
+            
+            // Ensure whole numbers for dimensions
+            width = Math.floor(width);
+            height = Math.floor(height);
+            
+            console.log("Setting canvas dimensions to:", width, "x", height);
             
             // Set canvas dimensions
             canvas.width = width;
@@ -161,24 +175,50 @@ export default function ImageEditorComponent() {
             hiddenCanvas.width = width;
             hiddenCanvas.height = height;
             
-            // Clear and draw image
+            // Ensure canvases are visible with borders for debugging
+            canvas.style.border = "1px solid rgba(0,0,0,0.1)";
+            canvas.style.background = "#ffffff";
+            
+            // Clear canvases first
             ctx.clearRect(0, 0, width, height);
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            // Also draw on hidden canvas
             hiddenCtx.clearRect(0, 0, width, height);
-            hiddenCtx.drawImage(img, 0, 0, width, height);
             
-            // Store the original image data
-            const imageData = ctx.getImageData(0, 0, width, height);
-            setOriginalImageData(imageData);
-            
-            console.log("Image loaded successfully:", width, height);
+            // Draw image on both canvases
+            try {
+              ctx.drawImage(img, 0, 0, width, height);
+              console.log("Image drawn on main canvas");
+              
+              hiddenCtx.drawImage(img, 0, 0, width, height);
+              console.log("Image drawn on hidden canvas");
+              
+              // Store the original image data
+              const imageData = ctx.getImageData(0, 0, width, height);
+              setOriginalImageData(imageData);
+              console.log("Original image data stored, size:", imageData.width, "x", imageData.height);
+            } catch (error) {
+              console.error("Error drawing image to canvas:", error);
+            }
+          } else {
+            console.error("Could not get canvas contexts");
           }
+        } else {
+          console.error("Canvas refs not available");
         }
       };
       
-      img.src = e.target?.result as string;
+      img.onerror = (error) => {
+        console.error("Error loading image:", error);
+      };
+      
+      if (e.target?.result) {
+        img.src = e.target.result as string;
+      } else {
+        console.error("FileReader result is null");
+      }
+    };
+    
+    reader.onerror = (error) => {
+      console.error("FileReader error:", error);
     };
     
     reader.readAsDataURL(file);
@@ -701,14 +741,19 @@ export default function ImageEditorComponent() {
               />
             </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center p-4">
-              <div className="relative max-w-full max-h-full flex items-center justify-center">
+            <div className="flex-1 flex items-center justify-center p-6 overflow-auto">
+              <div 
+                className="relative flex items-center justify-center" 
+                style={{ minHeight: '200px', minWidth: '200px' }}
+              >
                 <canvas
                   ref={canvasRef}
-                  className="max-w-full max-h-full"
+                  className="shadow-md"
                   style={{
                     imageRendering: 'pixelated',
-                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    display: 'block'
                   }}
                 />
               </div>
