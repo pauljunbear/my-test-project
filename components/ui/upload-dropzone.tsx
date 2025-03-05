@@ -27,15 +27,17 @@ export function UploadDropzone({ onUpload }: UploadDropzoneProps) {
   return (
     <div
       {...getRootProps()}
-      className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors
-        ${isDragActive ? 'border-primary bg-primary/5' : 'border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-900'}`}
+      className={`w-full max-w-xl mx-auto border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-300 
+        ${isDragActive 
+          ? 'border-primary bg-primary/10 scale-105' 
+          : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
     >
       <input {...getInputProps()} />
-      <div className="flex flex-col items-center justify-center gap-2">
-        <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-full">
+      <div className="flex flex-col items-center justify-center gap-4">
+        <div className={`p-4 rounded-full bg-gradient-to-br from-gray-100 to-white dark:from-gray-800 dark:to-gray-700 shadow-sm transition-transform duration-300 ${isDragActive ? 'scale-110' : ''}`}>
           <svg 
             xmlns="http://www.w3.org/2000/svg" 
-            className="h-6 w-6 text-gray-500 dark:text-gray-400" 
+            className={`h-8 w-8 transition-colors duration-300 ${isDragActive ? 'text-primary' : 'text-gray-500 dark:text-gray-400'}`}
             fill="none" 
             viewBox="0 0 24 24" 
             stroke="currentColor"
@@ -48,16 +50,25 @@ export function UploadDropzone({ onUpload }: UploadDropzoneProps) {
             />
           </svg>
         </div>
-        <div>
-          <p className="text-sm text-gray-700 dark:text-gray-300">
+        <div className="space-y-2">
+          <p className={`text-base font-medium transition-colors duration-300 ${isDragActive ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>
             {isDragActive
               ? "Drop the image here..."
-              : "Drag & drop an image here, or click to select"}
+              : "Drag & drop an image here"}
           </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Supports: JPG, PNG, GIF, WEBP up to 10MB
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            or <span className="text-primary underline cursor-pointer">browse files</span>
+          </p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
+            Supports: JPG, PNG, GIF, WEBP (max 10MB)
           </p>
         </div>
+        
+        {isDragActive && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+            <div className="w-full h-full absolute inset-0 bg-primary/5 rounded-xl animate-pulse"></div>
+          </div>
+        )}
       </div>
     </div>
   );

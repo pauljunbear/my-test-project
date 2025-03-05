@@ -800,46 +800,52 @@ export default function ImageEditorComponent() {
   };
   
   return (
-    <div className="w-full h-full flex flex-col space-y-4">
+    <div className="w-full h-full flex flex-col space-y-6 p-4 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950">
       {/* Hidden canvas for processing */}
       <canvas ref={hiddenCanvasRef} style={{ display: 'none' }} />
       
       {/* Effect Navigation Bar */}
-      <div className="flex items-center justify-between p-2 bg-muted rounded-lg">
-        <div className="flex space-x-2 overflow-x-auto pb-1">
+      <div className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-xl shadow-sm">
+        <div className="flex space-x-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-gray-300">
           <Button
             variant={currentEffect === 'none' ? 'default' : 'outline'}
             onClick={() => setCurrentEffect('none')}
+            className="rounded-lg"
           >
             Original
           </Button>
           <Button
             variant={currentEffect === 'halftone' ? 'default' : 'outline'}
             onClick={() => setCurrentEffect('halftone')}
+            className="rounded-lg"
           >
             Halftone
           </Button>
           <Button
             variant={currentEffect === 'duotone' ? 'default' : 'outline'}
             onClick={() => setCurrentEffect('duotone')}
+            className="rounded-lg"
           >
             Duotone
           </Button>
           <Button
             variant={currentEffect === 'blackwhite' ? 'default' : 'outline'}
             onClick={() => setCurrentEffect('blackwhite')}
+            className="rounded-lg"
           >
             B&W
           </Button>
           <Button
             variant={currentEffect === 'sepia' ? 'default' : 'outline'}
             onClick={() => setCurrentEffect('sepia')}
+            className="rounded-lg"
           >
             Sepia
           </Button>
           <Button
             variant={currentEffect === 'noise' ? 'default' : 'outline'}
             onClick={() => setCurrentEffect('noise')}
+            className="rounded-lg"
           >
             Noise
           </Button>
@@ -852,15 +858,16 @@ export default function ImageEditorComponent() {
             onClick={handleUndo}
             disabled={historyIndex <= 0}
             title="Undo"
+            className="rounded-lg"
           >
             <Undo className="h-4 w-4" />
           </Button>
           
           {image && (
             <Button 
-              variant="outline"
+              variant="default"
               onClick={handleDownload}
-              className="flex items-center"
+              className="flex items-center rounded-lg"
             >
               <Download className="h-4 w-4 mr-2" />
               Download
@@ -869,48 +876,62 @@ export default function ImageEditorComponent() {
         </div>
       </div>
       
-      <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0">
         {/* Main image display area */}
-        <div className="flex-1 flex flex-col bg-muted/20 border rounded-lg overflow-hidden">
+        <div className="flex-1 flex flex-col bg-white dark:bg-gray-800 border rounded-xl shadow-sm overflow-hidden">
           {!image ? (
-            <div className="flex-1 flex items-center justify-center">
+            <div className="flex-1 flex items-center justify-center p-8">
               <UploadDropzone
                 onUpload={(file: File) => handleImageUpload(file)}
               />
             </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center p-6">
-              <div className="relative bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                <canvas
-                  ref={canvasRef}
-                  style={{
-                    imageRendering: 'auto',
-                    display: 'block',
-                    maxWidth: '100%',
-                    maxHeight: '70vh',
-                  }}
-                />
+            <div className="flex-1 flex flex-col">
+              <div className="p-4 border-b bg-gray-50 dark:bg-gray-900 flex justify-between items-center">
+                <h2 className="text-sm font-medium">Image Preview</h2>
+                <span className="text-xs text-muted-foreground">
+                  {canvasRef.current?.width || 0} × {canvasRef.current?.height || 0}
+                </span>
+              </div>
+              <div className="flex-1 flex items-center justify-center p-8 bg-[#f0f0f0] dark:bg-gray-900 bg-grid-pattern">
+                <div className="relative rounded-lg overflow-hidden shadow-xl transition-all duration-300 hover:shadow-2xl">
+                  <canvas
+                    ref={canvasRef}
+                    style={{
+                      imageRendering: 'auto',
+                      display: 'block',
+                      maxWidth: '100%',
+                      maxHeight: '70vh',
+                    }}
+                  />
+                </div>
               </div>
             </div>
           )}
         </div>
         
         {/* Side Panel */}
-        <div className="w-full md:w-80 flex-shrink-0 flex flex-col gap-4">
+        <div className="w-full lg:w-80 flex-shrink-0 flex flex-col gap-4">
           {/* Applied Effects List */}
           {image && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Applied Effects</CardTitle>
+            <Card className="rounded-xl shadow-sm overflow-hidden border-0">
+              <CardHeader className="bg-white dark:bg-gray-800 border-b pb-3">
+                <CardTitle className="text-lg font-semibold">Applied Effects</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="bg-white dark:bg-gray-800 p-4">
                 {appliedEffects.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No effects applied yet.</p>
+                  <div className="flex flex-col items-center justify-center p-6 text-center border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
+                    <p className="text-sm text-muted-foreground">No effects applied yet.</p>
+                    <p className="text-xs text-muted-foreground mt-1">Select an effect from the top bar and apply it to your image.</p>
+                  </div>
                 ) : (
                   <ul className="space-y-2">
                     {appliedEffects.map((effect, index) => (
-                      <li key={index} className="flex items-center justify-between bg-muted p-2 rounded-md">
-                        <span className="capitalize">{effect.type}</span>
+                      <li key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-900 p-3 rounded-lg">
+                        <div className="flex items-center">
+                          <div className="w-2 h-2 rounded-full bg-primary mr-2"></div>
+                          <span className="capitalize font-medium">{effect.type}</span>
+                        </div>
                         <Button 
                           variant="ghost" 
                           size="icon"
@@ -919,7 +940,7 @@ export default function ImageEditorComponent() {
                             newEffects.splice(index, 1);
                             setAppliedEffects(newEffects);
                           }}
-                          className="h-8 w-8 text-destructive"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive rounded-full"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                         </Button>
@@ -933,16 +954,21 @@ export default function ImageEditorComponent() {
           
           {/* Effect Controls Panel */}
           {currentEffect !== 'none' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Effect Settings</CardTitle>
+            <Card className="rounded-xl shadow-sm overflow-hidden border-0">
+              <CardHeader className="bg-white dark:bg-gray-800 border-b pb-3">
+                <CardTitle className="text-lg font-semibold">
+                  <span className="capitalize">{currentEffect}</span> Settings
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="bg-white dark:bg-gray-800 p-4 space-y-5">
                 {/* Effect-specific controls */}
                 {currentEffect === 'halftone' && (
-                  <div className="space-y-4">
+                  <div className="space-y-5">
                     <div className="space-y-2">
-                      <Label htmlFor="dot-size">Dot Size ({halftoneSettings.dotSize})</Label>
+                      <div className="flex justify-between items-center">
+                        <Label htmlFor="dot-size" className="text-sm font-medium">Dot Size</Label>
+                        <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">{halftoneSettings.dotSize}</span>
+                      </div>
                       <Slider 
                         id="dot-size"
                         min={0.5} 
@@ -950,11 +976,15 @@ export default function ImageEditorComponent() {
                         step={0.1} 
                         value={[halftoneSettings.dotSize]} 
                         onValueChange={([value]) => setHalftoneSettings({...halftoneSettings, dotSize: value})}
+                        className="mt-1"
                       />
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="spacing">Spacing ({halftoneSettings.spacing})</Label>
+                      <div className="flex justify-between items-center">
+                        <Label htmlFor="spacing" className="text-sm font-medium">Spacing</Label>
+                        <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">{halftoneSettings.spacing}</span>
+                      </div>
                       <Slider 
                         id="spacing"
                         min={3} 
@@ -962,11 +992,15 @@ export default function ImageEditorComponent() {
                         step={1} 
                         value={[halftoneSettings.spacing]} 
                         onValueChange={([value]) => setHalftoneSettings({...halftoneSettings, spacing: value})}
+                        className="mt-1"
                       />
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="angle">Angle ({halftoneSettings.angle}°)</Label>
+                      <div className="flex justify-between items-center">
+                        <Label htmlFor="angle" className="text-sm font-medium">Angle</Label>
+                        <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">{halftoneSettings.angle}°</span>
+                      </div>
                       <Slider 
                         id="angle"
                         min={0} 
@@ -974,18 +1008,19 @@ export default function ImageEditorComponent() {
                         step={5} 
                         value={[halftoneSettings.angle]} 
                         onValueChange={([value]) => setHalftoneSettings({...halftoneSettings, angle: value})}
+                        className="mt-1"
                       />
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="shape">Shape</Label>
+                      <Label htmlFor="shape" className="text-sm font-medium">Shape</Label>
                       <Select
                         value={halftoneSettings.shape}
                         onValueChange={(value: 'circle' | 'square' | 'line') => 
                           setHalftoneSettings({...halftoneSettings, shape: value})
                         }
                       >
-                        <SelectTrigger id="shape">
+                        <SelectTrigger id="shape" className="mt-1">
                           <SelectValue placeholder="Select shape" />
                         </SelectTrigger>
                         <SelectContent>
@@ -999,9 +1034,12 @@ export default function ImageEditorComponent() {
                 )}
                 
                 {currentEffect === 'duotone' && (
-                  <div className="space-y-4">
+                  <div className="space-y-5">
                     <div className="space-y-2">
-                      <Label htmlFor="intensity">Intensity ({duotoneSettings.intensity}%)</Label>
+                      <div className="flex justify-between items-center">
+                        <Label htmlFor="intensity" className="text-sm font-medium">Intensity</Label>
+                        <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">{duotoneSettings.intensity}%</span>
+                      </div>
                       <Slider 
                         id="intensity"
                         min={0} 
@@ -1009,12 +1047,13 @@ export default function ImageEditorComponent() {
                         step={1} 
                         value={[duotoneSettings.intensity]} 
                         onValueChange={([value]) => setDuotoneSettings({...duotoneSettings, intensity: value})}
+                        className="mt-1"
                       />
                     </div>
                     
                     <div className="space-y-2">
-                      <Label>Colors</Label>
-                      <div className="flex gap-4">
+                      <Label className="text-sm font-medium">Colors</Label>
+                      <div className="mt-1">
                         <ColorSetSelector 
                           onSelectColor={handleColorSelect}
                           onSelectPair={handleDuotonePairSelect}
@@ -1027,7 +1066,10 @@ export default function ImageEditorComponent() {
                 
                 {currentEffect === 'noise' && (
                   <div className="space-y-2">
-                    <Label htmlFor="noise-level">Noise Level ({noiseLevel}%)</Label>
+                    <div className="flex justify-between items-center">
+                      <Label htmlFor="noise-level" className="text-sm font-medium">Noise Level</Label>
+                      <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">{noiseLevel}%</span>
+                    </div>
                     <Slider 
                       id="noise-level"
                       min={1} 
@@ -1035,6 +1077,7 @@ export default function ImageEditorComponent() {
                       step={1} 
                       value={[noiseLevel]} 
                       onValueChange={([value]) => setNoiseLevel(value)}
+                      className="mt-1"
                     />
                   </div>
                 )}
@@ -1042,9 +1085,9 @@ export default function ImageEditorComponent() {
                 {/* Apply Effect Button */}
                 <Button 
                   onClick={handleApplyEffect} 
-                  className="w-full"
+                  className="w-full mt-4 rounded-lg"
                 >
-                  Apply Effect
+                  Apply {currentEffect === 'blackwhite' ? 'B&W' : currentEffect.charAt(0).toUpperCase() + currentEffect.slice(1)} Effect
                 </Button>
               </CardContent>
             </Card>
