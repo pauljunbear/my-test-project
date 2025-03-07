@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import type { Application, Sprite, Container, Renderer } from 'pixi.js';
 
 interface ShaderEffectsProps {
   imageData: string | null;
@@ -24,13 +25,13 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
     const loadPixi = async () => {
       try {
         // Dynamic import for PixiJS
-        const PIXI = await import('pixi.js');
+        const PIXI = await import('pixi.js') as typeof import('pixi.js');
         
         // Create PixiJS application
         const appWidth = containerRef.current?.clientWidth || 800;
         const appHeight = containerRef.current?.clientHeight || 600;
         
-        const app = new PIXI.Application({
+        const app: Application = new PIXI.Application({
           width: appWidth,
           height: appHeight,
           backgroundColor: 0xf0f0f0,
@@ -46,7 +47,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
         
         // Create image from data URL
         const texture = PIXI.Texture.from(imageData);
-        const sprite = new PIXI.Sprite(texture);
+        const sprite: PIXI.Sprite = new PIXI.Sprite(texture);
         
         // Center the sprite
         sprite.anchor.set(0.5);
@@ -113,7 +114,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
             });
             
             // Apply filters based on state
-            const updateFilters = () => {
+            const updateFilters = (): void => {
               const filters = [];
               
               if (isGrayscale) {
@@ -134,11 +135,13 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
               if (filters.length > 0 && onProcessedImage) {
                 setTimeout(() => {
                   try {
-                    if (app.renderer && app.renderer.extract) {
-                      const processedImageData = app.renderer.extract.canvas(sprite).toDataURL('image/png');
+                    if (app.renderer && app.renderer.extract && sprite) {
+                      // Use type assertion to help TypeScript understand this is a valid operation
+                      const canvasResult = app.renderer.extract.canvas(sprite) as HTMLCanvasElement;
+                      const processedImageData = canvasResult.toDataURL('image/png');
                       onProcessedImage(processedImageData);
                     } else {
-                      console.warn('Renderer extract API not available');
+                      console.warn('Renderer extract API or sprite not available');
                     }
                   } catch (error) {
                     console.error('Error capturing processed image:', error);
@@ -148,7 +151,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
             };
             
             // Set up watchers for filter state changes
-            const watchEffects = () => {
+            const watchEffects = (): void => {
               updateFilters();
               
               // FPS counter
