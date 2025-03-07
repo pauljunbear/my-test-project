@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent } from './ui/card';
 // Import the type definitions only - these won't be in the compiled JS
 import type * as PIXIModule from 'pixi.js';
 
@@ -13,43 +13,107 @@ interface ShaderEffectsProps {
 
 export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEffectsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isGrayscale, setIsGrayscale] = useState(true); // Default to grayscale enabled
+  const pixiAppRef = useRef<any>(null);
+  const spriteRef = useRef<any>(null);
+  const filtersRef = useRef<any>({
+    grayscale: null,
+    blur: null,
+    displacement: null
+  });
+  const displacementSpriteRef = useRef<any>(null);
+  
+  const [isGrayscale, setIsGrayscale] = useState(true);
   const [isBlur, setIsBlur] = useState(false);
   const [isRipple, setIsRipple] = useState(false);
   const [fps, setFps] = useState(0);
-  const [appInstance, setAppInstance] = useState<any>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
   
+  // Function to apply filters based on current state
+  const updateFilters = () => {
+    if (!spriteRef.current || !filtersRef.current) return;
+    
+    const activeFilters = [];
+    
+    if (isGrayscale && filtersRef.current.grayscale) {
+      activeFilters.push(filtersRef.current.grayscale);
+    }
+    
+    if (isBlur && filtersRef.current.blur) {
+      activeFilters.push(filtersRef.current.blur);
+    }
+    
+    if (isRipple && filtersRef.current.displacement) {
+      activeFilters.push(filtersRef.current.displacement);
+    }
+    
+    spriteRef.current.filters = activeFilters.length > 0 ? activeFilters : null;
+    
+    // Capture the result after applying filters
+    captureProcessedImage();
+  };
+  
+  // Function to capture the processed image and send it to the parent
+  const captureProcessedImage = () => {
+    if (!onProcessedImage || !pixiAppRef.current || !spriteRef.current) return;
+    
+    try {
+      const app = pixiAppRef.current;
+      
+      // Wait a frame to ensure filters are applied
+      setTimeout(() => {
+        try {
+          if (app.renderer) {
+            // Handle different PixiJS versions
+            if (app.renderer.extract && spriteRef.current) {
+              const processedImageData = app.renderer.extract.canvas(spriteRef.current).toDataURL('image/png');
+              onProcessedImage(processedImageData);
+            } else if (app.renderer.plugins && app.renderer.plugins.extract && spriteRef.current) {
+              const processedImageData = app.renderer.plugins.extract.canvas(spriteRef.current).toDataURL('image/png');
+              onProcessedImage(processedImageData);
+            }
+          }
+        } catch (error) {
+          console.error('Error capturing processed image:', error);
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Error in captureProcessedImage:', error);
+    }
+  };
+  
+  // Initialize PixiJS when component mounts or imageData changes
   useEffect(() => {
     if (!containerRef.current || !imageData) return;
     
-    // Load PixiJS dynamically on client side
-    const loadPixi = async () => {
+    const loadAndSetupPixi = async () => {
       try {
-        // Use dynamic import and type it with the imported types
-        const pixiModule = await import('pixi.js') as typeof PIXIModule;
-        
-        // Set up renderer options to ensure good compatibility
-        const rendererOptions = {
-          width: containerRef.current?.clientWidth || 800,
-          height: containerRef.current?.clientHeight || 600,
-          backgroundColor: 0xffffff, // White background
-          antialias: true,
-          resolution: Math.min(2, window.devicePixelRatio || 1), // Limit resolution to 2x for performance
-          autoDensity: true,
-          powerPreference: 'high-performance' as const,
-          preserveDrawingBuffer: true, // Required for capture functionality
-        };
-        
-        // Cleanup previous app if exists
-        if (appInstance) {
-          appInstance.destroy(true, true);
+        // Clean up existing app
+        if (pixiAppRef.current) {
+          cleanupPixiApp();
         }
         
-        // Create PixiJS application with improved settings
-        const app = new pixiModule.Application(rendererOptions);
-        setAppInstance(app);
+        // Load PixiJS
+        const PIXI = await import('pixi.js');
         
-        // Clean container before adding new view
+        // Get container dimensions
+        const containerWidth = containerRef.current.clientWidth;
+        const containerHeight = containerRef.current.clientHeight;
+        
+        // Initialize PixiJS app
+        const app = new PIXI.Application({
+          width: containerWidth,
+          height: containerHeight,
+          backgroundColor: 0xFFFFFF,
+          resolution: Math.min(window.devicePixelRatio, 2),
+          antialias: true,
+          autoDensity: true,
+          powerPreference: 'high-performance',
+          preserveDrawingBuffer: true, // Required for image capture
+        });
+        
+        pixiAppRef.current = app;
+        
+        // Clear container and append canvas
         if (containerRef.current) {
           while (containerRef.current.firstChild) {
             containerRef.current.removeChild(containerRef.current.firstChild);
@@ -57,190 +121,155 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
           containerRef.current.appendChild(app.view as HTMLCanvasElement);
         }
         
-        // Pre-load the image to determine dimensions
-        const baseTexture = pixiModule.BaseTexture.from(imageData);
+        // Create a loader for the image
+        const image = new Image();
+        image.crossOrigin = "anonymous";
         
-        baseTexture.on('loaded', () => {
-          console.log("Image loaded for shader processing:", baseTexture.width, "x", baseTexture.height);
+        image.onload = () => {
+          // Skip if component unmounted
+          if (!containerRef.current) return;
           
-          // Create a texture from the base texture
-          const texture = new pixiModule.Texture(baseTexture);
-          const sprite = new pixiModule.Sprite(texture);
+          // Create texture and sprite
+          const texture = PIXI.Texture.from(image);
+          const sprite = new PIXI.Sprite(texture);
+          spriteRef.current = sprite;
           
-          // Proper sprite setup
+          // Position in center
           sprite.anchor.set(0.5);
           sprite.x = app.screen.width / 2;
           sprite.y = app.screen.height / 2;
           
-          // Calculate proper scale to fit container but preserve aspect ratio
-          const containerRatio = app.screen.width / app.screen.height;
-          const textureRatio = texture.width / texture.height;
+          // Calculate scale to fit container while maintaining aspect ratio
+          const scaleX = (app.screen.width * 0.9) / image.width;
+          const scaleY = (app.screen.height * 0.9) / image.height;
+          const scale = Math.min(scaleX, scaleY);
           
-          let scale;
-          if (containerRatio > textureRatio) {
-            // Container is wider than texture
-            scale = app.screen.height / texture.height * 0.9;
-          } else {
-            // Container is taller than texture
-            scale = app.screen.width / texture.width * 0.9;
-          }
-          
+          // Apply scale
           sprite.scale.set(scale);
           
           // Create filters
-          const grayscaleFilter = new pixiModule.filters.ColorMatrixFilter();
-          grayscaleFilter.grayscale(1, true);
+          // Grayscale filter
+          const grayscaleFilter = new PIXI.filters.ColorMatrixFilter();
+          grayscaleFilter.grayscale(1);
+          filtersRef.current.grayscale = grayscaleFilter;
           
-          const blurFilter = new pixiModule.filters.BlurFilter();
+          // Blur filter
+          const blurFilter = new PIXI.filters.BlurFilter();
           blurFilter.blur = 5;
-          blurFilter.quality = 4; // Higher quality blur
+          blurFilter.quality = 4;
+          filtersRef.current.blur = blurFilter;
           
-          // Improved displacement filter setup for ripple effect
-          const displacementMapSize = 512;
-          const displacementMapCanvas = document.createElement('canvas');
-          displacementMapCanvas.width = displacementMapSize;
-          displacementMapCanvas.height = displacementMapSize;
+          // Displacement filter for ripple effect
+          const displacementTexture = createDisplacementTexture(PIXI, 256);
+          const displacementSprite = new PIXI.Sprite(displacementTexture);
+          displacementSpriteRef.current = displacementSprite;
           
-          const displacementMapContext = displacementMapCanvas.getContext('2d');
+          displacementSprite.anchor.set(0.5);
+          displacementSprite.x = app.screen.width / 2;
+          displacementSprite.y = app.screen.height / 2;
+          displacementSprite.scale.set(1);
           
-          if (displacementMapContext) {
-            // Create a radial gradient for better displacement
-            const gradient = displacementMapContext.createRadialGradient(
-              displacementMapSize/2, displacementMapSize/2, 0,
-              displacementMapSize/2, displacementMapSize/2, displacementMapSize/2
-            );
+          const displacementFilter = new PIXI.filters.DisplacementFilter(displacementSprite);
+          displacementFilter.scale.set(30);
+          filtersRef.current.displacement = displacementFilter;
+          
+          // Add sprites to stage
+          app.stage.addChild(displacementSprite);
+          app.stage.addChild(sprite);
+          
+          // Setup animation for ripple effect
+          let time = 0;
+          app.ticker.add(() => {
+            if (isRipple && displacementSpriteRef.current) {
+              time += 0.01;
+              displacementSpriteRef.current.rotation = time * 0.1;
+              const scale = 1 + Math.sin(time) * 0.1;
+              displacementSpriteRef.current.scale.set(scale);
+            }
+          });
+          
+          // FPS counter
+          let frameCount = 0;
+          let lastTime = performance.now();
+          
+          app.ticker.add(() => {
+            frameCount++;
+            const now = performance.now();
             
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-            gradient.addColorStop(0.3, 'rgba(128, 128, 128, 0.7)');
-            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            
-            displacementMapContext.fillStyle = gradient;
-            displacementMapContext.fillRect(0, 0, displacementMapSize, displacementMapSize);
-            
-            const displacementTexture = pixiModule.Texture.from(displacementMapCanvas);
-            const displacementSprite = new pixiModule.Sprite(displacementTexture);
-            
-            // Set up for displacement
-            displacementSprite.anchor.set(0.5);
-            displacementSprite.x = app.screen.width / 2;
-            displacementSprite.y = app.screen.height / 2;
-            displacementSprite.scale.set(1); // Start at 1x scale
-            
-            // Create displacement filter with proper settings
-            const displacementFilter = new pixiModule.filters.DisplacementFilter(displacementSprite);
-            displacementFilter.scale.set(20); // Lower initial scale for subtlety
-            
-            // Add the displacement sprite to stage
-            app.stage.addChild(displacementSprite);
-            
-            // Add the main image sprite
-            app.stage.addChild(sprite);
-            
-            // Animation for ripple
-            let time = 0;
-            app.ticker.add(() => {
-              if (isRipple) {
-                time += 0.01;
-                displacementSprite.rotation = time * 0.1;
-                displacementSprite.scale.set(
-                  0.8 + Math.sin(time) * 0.2
-                );
-              }
-            });
-            
-            // Apply filters based on state
-            const updateFilters = (): void => {
-              const filters = [];
-              
-              if (isGrayscale) {
-                filters.push(grayscaleFilter);
-              }
-              
-              if (isBlur) {
-                filters.push(blurFilter);
-              }
-              
-              if (isRipple) {
-                filters.push(displacementFilter);
-              }
-              
-              sprite.filters = filters.length > 0 ? filters : null;
-              
-              // Capture result after applying filters
-              if (onProcessedImage) {
-                setTimeout(() => {
-                  try {
-                    if (app.renderer) {
-                      // Use extract method to get the canvas content
-                      if (app.renderer.extract && sprite) {
-                        // Modern PixiJS (v6+)
-                        const processedImageData = app.renderer.extract.canvas(sprite).toDataURL('image/png');
-                        onProcessedImage(processedImageData);
-                      } else {
-                        // Fallback for older versions or type issues
-                        const renderer = app.renderer as any;
-                        if (renderer.plugins && renderer.plugins.extract && sprite) {
-                          const processedImageData = renderer.plugins.extract.canvas(sprite).toDataURL('image/png');
-                          onProcessedImage(processedImageData);
-                        } else {
-                          console.warn('Renderer extract API not available');
-                        }
-                      }
-                    }
-                  } catch (error) {
-                    console.error('Error capturing processed image:', error);
-                  }
-                }, 100);
-              }
-            };
-            
-            // Initialize filters
-            updateFilters();
-            
-            // Set up FPS counter
-            let lastTime = performance.now();
-            let frames = 0;
-            
-            app.ticker.add(() => {
-              frames++;
-              const now = performance.now();
-              
-              if (now - lastTime >= 1000) {
-                setFps(frames);
-                frames = 0;
-                lastTime = now;
-              }
-            });
-            
-            // Update filters when effect states change
-            useEffect(() => {
-              if (app && sprite) {
-                updateFilters();
-              }
-            }, [isGrayscale, isBlur, isRipple]);
-          }
-        });
-        
-        // Return cleanup function
-        return () => {
-          if (app) {
-            app.destroy(true, true);
-          }
+            if (now - lastTime >= 1000) {
+              setFps(frameCount);
+              frameCount = 0;
+              lastTime = now;
+            }
+          });
+          
+          // Initial filter application
+          updateFilters();
+          setIsInitialized(true);
         };
+        
+        image.onerror = (error) => {
+          console.error("Error loading image for shader effects:", error);
+        };
+        
+        // Load the image
+        image.src = imageData;
+        
       } catch (error) {
-        console.error('Error initializing PixiJS:', error);
+        console.error("Error initializing PixiJS:", error);
       }
     };
     
-    loadPixi();
+    loadAndSetupPixi();
     
-    // Clean up on unmount
-    return () => {
-      if (appInstance) {
-        appInstance.destroy(true, true);
-      }
-    };
-  }, [imageData, onProcessedImage, isGrayscale, isBlur, isRipple]);
+    // Cleanup function
+    return cleanupPixiApp;
+  }, [imageData]);
+  
+  // Create a displacement map texture
+  const createDisplacementTexture = (PIXI: any, size: number) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    
+    const context = canvas.getContext('2d');
+    if (!context) return PIXI.Texture.EMPTY;
+    
+    // Create a radial gradient
+    const gradient = context.createRadialGradient(
+      size/2, size/2, 0,
+      size/2, size/2, size/2
+    );
+    
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(0.3, 'rgba(128, 128, 128, 0.7)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, size, size);
+    
+    return PIXI.Texture.from(canvas);
+  };
+  
+  // Clean up the PixiJS app
+  const cleanupPixiApp = () => {
+    if (pixiAppRef.current) {
+      pixiAppRef.current.destroy(true, {children: true, texture: true, baseTexture: true});
+      pixiAppRef.current = null;
+    }
+    
+    spriteRef.current = null;
+    displacementSpriteRef.current = null;
+    filtersRef.current = {grayscale: null, blur: null, displacement: null};
+    setIsInitialized(false);
+  };
+  
+  // Update filters when effect toggles change
+  useEffect(() => {
+    if (isInitialized) {
+      updateFilters();
+    }
+  }, [isGrayscale, isBlur, isRipple, isInitialized]);
   
   return (
     <div className="w-full flex flex-col space-y-4">
@@ -276,7 +305,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
       
       <div 
         ref={containerRef} 
-        className="w-full h-[300px] bg-muted/20 border rounded-lg overflow-hidden flex items-center justify-center"
+        className="w-full h-[400px] bg-muted/20 border rounded-lg overflow-hidden flex items-center justify-center"
       >
         {!imageData && (
           <div className="text-muted-foreground">

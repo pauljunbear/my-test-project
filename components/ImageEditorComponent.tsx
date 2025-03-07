@@ -786,6 +786,7 @@ export default function ImageEditorComponent() {
     
     // Create a temporary image from processed data
     const img = new Image();
+    img.crossOrigin = "anonymous";
     img.onload = () => {
       // Get the canvas contexts
       const ctx = canvasRef.current?.getContext('2d', { willReadFrequently: true });
@@ -793,25 +794,36 @@ export default function ImageEditorComponent() {
       
       if (!ctx || !hiddenCtx || !canvasRef.current || !hiddenCanvasRef.current) return;
       
-      // Draw the processed image to the hidden canvas
+      // Clear the canvases
+      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
       hiddenCtx.clearRect(0, 0, hiddenCanvasRef.current.width, hiddenCanvasRef.current.height);
-      hiddenCtx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
       
-      // Get the image data from the hidden canvas
-      const processedImageDataObj = hiddenCtx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
-      
-      // Draw the processed image to the main canvas
-      ctx.putImageData(processedImageDataObj, 0, 0);
+      // Draw the processed image to the canvas at correct dimensions
+      ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
+      hiddenCtx.drawImage(img, 0, 0, hiddenCanvasRef.current.width, hiddenCanvasRef.current.height);
       
       // Update current image data URL
       setCurrentImageDataUrl(processedImageData);
       
-      // Save to history
-      addToHistory(processedImageData, [{
+      // Create a meaningful shader effect entry based on active shader effects
+      const shaderEffect: AppliedEffect = {
         type: 'shader',
         settings: {}
-      }]);
+      };
+      
+      // Add to history
+      addToHistory(processedImageData, [shaderEffect]);
+      
+      // Add to applied effects if Apply button is clicked
+      if (currentEffect === 'shader') {
+        setAppliedEffects([...appliedEffects, shaderEffect]);
+      }
     };
+    
+    img.onerror = (error) => {
+      console.error("Error loading processed shader image:", error);
+    };
+    
     img.src = processedImageData;
   };
   
@@ -949,12 +961,12 @@ export default function ImageEditorComponent() {
                     <p className="text-xs text-muted-foreground mt-1">Select an effect from the top bar and apply it to your image.</p>
                   </div>
                 ) : (
-                  <ul className="space-y-2">
+                  <ul className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
                     {appliedEffects.map((effect, index) => (
                       <li key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-900 p-3 rounded-lg">
-                        <div className="flex items-center">
-                          <div className="w-2 h-2 rounded-full bg-primary mr-2"></div>
-                          <span className="capitalize font-medium">{effect.type}</span>
+                        <div className="flex items-center min-w-0 overflow-hidden">
+                          <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mr-2"></div>
+                          <span className="capitalize font-medium truncate">{effect.type}</span>
                         </div>
                         <Button 
                           variant="ghost" 
@@ -964,7 +976,7 @@ export default function ImageEditorComponent() {
                             newEffects.splice(index, 1);
                             setAppliedEffects(newEffects);
                           }}
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive rounded-full"
+                          className="h-8 w-8 flex-shrink-0 text-muted-foreground hover:text-destructive rounded-full ml-2"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                         </Button>
