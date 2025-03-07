@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select';
+import { Switch } from './ui/switch';
 import dynamic from 'next/dynamic';
 
 // Dynamically import ShaderEffects component with no SSR
@@ -73,6 +74,7 @@ export default function ImageEditorComponent() {
   const [history, setHistory] = useState<ImageHistory[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [currentImageDataUrl, setCurrentImageDataUrl] = useState<string | null>(null);
+  const [highResMode, setHighResMode] = useState<boolean>(true);
   
   // Effect settings state
   const [halftoneSettings, setHalftoneSettings] = useState<HalftoneSettings>({
@@ -200,24 +202,33 @@ export default function ImageEditorComponent() {
             return;
           }
           
-          // Set fixed dimensions
+          // Define max dimensions for optimized mode
           const maxWidth = 800;
           const maxHeight = 600;
           
-          console.log(`Using fixed dimensions: ${maxWidth}x${maxHeight}`);
+          console.log(`Original image dimensions: ${img.naturalWidth}x${img.naturalHeight}`);
           
-          // Calculate scaled dimensions while maintaining aspect ratio
+          // Use original dimensions in high-res mode
           let width: number, height: number;
-          const aspectRatio = img.naturalWidth / img.naturalHeight;
+          width = img.naturalWidth;
+          height = img.naturalHeight;
           
-          if (aspectRatio > 1) {
-            // Image is wider than tall
-            width = Math.min(img.naturalWidth, maxWidth);
-            height = width / aspectRatio;
+          if (highResMode) {
+            console.log("Using high resolution mode");
           } else {
-            // Image is taller than wide or square
-            height = Math.min(img.naturalHeight, maxHeight);
-            width = height * aspectRatio;
+            // Use optimized dimensions in standard mode
+            const aspectRatio = width / height;
+            
+            if (aspectRatio > 1) {
+              // Image is wider than tall
+              width = Math.min(width, maxWidth);
+              height = width / aspectRatio;
+            } else {
+              // Image is taller than wide or square
+              height = Math.min(height, maxHeight);
+              width = height * aspectRatio;
+            }
+            console.log(`Using optimized dimensions: ${width}x${height}`);
           }
           
           // Convert to integer to avoid subpixel rendering issues
@@ -292,7 +303,7 @@ export default function ImageEditorComponent() {
     };
     
     reader.readAsDataURL(file);
-  }, []);
+  }, [canvasRef, hiddenCanvasRef, highResMode]);
   
   // Function to apply a single effect to image data
   const applyEffect = useCallback((imageData: ImageData, effect: AppliedEffect): ImageData => {
@@ -844,6 +855,26 @@ export default function ImageEditorComponent() {
     img.src = processedImageData;
   };
   
+  // Handle resolution mode change and redraw the canvas if an image is already loaded
+  const handleResolutionModeChange = (useHighRes: boolean) => {
+    setHighResMode(useHighRes);
+    
+    // If an image is already loaded, redraw it with the new resolution settings
+    if (image) {
+      // Create a copy of the current image to reload it
+      const currentImg = image;
+      
+      // Reset the image to trigger a reload
+      setImage(null);
+      
+      // Use setTimeout to ensure state updates before reloading
+      setTimeout(() => {
+        // Reload the image with the new resolution mode
+        setImage(currentImg);
+      }, 50);
+    }
+  };
+  
   return (
     <div className="w-full h-full flex flex-col space-y-6 p-4 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950">
       {/* Hidden canvas for processing */}
@@ -942,6 +973,14 @@ export default function ImageEditorComponent() {
             <div className="flex-1 flex flex-col">
               <div className="p-4 border-b bg-gray-50 dark:bg-gray-900 flex justify-between items-center">
                 <h2 className="text-sm font-medium">Image Preview</h2>
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs text-muted-foreground">Optimized</span>
+                  <Switch 
+                    checked={highResMode} 
+                    onCheckedChange={handleResolutionModeChange}
+                  />
+                  <span className="text-xs text-muted-foreground">High-Res</span>
+                </div>
                 <span className="text-xs text-muted-foreground">
                   {canvasRef.current?.width || 0} × {canvasRef.current?.height || 0}
                 </span>
