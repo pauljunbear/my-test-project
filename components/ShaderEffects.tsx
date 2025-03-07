@@ -61,7 +61,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
         
         // Create filters
         const grayscaleFilter = new PIXI.filters.ColorMatrixFilter();
-        grayscaleFilter.grayscale(1, 1.0);
+        grayscaleFilter.grayscale(1, true);
         
         const blurFilter = new PIXI.filters.BlurFilter();
         blurFilter.blur = 5;
