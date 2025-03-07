@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import type { Application, Sprite, Container, Renderer } from 'pixi.js';
+// Import the type definitions only - these won't be in the compiled JS
+import type * as PIXIModule from 'pixi.js';
 
 interface ShaderEffectsProps {
   imageData: string | null;
@@ -24,14 +25,14 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
     // Load PixiJS dynamically on client side
     const loadPixi = async () => {
       try {
-        // Dynamic import for PixiJS
-        const PIXI = await import('pixi.js') as typeof import('pixi.js');
+        // Use dynamic import and type it with the imported types
+        const pixiModule = await import('pixi.js') as typeof PIXIModule;
         
         // Create PixiJS application
         const appWidth = containerRef.current?.clientWidth || 800;
         const appHeight = containerRef.current?.clientHeight || 600;
         
-        const app: Application = new PIXI.Application({
+        const app = new pixiModule.Application({
           width: appWidth,
           height: appHeight,
           backgroundColor: 0xf0f0f0,
@@ -46,8 +47,8 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
         containerRef.current?.appendChild(app.view as HTMLCanvasElement);
         
         // Create image from data URL
-        const texture = PIXI.Texture.from(imageData);
-        const sprite: PIXI.Sprite = new PIXI.Sprite(texture);
+        const texture = pixiModule.Texture.from(imageData);
+        const sprite = new pixiModule.Sprite(texture);
         
         // Center the sprite
         sprite.anchor.set(0.5);
@@ -61,10 +62,10 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
         sprite.scale.set(scale);
         
         // Create filters
-        const grayscaleFilter = new PIXI.filters.ColorMatrixFilter();
+        const grayscaleFilter = new pixiModule.filters.ColorMatrixFilter();
         grayscaleFilter.grayscale(1, true);
         
-        const blurFilter = new PIXI.filters.BlurFilter();
+        const blurFilter = new pixiModule.filters.BlurFilter();
         blurFilter.blur = 5;
         
         // Create displacement filter (for ripple effect)
@@ -90,11 +91,11 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
             }
             
             // Create a sprite from the canvas
-            const displacementTexture = PIXI.Texture.from(mapCanvas);
-            const displacementSprite = new PIXI.Sprite(displacementTexture);
-            displacementSprite.texture.baseTexture.wrapMode = PIXI.WRAP_MODES.REPEAT;
+            const displacementTexture = pixiModule.Texture.from(mapCanvas);
+            const displacementSprite = new pixiModule.Sprite(displacementTexture);
+            displacementSprite.texture.baseTexture.wrapMode = pixiModule.WRAP_MODES.REPEAT;
             
-            const displacementFilter = new PIXI.filters.DisplacementFilter(displacementSprite);
+            const displacementFilter = new pixiModule.filters.DisplacementFilter(displacementSprite);
             displacementFilter.scale.set(30);
             
             // Add the sprite to the stage but make it invisible
@@ -194,12 +195,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
     };
     
     loadPixi();
-  }, [imageData]);
-  
-  // Update filters when states change
-  useEffect(() => {
-    // This will be handled by the updateFilters function created in the main effect
-  }, [isGrayscale, isBlur, isRipple]);
+  }, [imageData, isBlur, isGrayscale, isRipple, onProcessedImage]);
   
   return (
     <div className="w-full flex flex-col space-y-4">
