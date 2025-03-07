@@ -11,7 +11,7 @@ import {
   CardTitle,
 } from './ui/card';
 import { Label } from './ui/label';
-import { Download, Undo } from 'lucide-react';
+import { Download, Undo, Wand2 } from 'lucide-react';
 import { ColorSetSelector } from './ui/color-set-selector';
 import {
   Select,
@@ -20,9 +20,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select';
+import dynamic from 'next/dynamic';
+
+// Dynamically import ShaderEffects component with no SSR
+const ShaderEffects = dynamic(() => import('./ShaderEffects'), { ssr: false });
 
 // Define types
-type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'none';
+type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'shader' | 'none';
 
 interface HalftoneSettings {
   dotSize: number;
@@ -68,6 +72,7 @@ export default function ImageEditorComponent() {
   const [currentEffect, setCurrentEffect] = useState<Effect>('none');
   const [history, setHistory] = useState<ImageHistory[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const [currentImageDataUrl, setCurrentImageDataUrl] = useState<string | null>(null);
   
   // Effect settings state
   const [halftoneSettings, setHalftoneSettings] = useState<HalftoneSettings>({
@@ -113,16 +118,14 @@ export default function ImageEditorComponent() {
   }, []);
   
   // Function to add current state to history
-  const addToHistory = useCallback(() => {
+  const addToHistory = useCallback((dataUrl: string, effects: AppliedEffect[]) => {
     if (!canvasRef.current) return;
     
     try {
-      const dataUrl = canvasRef.current.toDataURL('image/png');
-      
       // Create new history entry
       const newHistory: ImageHistory = {
         dataUrl,
-        effects: appliedEffects,
+        effects,
         timestamp: Date.now()
       };
       
@@ -135,7 +138,7 @@ export default function ImageEditorComponent() {
     } catch (error) {
       console.error("Error adding to history:", error);
     }
-  }, [appliedEffects, history, historyIndex]);
+  }, [history, historyIndex]);
   
   // Image upload handler with improved initialization
   const handleImageUpload = useCallback((file: File) => {
@@ -257,6 +260,13 @@ export default function ImageEditorComponent() {
           } catch (error) {
             console.error("Error drawing image:", error);
           }
+          
+          // Inside handleImageUpload, before the return:
+          setTimeout(() => {
+            if (canvasRef.current) {
+              setCurrentImageDataUrl(canvasRef.current.toDataURL('image/png'));
+            }
+          }, 200);
         }, 100); // Small delay to ensure state updates have completed
       };
       
@@ -511,10 +521,10 @@ export default function ImageEditorComponent() {
     setAppliedEffects(prev => [...prev, newEffect]);
     
     // Add to history
-    addToHistory();
+    addToHistory(currentImageDataUrl || '', [newEffect]);
     
     console.log(`Applied ${currentEffect} effect`, newEffect);
-  }, [currentEffect, halftoneSettings, duotoneSettings, noiseLevel, addToHistory]);
+  }, [currentEffect, halftoneSettings, duotoneSettings, noiseLevel, addToHistory, currentImageDataUrl]);
   
   // Handle undo action
   const handleUndo = () => {
@@ -799,6 +809,41 @@ export default function ImageEditorComponent() {
     return new ImageData(outputData, imageData.width, imageData.height);
   };
   
+  // Add a function to handle processed images from shader effects
+  const handleProcessedImage = (processedImageData: string) => {
+    if (!canvasRef.current || !hiddenCanvasRef.current) return;
+    
+    // Create a temporary image from processed data
+    const img = new Image();
+    img.onload = () => {
+      // Get the canvas contexts
+      const ctx = canvasRef.current?.getContext('2d', { willReadFrequently: true });
+      const hiddenCtx = hiddenCanvasRef.current?.getContext('2d', { willReadFrequently: true });
+      
+      if (!ctx || !hiddenCtx || !canvasRef.current || !hiddenCanvasRef.current) return;
+      
+      // Draw the processed image to the hidden canvas
+      hiddenCtx.clearRect(0, 0, hiddenCanvasRef.current.width, hiddenCanvasRef.current.height);
+      hiddenCtx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
+      
+      // Get the image data from the hidden canvas
+      const processedImageDataObj = hiddenCtx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
+      
+      // Draw the processed image to the main canvas
+      ctx.putImageData(processedImageDataObj, 0, 0);
+      
+      // Update current image data URL
+      setCurrentImageDataUrl(processedImageData);
+      
+      // Save to history
+      addToHistory(processedImageData, [{
+        type: 'shader',
+        settings: {}
+      }]);
+    };
+    img.src = processedImageData;
+  };
+  
   return (
     <div className="w-full h-full flex flex-col space-y-6 p-4 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950">
       {/* Hidden canvas for processing */}
@@ -848,6 +893,14 @@ export default function ImageEditorComponent() {
             className="rounded-lg"
           >
             Noise
+          </Button>
+          <Button
+            variant={currentEffect === 'shader' ? 'default' : 'outline'}
+            onClick={() => setCurrentEffect('shader')}
+            className="rounded-lg"
+          >
+            <Wand2 className="h-4 w-4 mr-2" />
+            Shaders
           </Button>
         </div>
         
@@ -1080,6 +1133,13 @@ export default function ImageEditorComponent() {
                       className="mt-1"
                     />
                   </div>
+                )}
+                
+                {currentEffect === 'shader' && (
+                  <ShaderEffects 
+                    imageData={currentImageDataUrl}
+                    onProcessedImage={handleProcessedImage}
+                  />
                 )}
                 
                 {/* Apply Effect Button */}
