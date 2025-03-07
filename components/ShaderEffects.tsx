@@ -172,14 +172,14 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
                   try {
                     if (app.renderer) {
                       // Use extract method to get the canvas content
-                      if (app.renderer.extract) {
+                      if (app.renderer.extract && sprite) {
                         // Modern PixiJS (v6+)
                         const processedImageData = app.renderer.extract.canvas(sprite).toDataURL('image/png');
                         onProcessedImage(processedImageData);
                       } else {
                         // Fallback for older versions or type issues
                         const renderer = app.renderer as any;
-                        if (renderer.plugins && renderer.plugins.extract) {
+                        if (renderer.plugins && renderer.plugins.extract && sprite) {
                           const processedImageData = renderer.plugins.extract.canvas(sprite).toDataURL('image/png');
                           onProcessedImage(processedImageData);
                         } else {
@@ -240,7 +240,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
         appInstance.destroy(true, true);
       }
     };
-  }, [imageData, onProcessedImage]);
+  }, [imageData, onProcessedImage, isGrayscale, isBlur, isRipple]);
   
   return (
     <div className="w-full flex flex-col space-y-4">
