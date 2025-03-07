@@ -133,8 +133,16 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
               // Capture result after applying filters
               if (filters.length > 0 && onProcessedImage) {
                 setTimeout(() => {
-                  const processedImageData = app.renderer.extract.canvas(sprite).toDataURL('image/png');
-                  onProcessedImage(processedImageData);
+                  try {
+                    if (app.renderer && app.renderer.extract) {
+                      const processedImageData = app.renderer.extract.canvas(sprite).toDataURL('image/png');
+                      onProcessedImage(processedImageData);
+                    } else {
+                      console.warn('Renderer extract API not available');
+                    }
+                  } catch (error) {
+                    console.error('Error capturing processed image:', error);
+                  }
                 }, 100);
               }
             };
