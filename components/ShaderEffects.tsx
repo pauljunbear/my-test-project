@@ -96,8 +96,8 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
         const PIXI = await import('pixi.js');
         
         // Get container dimensions
-        const containerWidth = containerRef.current.clientWidth;
-        const containerHeight = containerRef.current.clientHeight;
+        const containerWidth = containerRef.current?.clientWidth || 800;
+        const containerHeight = containerRef.current?.clientHeight || 600;
         
         // Initialize PixiJS app
         const app = new PIXI.Application({
