@@ -305,7 +305,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
           
           // Check if image exceeds WebGL texture size limits
           const needsResize = image.width > MAX_TEXTURE_SIZE || image.height > MAX_TEXTURE_SIZE;
-          let textureSource = image;
+          let textureSource: HTMLImageElement | HTMLCanvasElement = image;
           
           if (needsResize) {
             console.log(`Image exceeds WebGL texture size limits, resizing...`);
