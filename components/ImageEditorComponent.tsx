@@ -478,6 +478,11 @@ export default function ImageEditorComponent() {
       case 'noise':
         effectSettings = { level: noiseLevel };
         break;
+      case 'shader':
+        // For shader effects, we don't add them here
+        // They're handled by the ShaderEffects component's onProcessedImage callback
+        console.log('Shader effect is applied directly via ShaderEffects component');
+        return;
       default:
         effectSettings = {};
     }
@@ -492,7 +497,11 @@ export default function ImageEditorComponent() {
     setAppliedEffects(prev => [...prev, newEffect]);
     
     // Add to history
-    addToHistory(currentImageDataUrl || '', [newEffect]);
+    if (currentImageDataUrl) {
+      addToHistory(currentImageDataUrl, [newEffect]);
+    } else {
+      console.warn('No current image data URL available for history');
+    }
     
     console.log(`Applied ${currentEffect} effect`, newEffect);
   }, [currentEffect, halftoneSettings, duotoneSettings, noiseLevel, addToHistory, currentImageDataUrl]);
@@ -541,7 +550,7 @@ export default function ImageEditorComponent() {
       renderAllEffects();
       
       // Create a download URL
-      const dataUrl = canvasRef.current.toDataURL('image/png');
+      const dataUrl = canvasRef.current.toDataURL('image/png', 1.0); // Use max quality
       
       // Check if dataUrl is valid
       if (!dataUrl || dataUrl === 'data:,') {
@@ -556,9 +565,26 @@ export default function ImageEditorComponent() {
         console.log("DataURL generated successfully, length:", dataUrl.length);
       }
       
+      // Generate a filename with original dimensions and applied effects
+      let filename = 'edited-image';
+      
+      // Include information about applied effects if any
+      if (appliedEffects.length > 0) {
+        const effectNames = appliedEffects.map(effect => effect.type).join('-');
+        filename += `-${effectNames}`;
+      }
+      
+      // Include dimensions
+      if (canvasRef.current) {
+        filename += `-${canvasRef.current.width}x${canvasRef.current.height}`;
+      }
+      
+      // Add extension
+      filename += '.png';
+      
       // Create and trigger download link
       const link = document.createElement('a');
-      link.download = 'edited-image.png';
+      link.download = filename;
       link.href = dataUrl;
       document.body.appendChild(link);
       link.click();
