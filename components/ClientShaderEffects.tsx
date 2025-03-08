@@ -11,9 +11,14 @@ interface ClientShaderEffectsProps {
 
 // Import GlslCanvas dynamically
 const loadGlslCanvas = async () => {
-  // Dynamic import to avoid SSR issues
-  const GlslCanvas = (await import('glsl-canvas')).default;
-  return GlslCanvas;
+  try {
+    // Dynamic import to avoid SSR issues
+    const module = await import('glsl-canvas');
+    return module.default;
+  } catch (error) {
+    console.error('Error loading GlslCanvas:', error);
+    throw new Error('Failed to load shader library');
+  }
 };
 
 // Shader effects collection
