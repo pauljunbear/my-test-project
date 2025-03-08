@@ -268,7 +268,8 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
         console.log('Loading PixiJS and initializing app...');
         
         // Load PixiJS
-        let PIXI;
+        // Import the module type to ensure TypeScript understands the PIXI variable
+        let PIXI: typeof import('pixi.js');
         try {
           PIXI = await import('pixi.js');
         } catch (err) {
