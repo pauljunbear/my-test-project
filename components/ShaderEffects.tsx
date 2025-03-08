@@ -301,7 +301,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
             console.log(`Detected max WebGL texture size: ${maxTextureSize}x${maxTextureSize}`);
             
             // Clean up
-            const loseContext = gl.getExtension('WEBGL_lose_context');
+            const loseContext = webGLContext.getExtension('WEBGL_lose_context');
             if (loseContext) loseContext.loseContext();
             
             return maxTextureSize;
