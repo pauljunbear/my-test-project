@@ -328,10 +328,14 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
       
       // Clear container and append canvas
       if (containerRef.current) {
-        while (containerRef.current.firstChild) {
-          containerRef.current.removeChild(containerRef.current.firstChild);
+        try {
+          // Safer way to clear the container
+          containerRef.current.innerHTML = '';
+          containerRef.current.appendChild(app.view as HTMLCanvasElement);
+        } catch (err) {
+          console.error('Error attaching canvas to container:', err);
+          setError('Failed to initialize WebGL canvas');
         }
-        containerRef.current.appendChild(app.view as HTMLCanvasElement);
       }
       
       console.log('PixiJS app initialized, loading image...');
@@ -516,7 +520,11 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
   const cleanupPixiApp = () => {
     // Stop any active recording
     if (mediaRecorderRef.current && recordingRef.current) {
-      mediaRecorderRef.current.stop();
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {
+        console.warn('Error stopping media recorder:', e);
+      }
       mediaRecorderRef.current = null;
       recordingRef.current = false;
     }
@@ -525,6 +533,22 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
     if (pixiAppRef.current) {
       // Try-catch to prevent errors during cleanup
       try {
+        // First, try to stop all animations
+        if (pixiAppRef.current.ticker) {
+          pixiAppRef.current.ticker.stop();
+        }
+        
+        // Remove the view from DOM safely before destroying
+        try {
+          const view = pixiAppRef.current.view;
+          if (view && view.parentNode) {
+            view.parentNode.removeChild(view);
+          }
+        } catch (e) {
+          console.warn('Error removing canvas from DOM:', e);
+        }
+        
+        // Now destroy the app
         pixiAppRef.current.destroy(true, {children: true, texture: true, baseTexture: true});
       } catch (e) {
         console.warn('Error during PixiJS cleanup:', e);
