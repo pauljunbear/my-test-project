@@ -79,31 +79,69 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
       // Force a render to ensure filters are applied
       app.render();
       
-      // Capture the processed image
+      // Attempt to get processed image data with several fallback methods
       let processedImageData: string | null = null;
       
-      if (app.renderer.extract && spriteRef.current) {
-        processedImageData = app.renderer.extract.canvas(spriteRef.current).toDataURL('image/png');
-      } else if (app.renderer.plugins && app.renderer.plugins.extract && spriteRef.current) {
-        processedImageData = app.renderer.plugins.extract.canvas(spriteRef.current).toDataURL('image/png');
-      } else {
-        // Fallback if extract API is not available
-        console.warn('Extract API not available, using full stage capture as fallback');
-        if (app.renderer.extract) {
-          processedImageData = app.renderer.extract.canvas(app.stage).toDataURL('image/png');
-        } else if (app.renderer.plugins && app.renderer.plugins.extract) {
-          processedImageData = app.renderer.plugins.extract.canvas(app.stage).toDataURL('image/png');
+      try {
+        // Method 1: Direct extract from sprite (preferred)
+        if (app.renderer.extract && spriteRef.current) {
+          processedImageData = app.renderer.extract.canvas(spriteRef.current).toDataURL('image/png');
+        }
+      } catch (err) {
+        console.warn('Failed to extract sprite directly, trying stage extract', err);
+      }
+      
+      if (!processedImageData) {
+        try {
+          // Method 2: Extract from entire stage
+          if (app.renderer.extract) {
+            processedImageData = app.renderer.extract.canvas(app.stage).toDataURL('image/png');
+          } else if (app.renderer.plugins && app.renderer.plugins.extract) {
+            processedImageData = app.renderer.plugins.extract.canvas(app.stage).toDataURL('image/png');
+          }
+        } catch (err) {
+          console.warn('Failed to extract from stage, trying view capture', err);
+        }
+      }
+      
+      if (!processedImageData) {
+        try {
+          // Method 3: Direct canvas capture
+          processedImageData = (app.view as HTMLCanvasElement).toDataURL('image/png');
+        } catch (err) {
+          console.warn('Failed to capture from view', err);
+        }
+      }
+      
+      // Final fallback: Create a new canvas and draw stage content
+      if (!processedImageData) {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = app.view.width;
+          canvas.height = app.view.height;
+          const ctx = canvas.getContext('2d');
+          
+          if (ctx) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(app.view as HTMLCanvasElement, 0, 0);
+            processedImageData = canvas.toDataURL('image/png');
+          }
+        } catch (err) {
+          console.error('All capture methods failed', err);
         }
       }
       
       // Check if we successfully captured image data
       if (processedImageData) {
+        console.log('Successfully captured processed image');
         onProcessedImage(processedImageData);
       } else {
-        console.error('Failed to capture processed image data');
+        console.error('Failed to capture processed image data after all attempts');
       }
+      
     } catch (error) {
-      console.error('Error capturing processed image:', error);
+      console.error('Error in captureProcessedImage:', error);
     }
   };
   
@@ -190,6 +228,35 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
         const containerWidth = containerRef.current?.clientWidth || 800;
         const containerHeight = containerRef.current?.clientHeight || 600;
         
+        // WebGL texture size detection
+        const getMaxTextureSize = () => {
+          try {
+            // Create temporary canvas and get webgl context
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            
+            if (!gl) {
+              console.warn('WebGL not supported, using fallback size of 2048');
+              return 2048;
+            }
+            
+            // Get max texture size
+            const maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+            console.log(`Detected max WebGL texture size: ${maxTextureSize}x${maxTextureSize}`);
+            
+            // Clean up
+            const loseContext = gl.getExtension('WEBGL_lose_context');
+            if (loseContext) loseContext.loseContext();
+            
+            return maxTextureSize;
+          } catch (err) {
+            console.warn('Error detecting max texture size, using fallback size of 2048', err);
+            return 2048;
+          }
+        };
+        
+        const MAX_TEXTURE_SIZE = getMaxTextureSize();
+        
         // Initialize PixiJS app with improved settings
         const app = new PIXI.Application({
           width: containerWidth,
@@ -224,8 +291,43 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
           
           console.log(`Image loaded: ${image.width}x${image.height}`);
           
-          // Create texture and sprite
-          const texture = PIXI.Texture.from(image);
+          // Check if image exceeds WebGL texture size limits
+          const needsResize = image.width > MAX_TEXTURE_SIZE || image.height > MAX_TEXTURE_SIZE;
+          let textureSource = image;
+          
+          if (needsResize) {
+            console.log(`Image exceeds WebGL texture size limits, resizing...`);
+            // Create a scaled version of the image for WebGL processing
+            const scaledCanvas = document.createElement('canvas');
+            let scaledWidth = image.width;
+            let scaledHeight = image.height;
+            
+            // Calculate scaled dimensions while maintaining aspect ratio
+            if (image.width > image.height) {
+              scaledWidth = Math.min(MAX_TEXTURE_SIZE, image.width);
+              scaledHeight = Math.round((scaledWidth / image.width) * image.height);
+            } else {
+              scaledHeight = Math.min(MAX_TEXTURE_SIZE, image.height);
+              scaledWidth = Math.round((scaledHeight / image.height) * image.width);
+            }
+            
+            // Apply the scaled dimensions
+            scaledCanvas.width = scaledWidth;
+            scaledCanvas.height = scaledHeight;
+            
+            // Draw scaled image
+            const ctx = scaledCanvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(image, 0, 0, scaledWidth, scaledHeight);
+              textureSource = scaledCanvas;
+              console.log(`Resized to: ${scaledWidth}x${scaledHeight}`);
+            } else {
+              console.warn('Could not get 2D context for scaling, using original image');
+            }
+          }
+          
+          // Create texture and sprite with properly scaled image
+          const texture = PIXI.Texture.from(textureSource);
           const sprite = new PIXI.Sprite(texture);
           spriteRef.current = sprite;
           
@@ -235,11 +337,11 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
           sprite.y = app.screen.height / 2;
           
           // Calculate scale to fit container while maintaining aspect ratio
-          const scaleX = (app.screen.width * 0.9) / image.width;
-          const scaleY = (app.screen.height * 0.9) / image.height;
+          const scaleX = (app.screen.width * 0.9) / sprite.width;
+          const scaleY = (app.screen.height * 0.9) / sprite.height;
           const scale = Math.min(scaleX, scaleY);
           
-          console.log(`Applied scale: ${scale} (scaleX: ${scaleX}, scaleY: ${scaleY})`);
+          console.log(`Applied display scale: ${scale} (scaleX: ${scaleX}, scaleY: ${scaleY})`);
           
           // Apply scale
           sprite.scale.set(scale);
@@ -326,7 +428,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
     
     // Cleanup function
     return cleanupPixiApp;
-  }, [imageData]);
+  }, [imageData, isGrayscale, isBlur, isRipple]);
   
   // Create a displacement map texture
   const createDisplacementTexture = (PIXI: any, size: number) => {
@@ -388,33 +490,35 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
   
   return (
     <div className="w-full flex flex-col space-y-4">
-      <div className="flex flex-wrap gap-2">
-        <Button 
-          variant={isGrayscale ? "default" : "outline"}
-          onClick={() => setIsGrayscale(!isGrayscale)}
-          className="w-full sm:w-auto"
-          disabled={isProcessing}
-        >
-          {isGrayscale ? 'Disable' : 'Enable'} Grayscale
-        </Button>
-        
-        <Button 
-          variant={isBlur ? "default" : "outline"}
-          onClick={() => setIsBlur(!isBlur)}
-          className="w-full sm:w-auto"
-          disabled={isProcessing}
-        >
-          {isBlur ? 'Disable' : 'Enable'} Blur
-        </Button>
-        
-        <Button 
-          variant={isRipple ? "default" : "outline"}
-          onClick={() => setIsRipple(!isRipple)}
-          className="w-full sm:w-auto"
-          disabled={isProcessing}
-        >
-          {isRipple ? 'Disable' : 'Enable'} Ripple
-        </Button>
+      <div className="flex flex-wrap gap-2 justify-between">
+        <div className="flex flex-wrap gap-2">
+          <Button 
+            variant={isGrayscale ? "default" : "outline"}
+            onClick={() => setIsGrayscale(!isGrayscale)}
+            className="w-full sm:w-auto"
+            disabled={isProcessing}
+          >
+            {isGrayscale ? 'Disable' : 'Enable'} Grayscale
+          </Button>
+          
+          <Button 
+            variant={isBlur ? "default" : "outline"}
+            onClick={() => setIsBlur(!isBlur)}
+            className="w-full sm:w-auto"
+            disabled={isProcessing}
+          >
+            {isBlur ? 'Disable' : 'Enable'} Blur
+          </Button>
+          
+          <Button 
+            variant={isRipple ? "default" : "outline"}
+            onClick={() => setIsRipple(!isRipple)}
+            className="w-full sm:w-auto"
+            disabled={isProcessing}
+          >
+            {isRipple ? 'Disable' : 'Enable'} Ripple
+          </Button>
+        </div>
         
         {isRipple && (
           <Button
@@ -423,29 +527,56 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
             className="w-full sm:w-auto"
             disabled={isProcessing || recordingRef.current}
           >
-            Export Animation
+            {recordingRef.current ? 'Recording...' : 'Export Animation'}
           </Button>
         )}
       </div>
       
-      <div className="text-xs text-muted-foreground mt-2">
-        Performance: {fps} FPS
+      <div className="flex justify-between items-center">
+        <div className="text-xs text-muted-foreground">
+          Performance: {fps} FPS
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {isInitialized && spriteRef.current ? 
+            `Shader Size: ${Math.round(spriteRef.current.width)}×${Math.round(spriteRef.current.height)}` : 
+            'Initializing shader...'}
+        </div>
       </div>
       
       <div 
         ref={containerRef} 
-        className="w-full h-[400px] bg-muted/20 border rounded-lg overflow-hidden flex items-center justify-center"
+        className="w-full h-[400px] bg-muted/20 border rounded-lg overflow-hidden flex items-center justify-center relative"
       >
         {!imageData && (
           <div className="text-muted-foreground">
             Upload an image to apply shader effects
           </div>
         )}
-        {isProcessing && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/10 z-10">
-            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
+        
+        {imageData && !isInitialized && (
+          <div className="text-muted-foreground flex flex-col items-center">
+            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mb-2"></div>
+            Initializing WebGL shader...
           </div>
         )}
+        
+        {isProcessing && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/10 z-10">
+            <div className="flex flex-col items-center">
+              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mb-2"></div>
+              <div className="text-sm font-medium">Processing shader effects...</div>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      <div className="text-xs text-muted-foreground">
+        <p className="font-medium mb-1">Tips for optimal shader performance:</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>Large images (over 4096×4096) will be automatically scaled down for WebGL processing</li>
+          <li>For best results, apply one effect at a time</li>
+          <li>If you encounter issues, try disabling all effects and re-enabling them one by one</li>
+        </ul>
       </div>
     </div>
   );
