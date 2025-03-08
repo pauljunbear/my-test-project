@@ -34,31 +34,40 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
   
   // Function to apply filters based on current state
   const updateFilters = () => {
-    if (!spriteRef.current || !filtersRef.current) return;
+    if (!spriteRef.current || !filtersRef.current) {
+      console.log("Cannot update filters - sprite or filters not initialized");
+      return;
+    }
     
     setIsProcessing(true);
+    console.log("Updating filters...");
     
     // Create a fresh array of active filters
     const activeFilters = [];
     
     if (isGrayscale && filtersRef.current.grayscale) {
+      console.log("Adding grayscale filter");
       activeFilters.push(filtersRef.current.grayscale);
     }
     
     if (isBlur && filtersRef.current.blur) {
+      console.log("Adding blur filter with strength:", filtersRef.current.blur.blur);
       activeFilters.push(filtersRef.current.blur);
     }
     
     if (isRipple && filtersRef.current.displacement) {
+      console.log("Adding displacement (ripple) filter");
       activeFilters.push(filtersRef.current.displacement);
     }
     
     // Apply filters to sprite
     spriteRef.current.filters = activeFilters.length > 0 ? activeFilters : null;
+    console.log(`Applied ${activeFilters.length} filters to sprite`);
     
     // Force a render of the next frame
     if (pixiAppRef.current) {
       pixiAppRef.current.render();
+      console.log("Forced render of next frame");
     }
     
     // Capture the result after applying filters
@@ -66,6 +75,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
     setTimeout(() => {
       captureProcessedImage();
       setIsProcessing(false);
+      console.log("Filter processing complete");
     }, 100);
   };
   
@@ -356,8 +366,8 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
           
           // Blur filter
           const blurFilter = new PIXI.filters.BlurFilter();
-          blurFilter.blur = 5;
-          blurFilter.quality = 4;
+          blurFilter.blur = 15;
+          blurFilter.quality = 8;
           filtersRef.current.blur = blurFilter;
           
           // Displacement filter for ripple effect
@@ -484,6 +494,10 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
   // Update filters when effect toggles change
   useEffect(() => {
     if (isInitialized && !isProcessing) {
+      console.log("Effect toggle changed - updating filters:");
+      console.log("- Grayscale:", isGrayscale);
+      console.log("- Blur:", isBlur);
+      console.log("- Ripple:", isRipple);
       updateFilters();
     }
   }, [isGrayscale, isBlur, isRipple, isInitialized]);
@@ -504,10 +518,10 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
           <Button 
             variant={isBlur ? "default" : "outline"}
             onClick={() => setIsBlur(!isBlur)}
-            className="w-full sm:w-auto"
+            className={`w-full sm:w-auto ${isBlur ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
             disabled={isProcessing}
           >
-            {isBlur ? 'Disable' : 'Enable'} Blur
+            {isBlur ? '✓ Blur Enabled' : 'Enable Blur'}
           </Button>
           
           <Button 
