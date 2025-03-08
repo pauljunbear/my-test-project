@@ -254,234 +254,234 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
     }
   };
   
-  // Initialize PixiJS when component mounts or imageData changes
-  useEffect(() => {
+  // Extract the Pixi initialization function to component level for reusability
+  const initializePixi = async () => {
     if (!containerRef.current || !imageData || !webGLSupported) return;
     
-    const loadAndSetupPixi = async () => {
+    try {
+      // Clean up existing app
+      if (pixiAppRef.current) {
+        cleanupPixiApp();
+      }
+      
+      console.log('Loading PixiJS and initializing app...');
+      
+      // Load PixiJS
+      // Import the module type to ensure TypeScript understands the PIXI variable
+      let PIXI: typeof import('pixi.js');
       try {
-        // Clean up existing app
-        if (pixiAppRef.current) {
-          cleanupPixiApp();
-        }
-        
-        console.log('Loading PixiJS and initializing app...');
-        
-        // Load PixiJS
-        // Import the module type to ensure TypeScript understands the PIXI variable
-        let PIXI: typeof import('pixi.js');
+        PIXI = await import('pixi.js');
+      } catch (err) {
+        console.error('Failed to load PixiJS library:', err);
+        setError('Failed to load shader libraries. Please try refreshing the page.');
+        return;
+      }
+      
+      // Get container dimensions
+      const containerWidth = containerRef.current?.clientWidth || 800;
+      const containerHeight = containerRef.current?.clientHeight || 600;
+      
+      // WebGL texture size detection
+      const getMaxTextureSize = () => {
         try {
-          PIXI = await import('pixi.js');
-        } catch (err) {
-          console.error('Failed to load PixiJS library:', err);
-          setError('Failed to load shader libraries. Please try refreshing the page.');
-          return;
-        }
-        
-        // Get container dimensions
-        const containerWidth = containerRef.current?.clientWidth || 800;
-        const containerHeight = containerRef.current?.clientHeight || 600;
-        
-        // WebGL texture size detection
-        const getMaxTextureSize = () => {
-          try {
-            // Create temporary canvas and get webgl context
-            const canvas = document.createElement('canvas');
-            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-            
-            if (!gl) {
-              console.warn('WebGL not supported, using fallback size of 2048');
-              return 2048;
-            }
-            
-            // Get max texture size
-            // Explicitly cast gl to WebGLRenderingContext to access WebGL methods
-            const webGLContext = gl as WebGLRenderingContext;
-            const maxTextureSize = webGLContext.getParameter(webGLContext.MAX_TEXTURE_SIZE);
-            console.log(`Detected max WebGL texture size: ${maxTextureSize}x${maxTextureSize}`);
-            
-            // Clean up
-            const loseContext = webGLContext.getExtension('WEBGL_lose_context');
-            if (loseContext) loseContext.loseContext();
-            
-            return maxTextureSize;
-          } catch (err) {
-            console.warn('Error detecting max texture size, using fallback size of 2048', err);
+          // Create temporary canvas and get webgl context
+          const canvas = document.createElement('canvas');
+          const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+          
+          if (!gl) {
+            console.warn('WebGL not supported, using fallback size of 2048');
             return 2048;
           }
-        };
+          
+          // Get max texture size
+          // Explicitly cast gl to WebGLRenderingContext to access WebGL methods
+          const webGLContext = gl as WebGLRenderingContext;
+          const maxTextureSize = webGLContext.getParameter(webGLContext.MAX_TEXTURE_SIZE);
+          console.log(`Detected max WebGL texture size: ${maxTextureSize}x${maxTextureSize}`);
+          
+          // Clean up
+          const loseContext = webGLContext.getExtension('WEBGL_lose_context');
+          if (loseContext) loseContext.loseContext();
+          
+          return maxTextureSize;
+        } catch (err) {
+          console.warn('Error detecting max texture size, using fallback size of 2048', err);
+          return 2048;
+        }
+      };
+      
+      const MAX_TEXTURE_SIZE = getMaxTextureSize();
+      
+      // Initialize PixiJS app with improved settings
+      const app = new PIXI.Application({
+        width: containerWidth,
+        height: containerHeight,
+        backgroundColor: 0xFFFFFF,
+        resolution: Math.min(window.devicePixelRatio, 2),
+        antialias: true,
+        autoDensity: true,
+        powerPreference: 'high-performance',
+        preserveDrawingBuffer: true, // Required for image capture
+      });
+      
+      pixiAppRef.current = app;
+      
+      // Clear container and append canvas
+      if (containerRef.current) {
+        while (containerRef.current.firstChild) {
+          containerRef.current.removeChild(containerRef.current.firstChild);
+        }
+        containerRef.current.appendChild(app.view as HTMLCanvasElement);
+      }
+      
+      console.log('PixiJS app initialized, loading image...');
+      
+      // Create a loader for the image
+      const image = new Image();
+      image.crossOrigin = "anonymous";
+      
+      image.onload = () => {
+        // Skip if component unmounted
+        if (!containerRef.current) return;
         
-        const MAX_TEXTURE_SIZE = getMaxTextureSize();
+        console.log(`Image loaded: ${image.width}x${image.height}`);
         
-        // Initialize PixiJS app with improved settings
-        const app = new PIXI.Application({
-          width: containerWidth,
-          height: containerHeight,
-          backgroundColor: 0xFFFFFF,
-          resolution: Math.min(window.devicePixelRatio, 2),
-          antialias: true,
-          autoDensity: true,
-          powerPreference: 'high-performance',
-          preserveDrawingBuffer: true, // Required for image capture
-        });
+        // Check if image exceeds WebGL texture size limits
+        const needsResize = image.width > MAX_TEXTURE_SIZE || image.height > MAX_TEXTURE_SIZE;
+        let textureSource: HTMLImageElement | HTMLCanvasElement = image;
         
-        pixiAppRef.current = app;
-        
-        // Clear container and append canvas
-        if (containerRef.current) {
-          while (containerRef.current.firstChild) {
-            containerRef.current.removeChild(containerRef.current.firstChild);
+        if (needsResize) {
+          console.log(`Image exceeds WebGL texture size limits, resizing...`);
+          // Create a scaled version of the image for WebGL processing
+          const scaledCanvas = document.createElement('canvas');
+          let scaledWidth = image.width;
+          let scaledHeight = image.height;
+          
+          // Calculate scaled dimensions while maintaining aspect ratio
+          if (image.width > image.height) {
+            scaledWidth = Math.min(MAX_TEXTURE_SIZE, image.width);
+            scaledHeight = Math.round((scaledWidth / image.width) * image.height);
+          } else {
+            scaledHeight = Math.min(MAX_TEXTURE_SIZE, image.height);
+            scaledWidth = Math.round((scaledHeight / image.height) * image.width);
           }
-          containerRef.current.appendChild(app.view as HTMLCanvasElement);
+          
+          // Apply the scaled dimensions
+          scaledCanvas.width = scaledWidth;
+          scaledCanvas.height = scaledHeight;
+          
+          // Draw scaled image
+          const ctx = scaledCanvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(image, 0, 0, scaledWidth, scaledHeight);
+            textureSource = scaledCanvas;
+            console.log(`Resized to: ${scaledWidth}x${scaledHeight}`);
+          } else {
+            console.warn('Could not get 2D context for scaling, using original image');
+          }
         }
         
-        console.log('PixiJS app initialized, loading image...');
+        // Create texture and sprite with properly scaled image
+        const texture = PIXI.Texture.from(textureSource);
+        const sprite = new PIXI.Sprite(texture);
+        spriteRef.current = sprite;
         
-        // Create a loader for the image
-        const image = new Image();
-        image.crossOrigin = "anonymous";
+        // Position in center
+        sprite.anchor.set(0.5);
+        sprite.x = app.screen.width / 2;
+        sprite.y = app.screen.height / 2;
         
-        image.onload = () => {
-          // Skip if component unmounted
-          if (!containerRef.current) return;
-          
-          console.log(`Image loaded: ${image.width}x${image.height}`);
-          
-          // Check if image exceeds WebGL texture size limits
-          const needsResize = image.width > MAX_TEXTURE_SIZE || image.height > MAX_TEXTURE_SIZE;
-          let textureSource: HTMLImageElement | HTMLCanvasElement = image;
-          
-          if (needsResize) {
-            console.log(`Image exceeds WebGL texture size limits, resizing...`);
-            // Create a scaled version of the image for WebGL processing
-            const scaledCanvas = document.createElement('canvas');
-            let scaledWidth = image.width;
-            let scaledHeight = image.height;
-            
-            // Calculate scaled dimensions while maintaining aspect ratio
-            if (image.width > image.height) {
-              scaledWidth = Math.min(MAX_TEXTURE_SIZE, image.width);
-              scaledHeight = Math.round((scaledWidth / image.width) * image.height);
-            } else {
-              scaledHeight = Math.min(MAX_TEXTURE_SIZE, image.height);
-              scaledWidth = Math.round((scaledHeight / image.height) * image.width);
-            }
-            
-            // Apply the scaled dimensions
-            scaledCanvas.width = scaledWidth;
-            scaledCanvas.height = scaledHeight;
-            
-            // Draw scaled image
-            const ctx = scaledCanvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(image, 0, 0, scaledWidth, scaledHeight);
-              textureSource = scaledCanvas;
-              console.log(`Resized to: ${scaledWidth}x${scaledHeight}`);
-            } else {
-              console.warn('Could not get 2D context for scaling, using original image');
-            }
+        // Calculate scale to fit container while maintaining aspect ratio
+        const scaleX = (app.screen.width * 0.9) / sprite.width;
+        const scaleY = (app.screen.height * 0.9) / sprite.height;
+        const scale = Math.min(scaleX, scaleY);
+        
+        console.log(`Applied display scale: ${scale} (scaleX: ${scaleX}, scaleY: ${scaleY})`);
+        
+        // Apply scale
+        sprite.scale.set(scale);
+        
+        // Create filters
+        console.log('Creating filters...');
+        
+        // Grayscale filter
+        const grayscaleFilter = new PIXI.filters.ColorMatrixFilter();
+        grayscaleFilter.grayscale(1, true);
+        filtersRef.current.grayscale = grayscaleFilter;
+        
+        // Blur filter
+        const blurFilter = new PIXI.filters.BlurFilter();
+        blurFilter.blur = 15; // Increased from 5 to 15 for more noticeable effect
+        blurFilter.quality = 8; // Increased from 4 to 8 for better quality
+        filtersRef.current.blur = blurFilter;
+        
+        // Displacement filter for ripple effect
+        const displacementTexture = createDisplacementTexture(PIXI, 256);
+        const displacementSprite = new PIXI.Sprite(displacementTexture);
+        displacementSpriteRef.current = displacementSprite;
+        
+        displacementSprite.anchor.set(0.5);
+        displacementSprite.x = app.screen.width / 2;
+        displacementSprite.y = app.screen.height / 2;
+        displacementSprite.scale.set(1);
+        
+        const displacementFilter = new PIXI.filters.DisplacementFilter(displacementSprite);
+        displacementFilter.scale.set(30);
+        filtersRef.current.displacement = displacementFilter;
+        
+        // Add sprites to stage
+        app.stage.addChild(displacementSprite);
+        app.stage.addChild(sprite);
+        
+        console.log('Sprites and filters created and added to stage');
+        
+        // Setup animation for ripple effect
+        let time = 0;
+        app.ticker.add(() => {
+          if (isRipple && displacementSpriteRef.current) {
+            time += 0.01;
+            displacementSpriteRef.current.rotation = time * 0.1;
+            const scale = 1 + Math.sin(time) * 0.1;
+            displacementSpriteRef.current.scale.set(scale);
           }
-          
-          // Create texture and sprite with properly scaled image
-          const texture = PIXI.Texture.from(textureSource);
-          const sprite = new PIXI.Sprite(texture);
-          spriteRef.current = sprite;
-          
-          // Position in center
-          sprite.anchor.set(0.5);
-          sprite.x = app.screen.width / 2;
-          sprite.y = app.screen.height / 2;
-          
-          // Calculate scale to fit container while maintaining aspect ratio
-          const scaleX = (app.screen.width * 0.9) / sprite.width;
-          const scaleY = (app.screen.height * 0.9) / sprite.height;
-          const scale = Math.min(scaleX, scaleY);
-          
-          console.log(`Applied display scale: ${scale} (scaleX: ${scaleX}, scaleY: ${scaleY})`);
-          
-          // Apply scale
-          sprite.scale.set(scale);
-          
-          // Create filters
-          console.log('Creating filters...');
-          
-          // Grayscale filter
-          const grayscaleFilter = new PIXI.filters.ColorMatrixFilter();
-          grayscaleFilter.grayscale(1, true);
-          filtersRef.current.grayscale = grayscaleFilter;
-          
-          // Blur filter
-          const blurFilter = new PIXI.filters.BlurFilter();
-          blurFilter.blur = 15;
-          blurFilter.quality = 8;
-          filtersRef.current.blur = blurFilter;
-          
-          // Displacement filter for ripple effect
-          const displacementTexture = createDisplacementTexture(PIXI, 256);
-          const displacementSprite = new PIXI.Sprite(displacementTexture);
-          displacementSpriteRef.current = displacementSprite;
-          
-          displacementSprite.anchor.set(0.5);
-          displacementSprite.x = app.screen.width / 2;
-          displacementSprite.y = app.screen.height / 2;
-          displacementSprite.scale.set(1);
-          
-          const displacementFilter = new PIXI.filters.DisplacementFilter(displacementSprite);
-          displacementFilter.scale.set(30);
-          filtersRef.current.displacement = displacementFilter;
-          
-          // Add sprites to stage
-          app.stage.addChild(displacementSprite);
-          app.stage.addChild(sprite);
-          
-          console.log('Sprites and filters created and added to stage');
-          
-          // Setup animation for ripple effect
-          let time = 0;
-          app.ticker.add(() => {
-            if (isRipple && displacementSpriteRef.current) {
-              time += 0.01;
-              displacementSpriteRef.current.rotation = time * 0.1;
-              const scale = 1 + Math.sin(time) * 0.1;
-              displacementSpriteRef.current.scale.set(scale);
-            }
-          });
-          
-          // FPS counter
-          let frameCount = 0;
-          let lastTime = performance.now();
-          
-          app.ticker.add(() => {
-            frameCount++;
-            const now = performance.now();
-            
-            if (now - lastTime >= 1000) {
-              setFps(frameCount);
-              frameCount = 0;
-              lastTime = now;
-            }
-          });
-          
-          // Initial filter application
-          console.log('Applying initial filters...');
-          updateFilters();
-          setIsInitialized(true);
-        };
+        });
         
-        image.onerror = (error) => {
-          console.error("Error loading image for shader effects:", error);
-        };
+        // FPS counter
+        let frameCount = 0;
+        let lastTime = performance.now();
         
-        // Load the image
-        image.src = imageData;
+        app.ticker.add(() => {
+          frameCount++;
+          const now = performance.now();
+          
+          if (now - lastTime >= 1000) {
+            setFps(frameCount);
+            frameCount = 0;
+            lastTime = now;
+          }
+        });
         
-      } catch (error) {
-        console.error("Error initializing PixiJS:", error);
-        setError(`Shader initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-    };
-    
-    loadAndSetupPixi();
+        // Initial filter application
+        console.log('Applying initial filters...');
+        updateFilters();
+        setIsInitialized(true);
+      };
+      
+      image.onerror = (error) => {
+        console.error("Error loading image for shader effects:", error);
+      };
+      
+      // Load the image
+      image.src = imageData;
+    } catch (error) {
+      console.error("Error initializing PixiJS:", error);
+      setError(`Shader initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+  
+  // Initialize PixiJS when component mounts or imageData changes
+  useEffect(() => {
+    initializePixi();
     
     // Cleanup function
     return cleanupPixiApp;
@@ -559,10 +559,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
             className="mt-2 text-sm px-3 py-1 bg-red-100 hover:bg-red-200 rounded-md transition-colors"
             onClick={() => {
               setError(null);
-              // Try to reinitialize if possible
-              if (webGLSupported && imageData && containerRef.current) {
-                loadAndSetupPixi();
-              }
+              initializePixi();
             }}
           >
             Try Again
