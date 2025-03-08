@@ -48,8 +48,9 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
           return false;
         }
         
-        // Test for basic WebGL capabilities
-        const extension = gl.getExtension('WEBGL_lose_context');
+        // Test for basic WebGL capabilities - properly type cast to WebGLRenderingContext
+        const webGLContext = gl as WebGLRenderingContext;
+        const extension = webGLContext.getExtension('WEBGL_lose_context');
         if (extension) extension.loseContext();
         
         return true;
