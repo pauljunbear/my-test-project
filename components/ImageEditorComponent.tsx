@@ -20,10 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select';
-import dynamic from 'next/dynamic';
-
-// Dynamically import ShaderEffects component with no SSR
-const ShaderEffects = dynamic(() => import('./ShaderEffects'), { ssr: false });
+import ClientShaderEffects from './ClientShaderEffects';
 
 // Define types
 type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'shader' | 'none';
@@ -1145,7 +1142,7 @@ export default function ImageEditorComponent() {
                 )}
                 
                 {currentEffect === 'shader' && (
-                  <ShaderEffects 
+                  <ClientShaderEffects 
                     imageData={currentImageDataUrl}
                     onProcessedImage={handleProcessedImage}
                   />

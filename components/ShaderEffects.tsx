@@ -31,6 +31,41 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
   const [fps, setFps] = useState(0);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [webGLSupported, setWebGLSupported] = useState(true);
+  
+  // Check WebGL support
+  useEffect(() => {
+    const checkWebGLSupport = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        
+        if (!gl) {
+          console.error('WebGL is not supported in this browser');
+          setWebGLSupported(false);
+          setError('Your browser does not support WebGL, which is required for shader effects.');
+          return false;
+        }
+        
+        // Test for basic WebGL capabilities
+        const extension = gl.getExtension('WEBGL_lose_context');
+        if (extension) extension.loseContext();
+        
+        return true;
+      } catch (err) {
+        console.error('Error checking WebGL support:', err);
+        setWebGLSupported(false);
+        setError('Error initializing WebGL. Shader effects may not work properly.');
+        return false;
+      }
+    };
+    
+    // Only check in browser environment
+    if (typeof window !== 'undefined') {
+      checkWebGLSupport();
+    }
+  }, []);
   
   // Function to apply filters based on current state
   const updateFilters = () => {
@@ -220,7 +255,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
   
   // Initialize PixiJS when component mounts or imageData changes
   useEffect(() => {
-    if (!containerRef.current || !imageData) return;
+    if (!containerRef.current || !imageData || !webGLSupported) return;
     
     const loadAndSetupPixi = async () => {
       try {
@@ -232,7 +267,14 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
         console.log('Loading PixiJS and initializing app...');
         
         // Load PixiJS
-        const PIXI = await import('pixi.js');
+        let PIXI;
+        try {
+          PIXI = await import('pixi.js');
+        } catch (err) {
+          console.error('Failed to load PixiJS library:', err);
+          setError('Failed to load shader libraries. Please try refreshing the page.');
+          return;
+        }
         
         // Get container dimensions
         const containerWidth = containerRef.current?.clientWidth || 800;
@@ -257,7 +299,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
             console.log(`Detected max WebGL texture size: ${maxTextureSize}x${maxTextureSize}`);
             
             // Clean up
-            const loseContext = webGLContext.getExtension('WEBGL_lose_context');
+            const loseContext = gl.getExtension('WEBGL_lose_context');
             if (loseContext) loseContext.loseContext();
             
             return maxTextureSize;
@@ -433,6 +475,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
         
       } catch (error) {
         console.error("Error initializing PixiJS:", error);
+        setError(`Shader initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     };
     
@@ -440,7 +483,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
     
     // Cleanup function
     return cleanupPixiApp;
-  }, [imageData, isGrayscale, isBlur, isRipple]);
+  }, [imageData, webGLSupported]);
   
   // Create a displacement map texture
   const createDisplacementTexture = (PIXI: any, size: number) => {
@@ -506,6 +549,25 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
   
   return (
     <div className="w-full flex flex-col space-y-4">
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-md text-red-800 mb-4">
+          <p className="font-medium">Error with shader effects</p>
+          <p className="text-sm">{error}</p>
+          <button 
+            className="mt-2 text-sm px-3 py-1 bg-red-100 hover:bg-red-200 rounded-md transition-colors"
+            onClick={() => {
+              setError(null);
+              // Try to reinitialize if possible
+              if (webGLSupported && imageData && containerRef.current) {
+                loadAndSetupPixi();
+              }
+            }}
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+      
       <div className="flex flex-wrap gap-2 justify-between">
         <div className="flex flex-wrap gap-2">
           <Button 
