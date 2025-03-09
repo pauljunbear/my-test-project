@@ -34,204 +34,42 @@ void main() {
 }
 `;
 
-// Predefined shader effects
+// Predefined shader effects - shader code is just strings, no dependencies
 const SHADER_EFFECTS = {
-  none: {
-    name: 'None',
-    fragmentShader: DEFAULT_FRAGMENT_SHADER,
-    uniforms: {}
-  },
-  wave: {
-    name: 'Wave',
-    fragmentShader: `
-      uniform sampler2D uTexture;
-      uniform float uTime;
-      uniform float uFrequency;
-      uniform float uAmplitude;
-      varying vec2 vUv;
-
-      void main() {
-        vec2 uv = vUv;
-        
-        // Apply wave distortion
-        uv.x += sin(uv.y * uFrequency + uTime) * uAmplitude;
-        uv.y += sin(uv.x * uFrequency - uTime) * uAmplitude;
-        
-        // Maintain image edges
-        vec4 color = texture2D(uTexture, clamp(uv, 0.0, 1.0));
-        
-        gl_FragColor = color;
-      }
-    `,
-    uniforms: {
-      uFrequency: { value: 10.0, min: 1.0, max: 50.0, step: 0.1 },
-      uAmplitude: { value: 0.03, min: 0.0, max: 0.1, step: 0.001 }
-    }
-  },
-  pixelate: {
-    name: 'Pixelate',
-    fragmentShader: `
-      uniform sampler2D uTexture;
-      uniform float uTime;
-      uniform float uPixels;
-      varying vec2 vUv;
-
-      void main() {
-        vec2 uv = vUv;
-        
-        // Pixelate effect
-        float pixels = max(4.0, uPixels);
-        vec2 pixelUv = floor(uv * pixels) / pixels;
-        
-        vec4 color = texture2D(uTexture, pixelUv);
-        
-        gl_FragColor = color;
-      }
-    `,
-    uniforms: {
-      uPixels: { value: 100.0, min: 4.0, max: 1000.0, step: 1.0 }
-    }
-  },
-  rgb: {
-    name: 'RGB Shift',
-    fragmentShader: `
-      uniform sampler2D uTexture;
-      uniform float uTime;
-      uniform float uAmount;
-      varying vec2 vUv;
-
-      void main() {
-        vec2 uv = vUv;
-        
-        // RGB Shift
-        float amount = uAmount * 0.01;
-        float angle = uTime;
-        vec2 offset = vec2(cos(angle), sin(angle)) * amount;
-        
-        float r = texture2D(uTexture, uv + offset).r;
-        float g = texture2D(uTexture, uv).g;
-        float b = texture2D(uTexture, uv - offset).b;
-        
-        gl_FragColor = vec4(r, g, b, 1.0);
-      }
-    `,
-    uniforms: {
-      uAmount: { value: 2.0, min: 0.0, max: 10.0, step: 0.1 }
-    }
-  },
-  vortex: {
-    name: 'Vortex',
-    fragmentShader: `
-      uniform sampler2D uTexture;
-      uniform float uTime;
-      uniform float uRotation;
-      uniform float uStrength;
-      varying vec2 vUv;
-
-      void main() {
-        vec2 uv = vUv - 0.5;
-        float dist = length(uv);
-        float angle = atan(uv.y, uv.x);
-        
-        // Vortex effect
-        float rotation = uRotation * 5.0;
-        float twist = dist * uStrength;
-        float newAngle = angle + twist + uTime * rotation;
-        
-        vec2 newUv = vec2(cos(newAngle), sin(newAngle)) * dist + 0.5;
-        vec4 color = texture2D(uTexture, clamp(newUv, 0.0, 1.0));
-        
-        gl_FragColor = color;
-      }
-    `,
-    uniforms: {
-      uRotation: { value: 0.2, min: -1.0, max: 1.0, step: 0.01 },
-      uStrength: { value: 3.0, min: 0.0, max: 10.0, step: 0.1 }
-    }
-  },
-  glitch: {
-    name: 'Glitch',
-    fragmentShader: `
-      uniform sampler2D uTexture;
-      uniform float uTime;
-      uniform float uIntensity;
-      varying vec2 vUv;
-
-      float random(vec2 st) {
-        return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
-      }
-
-      void main() {
-        vec2 uv = vUv;
-        
-        // Create a glitch effect
-        float interval = 0.8; 
-        float glitchStrength = uIntensity * 0.1;
-        
-        // Time-based glitch trigger
-        float glitchTrigger = step(interval, fract(uTime * 0.5));
-        
-        if (glitchTrigger > 0.0) {
-          // Apply horizontal shift
-          float noise = random(vec2(floor(uTime * 10.0), floor(uv.y * 50.0)));
-          if (noise > 0.8) {
-            uv.x += (noise - 0.8) * glitchStrength * 10.0;
-          }
-          
-          // Color channel splitting sometimes
-          if (random(vec2(uTime)) > 0.7) {
-            float rShift = random(vec2(uTime, 0.0)) * 0.02 * glitchStrength;
-            float gShift = random(vec2(uTime, 1.0)) * 0.02 * glitchStrength;
-            float bShift = random(vec2(uTime, 2.0)) * 0.02 * glitchStrength;
-            
-            float r = texture2D(uTexture, uv + vec2(rShift, 0.0)).r;
-            float g = texture2D(uTexture, uv + vec2(0.0, gShift)).g;
-            float b = texture2D(uTexture, uv + vec2(bShift, 0.0)).b;
-            
-            gl_FragColor = vec4(r, g, b, 1.0);
-            return;
-          }
-        }
-        
-        vec4 color = texture2D(uTexture, clamp(uv, 0.0, 1.0));
-        gl_FragColor = color;
-      }
-    `,
-    uniforms: {
-      uIntensity: { value: 5.0, min: 0.0, max: 10.0, step: 0.1 }
-    }
-  }
+  none: { name: 'None' },
+  wave: { name: 'Wave' },
+  pixelate: { name: 'Pixelate' },
+  rgb: { name: 'RGB Shift' },
+  vortex: { name: 'Vortex' },
+  glitch: { name: 'Glitch' }
 };
 
-// Client-side only rendering component
+// Client-side only rendering component using canvas 2D instead of WebGL
 export default function ThreeComponents(props: ThreeComponentsProps) {
   const { imageUrl, selectedEffect, customShaderCode, uniformValues, isPlaying, canvasRef } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const [isClientSide, setIsClientSide] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const animationRef = useRef<number | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  const timeRef = useRef<number>(0);
 
-  // Only run Three.js code on the client side
+  // Check if we're on the client side
   useEffect(() => {
     setIsClientSide(true);
   }, []);
 
-  // Initialize Three.js when component mounts (client-side only)
+  // Initialize the canvas for 2D rendering
   useEffect(() => {
-    if (!isClientSide || isInitialized || !containerRef.current || !canvasRef.current) return;
+    if (!isClientSide || isInitialized || !canvasRef.current) return;
 
-    // Dynamically import Three.js and related libraries
-    const initThree = async () => {
+    const initCanvas = async () => {
       try {
-        // Use dynamic imports to ensure these are only loaded on the client
-        const THREE = await import('three');
-        const { Canvas, useFrame, useThree } = await import('@react-three/fiber');
-        const { useTexture } = await import('@react-three/drei');
-
-        // We've successfully loaded the libraries, but we won't use them directly
-        // Instead, we'll use a simpler approach with a plain canvas
+        // Get canvas and context
         const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
+        if (!canvas) return;
         
+        const ctx = canvas.getContext('2d');
         if (!ctx) {
           console.error('Failed to get 2D context');
           return;
@@ -239,9 +77,14 @@ export default function ThreeComponents(props: ThreeComponentsProps) {
         
         // Load the image
         const img = new Image();
+        img.crossOrigin = 'anonymous';
         img.src = imageUrl;
+        
         img.onload = () => {
-          // Maintain aspect ratio
+          // Store the image for later use
+          imageRef.current = img;
+          
+          // Set canvas dimensions
           const aspectRatio = img.width / img.height;
           canvas.width = 800; // Fixed width
           canvas.height = Math.round(800 / aspectRatio);
@@ -249,61 +92,223 @@ export default function ThreeComponents(props: ThreeComponentsProps) {
           // Initial draw
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           
-          // Animate with simple 2D canvas fallback
-          let time = 0;
-          const animate = () => {
-            if (!isPlaying) return;
-            
-            time += 0.05;
-            
-            // Basic fallback animation
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            
-            // Apply a simple effect
-            const effect = selectedEffect || 'none';
-            if (effect !== 'none') {
-              // Simplified effect application
-              const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-              const data = imageData.data;
-              
-              // Apply simple effect (grayscale for demo)
-              for (let i = 0; i < data.length; i += 4) {
-                const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-                data[i] = avg;     // R
-                data[i + 1] = avg; // G
-                data[i + 2] = avg; // B
-              }
-              
-              ctx.putImageData(imageData, 0, 0);
-            }
-            
-            requestAnimationFrame(animate);
-          };
-          
-          animate();
+          // Start animation loop
+          startAnimation();
+          setIsInitialized(true);
         };
         
         img.onerror = () => {
           console.error('Failed to load image');
         };
-        
-        setIsInitialized(true);
       } catch (error) {
-        console.error('Failed to initialize Three.js:', error);
+        console.error('Failed to initialize canvas:', error);
       }
     };
 
-    initThree();
-  }, [isClientSide, isInitialized, imageUrl, canvasRef, containerRef, selectedEffect, isPlaying]);
+    initCanvas();
+    
+    // Cleanup animation when unmounting
+    return () => {
+      if (animationRef.current !== null) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+    };
+  }, [isClientSide, isInitialized, imageUrl, canvasRef]);
+  
+  // Animation function
+  const startAnimation = () => {
+    if (!canvasRef.current || !imageRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Stop any existing animation
+    if (animationRef.current !== null) {
+      cancelAnimationFrame(animationRef.current);
+    }
+    
+    // Only animate if playing is true
+    if (!isPlaying) return;
+    
+    // Animation function
+    const animate = () => {
+      if (!canvas || !ctx || !imageRef.current || !isPlaying) return;
+      
+      // Update time
+      timeRef.current += 0.05;
+      const time = timeRef.current;
+      
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw original image
+      ctx.drawImage(imageRef.current, 0, 0, canvas.width, canvas.height);
+      
+      // Apply effect based on selected effect
+      const effect = selectedEffect || 'none';
+      if (effect !== 'none') {
+        // Get image data for pixel manipulation
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        const width = canvas.width;
+        const height = canvas.height;
+        
+        // Apply different effects
+        switch (effect) {
+          case 'grayscale':
+            // Simple grayscale effect
+            for (let i = 0; i < data.length; i += 4) {
+              const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+              data[i] = avg;     // R
+              data[i + 1] = avg; // G
+              data[i + 2] = avg; // B
+            }
+            break;
+            
+          case 'wave':
+            // Simple wave distortion (simplified version of shader)
+            const waveFrequency = uniformValues.uFrequency || 10;
+            const waveAmplitude = uniformValues.uAmplitude || 0.03;
+            
+            // Create a temporary canvas to avoid distortion artifacts
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            if (tempCtx) {
+              tempCtx.drawImage(imageRef.current, 0, 0, width, height);
+              const sourceData = tempCtx.getImageData(0, 0, width, height).data;
+              
+              for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                  // Calculate wave distortion
+                  const distortionX = Math.sin(y * waveFrequency * 0.01 + time) * waveAmplitude * width;
+                  const distortionY = Math.sin(x * waveFrequency * 0.01 - time) * waveAmplitude * height;
+                  
+                  // Source coordinates with distortion
+                  const sx = Math.floor(x + distortionX);
+                  const sy = Math.floor(y + distortionY);
+                  
+                  // Only copy if within bounds
+                  if (sx >= 0 && sx < width && sy >= 0 && sy < height) {
+                    const sourceIndex = (sy * width + sx) * 4;
+                    const targetIndex = (y * width + x) * 4;
+                    
+                    data[targetIndex] = sourceData[sourceIndex];         // R
+                    data[targetIndex + 1] = sourceData[sourceIndex + 1]; // G
+                    data[targetIndex + 2] = sourceData[sourceIndex + 2]; // B
+                  }
+                }
+              }
+            }
+            break;
+            
+          case 'pixelate':
+            // Pixelation effect
+            const pixelSize = Math.max(5, uniformValues.uPixels || 20);
+            
+            for (let y = 0; y < height; y += pixelSize) {
+              for (let x = 0; x < width; x += pixelSize) {
+                // Get color from the center of the current pixel block
+                const centerX = Math.min(x + Math.floor(pixelSize/2), width - 1);
+                const centerY = Math.min(y + Math.floor(pixelSize/2), height - 1);
+                const centerIndex = (centerY * width + centerX) * 4;
+                
+                const r = data[centerIndex];
+                const g = data[centerIndex + 1];
+                const b = data[centerIndex + 2];
+                
+                // Fill the pixel block with this color
+                for (let py = 0; py < pixelSize && y + py < height; py++) {
+                  for (let px = 0; px < pixelSize && x + px < width; px++) {
+                    const index = ((y + py) * width + (x + px)) * 4;
+                    data[index] = r;
+                    data[index + 1] = g;
+                    data[index + 2] = b;
+                  }
+                }
+              }
+            }
+            break;
+            
+          case 'rgb':
+            // RGB shift effect
+            const amount = (uniformValues.uAmount || 2) * 0.01;
+            const angle = time;
+            const shiftX = Math.cos(angle) * amount * width;
+            const shiftY = Math.sin(angle) * amount * height;
+            
+            // Create a temporary canvas
+            const rgbTempCanvas = document.createElement('canvas');
+            rgbTempCanvas.width = width;
+            rgbTempCanvas.height = height;
+            const rgbTempCtx = rgbTempCanvas.getContext('2d');
+            
+            if (rgbTempCtx) {
+              rgbTempCtx.drawImage(imageRef.current, 0, 0, width, height);
+              const rgbSourceData = rgbTempCtx.getImageData(0, 0, width, height).data;
+              
+              for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                  const index = (y * width + x) * 4;
+                  
+                  // Red channel - shifted one way
+                  const rx = Math.floor(x + shiftX);
+                  const ry = Math.floor(y + shiftY);
+                  if (rx >= 0 && rx < width && ry >= 0 && ry < height) {
+                    const rIndex = (ry * width + rx) * 4;
+                    data[index] = rgbSourceData[rIndex];
+                  }
+                  
+                  // Blue channel - shifted the other way
+                  const bx = Math.floor(x - shiftX);
+                  const by = Math.floor(y - shiftY);
+                  if (bx >= 0 && bx < width && by >= 0 && by < height) {
+                    const bIndex = (by * width + bx) * 4;
+                    data[index + 2] = rgbSourceData[bIndex + 2];
+                  }
+                  
+                  // Green channel stays the same
+                }
+              }
+            }
+            break;
+            
+          default:
+            // Default to grayscale if effect not implemented
+            for (let i = 0; i < data.length; i += 4) {
+              const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+              data[i] = avg;
+              data[i + 1] = avg;
+              data[i + 2] = avg;
+            }
+        }
+        
+        // Put the modified image data back on the canvas
+        ctx.putImageData(imageData, 0, 0);
+      }
+      
+      // Continue animation
+      animationRef.current = requestAnimationFrame(animate);
+    };
+    
+    // Start animation loop
+    animate();
+  };
+  
+  // Update animation when isPlaying changes
+  useEffect(() => {
+    if (isInitialized) {
+      startAnimation();
+    }
+  }, [isPlaying, isInitialized, selectedEffect, uniformValues]);
 
   return (
     <div ref={containerRef} className="relative w-full h-full">
-      {/* This canvas will be used as a fallback and for capturing */}
-      <canvas 
-        ref={canvasRef} 
-        className="w-full h-full object-contain"
-      />
+      {/* Canvas is referenced by the parent component */}
     </div>
   );
 } 
