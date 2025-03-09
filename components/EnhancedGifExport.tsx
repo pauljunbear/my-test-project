@@ -12,13 +12,12 @@ import {
   SHADER_EFFECTS,
   captureFrames,
   exportGif,
-  isNode,
   ShaderEffect
 } from '@/lib/webgl-utils';
 
 interface EnhancedGifExportProps {
   imageUrl: string;
-  onExportComplete?: (blob: Blob | Buffer, url: string) => void;
+  onExportComplete?: (blob: Blob, url: string) => void;
 }
 
 export default function EnhancedGifExport({ imageUrl, onExportComplete }: EnhancedGifExportProps) {
@@ -41,12 +40,8 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
   useEffect(() => {
     const checkGifLibrary = async () => {
       try {
-        // Dynamic import to avoid build issues
-        if (isNode()) {
-          await import('gifencoder');
-        } else {
-          await import('gif.js.optimized');
-        }
+        // Only try to load the browser GIF library
+        await import('gif.js.optimized');
         setIsGifLibraryAvailable(true);
       } catch (e) {
         console.error('GIF library not available:', e);
@@ -230,22 +225,11 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
       });
       
       // Create a URL for the GIF
-      let url: string;
-      
-      if (isNode()) {
-        // In Node.js, we'd save to file and return the file path
-        const outputPath = 'output.gif';
-        const fs = await import('fs');
-        fs.writeFileSync(outputPath, result as Buffer);
-        url = outputPath;
-      } else {
-        // In browser, create a blob URL
-        url = URL.createObjectURL(result as Blob);
-      }
+      let url: string = URL.createObjectURL(result as Blob);
       
       // Callback with the result
       if (onExportComplete) {
-        onExportComplete(result as any, url);
+        onExportComplete(result as Blob, url);
       }
       
       return url;
