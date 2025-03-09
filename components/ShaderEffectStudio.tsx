@@ -145,9 +145,17 @@ export default function ShaderEffectStudio({
     }
   };
   
-  // Handle processed image from shader effect
+  // Handle processed image from WebGL shader effect (single string parameter)
+  const handleWebGLProcessedImage = (dataUrl: string) => {
+    if (onProcessedImage) {
+      onProcessedImage(dataUrl);
+    }
+  };
+  
+  // Handle processed image from GIF export (blob and url parameters)
   const handleProcessedImage = (blob: Blob, url: string) => {
     if (onProcessedImage) {
+      // Pass the URL to the parent component since that's what it expects
       onProcessedImage(url);
     }
   };
@@ -204,7 +212,7 @@ export default function ShaderEffectStudio({
             <WebGLShaderEffect
               ref={webglComponentRef}
               imageUrl={imageUrl}
-              onProcessedImage={handleProcessedImage}
+              onProcessedImage={handleWebGLProcessedImage}
             />
             
             {/* Export Options */}
