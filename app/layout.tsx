@@ -46,6 +46,12 @@ export default function RootLayout({
             </div>
             <nav className="flex items-center space-x-4">
               <a 
+                href="/shader-studio" 
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Shader Studio
+              </a>
+              <a 
                 href="https://github.com" 
                 target="_blank" 
                 rel="noopener noreferrer"

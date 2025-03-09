@@ -1,0 +1,19 @@
+{
+  "name": "shader-effect-video-export-server",
+  "version": "1.0.0",
+  "description": "Server for exporting shader effect animations to MOV format",
+  "main": "video-export.js",
+  "scripts": {
+    "start": "node video-export.js",
+    "dev": "nodemon video-export.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "ffmpeg-static": "^5.2.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+} 
