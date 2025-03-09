@@ -20,10 +20,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select';
-import ClientShaderEffects from './ClientShaderEffects';
+import HalftoneWaveEffect from './HalftoneWaveEffect';
 
 // Define types
-type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'shader' | 'none';
+type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'wavehalftone' | 'none';
 
 interface HalftoneSettings {
   dotSize: number;
@@ -475,10 +475,10 @@ export default function ImageEditorComponent() {
       case 'noise':
         effectSettings = { level: noiseLevel };
         break;
-      case 'shader':
-        // For shader effects, we don't add them here
-        // They're handled by the ShaderEffects component's onProcessedImage callback
-        console.log('Shader effect is applied directly via ShaderEffects component');
+      case 'wavehalftone':
+        // For wavehalftone effects, we don't add them here
+        // They're handled by the HalftoneWaveEffect component's onProcessedImage callback
+        console.log('Wavehalftone effect is applied directly via HalftoneWaveEffect component');
         return;
       default:
         effectSettings = {};
@@ -830,7 +830,7 @@ export default function ImageEditorComponent() {
       
       // Create a meaningful shader effect entry based on active shader effects
       const shaderEffect: AppliedEffect = {
-        type: 'shader',
+        type: 'wavehalftone',
         settings: {}
       };
       
@@ -838,7 +838,7 @@ export default function ImageEditorComponent() {
       addToHistory(processedImageData, [shaderEffect]);
       
       // Add to applied effects if Apply button is clicked
-      if (currentEffect === 'shader') {
+      if (currentEffect === 'wavehalftone') {
         setAppliedEffects([...appliedEffects, shaderEffect]);
       }
     };
@@ -901,12 +901,12 @@ export default function ImageEditorComponent() {
             Noise
           </Button>
           <Button
-            variant={currentEffect === 'shader' ? 'default' : 'outline'}
-            onClick={() => setCurrentEffect('shader')}
+            variant={currentEffect === 'wavehalftone' ? 'default' : 'outline'}
+            onClick={() => setCurrentEffect('wavehalftone')}
             className="rounded-lg"
           >
             <Wand2 className="h-4 w-4 mr-2" />
-            Shaders
+            Wavehalftone
           </Button>
         </div>
         
@@ -1141,8 +1141,8 @@ export default function ImageEditorComponent() {
                   </div>
                 )}
                 
-                {currentEffect === 'shader' && (
-                  <ClientShaderEffects 
+                {currentEffect === 'wavehalftone' && (
+                  <HalftoneWaveEffect 
                     imageData={currentImageDataUrl}
                     onProcessedImage={handleProcessedImage}
                   />
