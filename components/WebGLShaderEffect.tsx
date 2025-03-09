@@ -21,7 +21,7 @@ const ThreeComponents = dynamic(() => import('./ThreeComponents'), {
 
 // Define types for the shader effects
 interface UniformValue {
-  value: number;
+  value: number | number[];
   min?: number;
   max?: number;
   step?: number;
@@ -89,7 +89,7 @@ const WebGLShaderEffect = forwardRef<
 >(({ imageUrl, onProcessedImage }, ref) => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedEffect, setSelectedEffect] = useState<string>('none');
-  const [uniformValues, setUniformValues] = useState<Record<string, number>>({});
+  const [uniformValues, setUniformValues] = useState<Record<string, number | number[]>>({});
   const [isCapturing, setIsCapturing] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
@@ -147,7 +147,7 @@ const WebGLShaderEffect = forwardRef<
   }, [imageUrl]);
   
   // Update uniform values
-  const updateUniformValue = (key: string, value: number) => {
+  const updateUniformValue = (key: string, value: number | number[]) => {
     setUniformValues(prev => ({
       ...prev,
       [key]: value
@@ -213,20 +213,49 @@ const WebGLShaderEffect = forwardRef<
             (uniformObject.max as number) || 100 : 100;
           const range = max - min;
           
-          for (let i = 0; i < frameCount; i++) {
-            // Vary the primary parameter slightly
-            const variation = Math.sin(i / frameCount * Math.PI * 2) * (range * 0.1);
-            updateUniformValue(uniformKey, Math.max(min, Math.min(max, originalValue + variation)));
+          // Only apply variations to number values
+          if (typeof originalValue === 'number') {
+            for (let i = 0; i < frameCount; i++) {
+              // Vary the primary parameter slightly
+              const variation = Math.sin(i / frameCount * Math.PI * 2) * (range * 0.1);
+              updateUniformValue(uniformKey, Math.max(min, Math.min(max, originalValue + variation)));
+              
+              // Wait for the next frame to render
+              await new Promise(resolve => setTimeout(resolve, 100));
+              
+              const dataUrl = componentRef.current.captureScreenshot();
+              frames.push(dataUrl);
+            }
             
-            // Wait for the next frame to render
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Reset to original value
+            updateUniformValue(uniformKey, originalValue);
+          } else if (Array.isArray(originalValue) && originalValue.length > 0) {
+            // Handle array values - vary the first element if it's an array
+            const firstValue = originalValue[0];
+            const newArray = [...originalValue];
             
-            const dataUrl = componentRef.current.captureScreenshot();
-            frames.push(dataUrl);
+            for (let i = 0; i < frameCount; i++) {
+              const variation = Math.sin(i / frameCount * Math.PI * 2) * (range * 0.1);
+              newArray[0] = Math.max(min, Math.min(max, firstValue + variation));
+              updateUniformValue(uniformKey, [...newArray]);
+              
+              // Wait for the next frame to render
+              await new Promise(resolve => setTimeout(resolve, 100));
+              
+              const dataUrl = componentRef.current.captureScreenshot();
+              frames.push(dataUrl);
+            }
+            
+            // Reset to original value
+            updateUniformValue(uniformKey, originalValue);
+          } else {
+            // If we can't vary the value, just capture multiple identical frames
+            for (let i = 0; i < frameCount; i++) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+              const dataUrl = componentRef.current.captureScreenshot();
+              frames.push(dataUrl);
+            }
           }
-          
-          // Reset to original value
-          updateUniformValue(uniformKey, originalValue);
         } else {
           // Just capture current frame if no uniforms to animate
           const dataUrl = componentRef.current.captureScreenshot();
@@ -302,13 +331,28 @@ const WebGLShaderEffect = forwardRef<
                   min={uniform.min || 0}
                   max={uniform.max || 1}
                   step={uniform.step || 0.01}
-                  value={[uniformValues[key] || uniform.value]}
+                  value={[
+                    typeof uniformValues[key] === 'number' 
+                      ? uniformValues[key] as number 
+                      : typeof uniform.value === 'number' 
+                        ? uniform.value 
+                        : (Array.isArray(uniform.value) && uniform.value.length > 0) 
+                          ? uniform.value[0] 
+                          : 0
+                  ]}
                   onValueChange={(value) => updateUniformValue(key, value[0])}
                   disabled={isCapturing}
                   className="flex-1"
                 />
                 <span className="text-xs w-12 text-right">
-                  {uniformValues[key]?.toFixed(2) || uniform.value.toFixed(2)}
+                  {typeof uniformValues[key] === 'number' 
+                    ? (uniformValues[key] as number).toFixed(2) 
+                    : typeof uniform.value === 'number' 
+                      ? uniform.value.toFixed(2)
+                      : Array.isArray(uniform.value) && uniform.value.length > 0 
+                        ? uniform.value[0].toFixed(2)
+                        : '0.00'
+                  }
                 </span>
               </div>
             </div>
