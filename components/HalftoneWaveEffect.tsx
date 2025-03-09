@@ -504,7 +504,7 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
         </div>
       </div>
       
-      {showExportOptions && isGifExportAvailable !== false && (
+      {showExportOptions && isGifExportAvailable === true && (
         <div className="p-4 border rounded-md bg-gray-50">
           <h3 className="text-sm font-medium mb-3">GIF Export Options</h3>
           <div className="grid gap-4 md:grid-cols-2">

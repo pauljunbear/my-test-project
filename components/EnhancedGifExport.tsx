@@ -247,13 +247,15 @@ export default function EnhancedGifExport({
   
   return (
     <>
-      <Button
-        variant="outline"
-        onClick={() => setShowExportDialog(true)}
-        disabled={isExporting}
-      >
-        Export Animation
-      </Button>
+      {isGifLibraryAvailable !== false && (
+        <Button 
+          variant="outline"
+          onClick={() => setShowExportDialog(true)}
+          disabled={isExporting}
+        >
+          Export Animation
+        </Button>
+      )}
       
       <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
         <DialogContent className="sm:max-w-[500px]">
@@ -264,7 +266,7 @@ export default function EnhancedGifExport({
             </DialogDescription>
           </DialogHeader>
           
-          {isGifLibraryAvailable === false ? (
+          {isGifLibraryAvailable !== true ? (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md mb-4">
               <p className="text-yellow-800 text-sm">
                 GIF export library not available. You can still export a single frame as PNG.
@@ -391,7 +393,7 @@ export default function EnhancedGifExport({
           )}
           
           <DialogFooter className="flex justify-between items-center">
-            {isGifLibraryAvailable === false ? (
+            {isGifLibraryAvailable !== true ? (
               <Button
                 onClick={exportFallback}
                 disabled={isExporting || !canvas}
@@ -402,7 +404,7 @@ export default function EnhancedGifExport({
               <div className="flex gap-2">
                 <Button
                   onClick={exportAsGif}
-                  disabled={isExporting || isGifLibraryAvailable === false}
+                  disabled={isExporting || isGifLibraryAvailable !== true}
                 >
                   {isExporting ? 'Exporting...' : 'Export GIF'}
                 </Button>
