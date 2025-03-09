@@ -1,11 +1,25 @@
 'use client';
 
-import React, { useRef, useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useState, useEffect, useCallback, forwardRef, useImperativeHandle, Suspense } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import { Button } from './ui/button';
 import { Slider } from './ui/slider';
+import dynamic from 'next/dynamic';
+
+// Dynamically import Three.js components with no SSR
+const ThreeComponents = dynamic(() => import('./ThreeComponents'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full aspect-video bg-gray-100 rounded-md flex items-center justify-center">
+      <div className="text-center">
+        <div className="inline-block animate-spin h-8 w-8 border-4 border-gray-300 border-t-blue-600 rounded-full mb-2"></div>
+        <p>Loading WebGL components...</p>
+      </div>
+    </div>
+  )
+});
 
 // Default shaders
 const DEFAULT_VERTEX_SHADER = `
@@ -308,6 +322,7 @@ const WebGLShaderEffect = forwardRef<
   const [captureFramesCount, setCaptureFramesCount] = useState(10);
   const [frameRate, setFrameRate] = useState(30);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isWebGLSupported, setIsWebGLSupported] = useState<boolean | null>(null);
   
   // State for shader uniform values
   const [uniformValues, setUniformValues] = useState<Record<string, number>>({});
@@ -336,11 +351,14 @@ const WebGLShaderEffect = forwardRef<
       const hasWebGL = !!(window.WebGLRenderingContext && 
         (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
       
+      setIsWebGLSupported(hasWebGL);
+      
       if (!hasWebGL) {
         setError('WebGL is not supported in your browser. Please try a different browser.');
       }
     } catch (err) {
       setError('Error checking WebGL support');
+      setIsWebGLSupported(false);
     }
     
     // Set loading state
@@ -409,20 +427,14 @@ const WebGLShaderEffect = forwardRef<
       // Wait for any pending renders to complete
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      // Get the rendering context and material refs
-      // Note: This is a simplified approach - in a real implementation,
-      // you'd need to access the Three.js renderer and scene
-      
+      // For this simplified implementation, just capture the current canvas state
+      // multiple times to simulate animation frames
       for (let i = 0; i < frameCount; i++) {
-        // Set the time for this frame
-        const time = (i / frameCount) * duration * Math.PI * 2;
-        
-        // We need to manually trigger a render with the specific time
-        // This is where you'd update the shader uniforms
-        
-        // For this example, we'll just use the current canvas state
         const dataURL = canvas.toDataURL('image/png');
         frames.push(dataURL);
+        
+        // In a real implementation, we would update the shader time value
+        // and re-render before capturing each frame
       }
       
       // Restore animation state
@@ -476,6 +488,26 @@ const WebGLShaderEffect = forwardRef<
   // Get current effect controls
   const currentEffect = SHADER_EFFECTS[selectedEffect as keyof typeof SHADER_EFFECTS];
   const effectControls = currentEffect?.uniforms || {};
+  
+  // Render WebGL not supported state
+  if (isWebGLSupported === false) {
+    return (
+      <div className="p-4 bg-yellow-50 rounded-md">
+        <h3 className="font-medium text-yellow-800 mb-2">WebGL Not Supported</h3>
+        <p className="text-yellow-700 mb-4">
+          Your browser or device doesn't support WebGL, which is required for shader effects.
+          Try using a different browser or device.
+        </p>
+        <Button 
+          variant="outline" 
+          onClick={captureCurrentFrame}
+          className="w-auto"
+        >
+          Capture Image
+        </Button>
+      </div>
+    );
+  }
   
   return (
     <div className="w-full flex flex-col space-y-4">
@@ -582,15 +614,25 @@ const WebGLShaderEffect = forwardRef<
       
       {/* Canvas container */}
       <div className="relative aspect-video w-full border rounded-md overflow-hidden">
-        <Canvas ref={canvasRef} gl={{ preserveDrawingBuffer: true }}>
-          <ShaderMesh 
-            imageUrl={imageUrl}
-            effectKey={selectedEffect} 
-            customShaderCode={isCustomShader ? customShaderCode : undefined}
-            uniformValues={uniformValues}
-            isPlaying={isPlaying}
-          />
-        </Canvas>
+        {isWebGLSupported && (
+          <Suspense fallback={
+            <div className="w-full h-full flex items-center justify-center bg-gray-100">
+              <div className="text-center">
+                <div className="inline-block animate-spin h-8 w-8 border-4 border-gray-300 border-t-blue-600 rounded-full mb-2"></div>
+                <p>Loading WebGL...</p>
+              </div>
+            </div>
+          }>
+            <ThreeComponents
+              imageUrl={imageUrl}
+              selectedEffect={selectedEffect}
+              customShaderCode={isCustomShader ? customShaderCode : undefined}
+              uniformValues={uniformValues}
+              isPlaying={isPlaying}
+              canvasRef={canvasRef}
+            />
+          </Suspense>
+        )}
       </div>
       
       <p className="text-xs text-gray-500 mt-2">

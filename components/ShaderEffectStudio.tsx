@@ -2,8 +2,21 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
-import WebGLShaderEffect from './WebGLShaderEffect';
+import dynamic from 'next/dynamic';
 import EnhancedGifExport from './EnhancedGifExport';
+
+// Dynamically import WebGL component with no SSR
+const WebGLShaderEffect = dynamic(() => import('./WebGLShaderEffect'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full aspect-video bg-gray-100 rounded-md flex items-center justify-center">
+      <div className="text-center">
+        <div className="inline-block animate-spin h-8 w-8 border-4 border-gray-300 border-t-blue-600 rounded-full mb-2"></div>
+        <p>Loading shader components...</p>
+      </div>
+    </div>
+  )
+});
 
 interface ShaderEffectStudioProps {
   initialImageUrl?: string;
