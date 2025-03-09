@@ -1141,9 +1141,9 @@ export default function ImageEditorComponent() {
                   </div>
                 )}
                 
-                {currentEffect === 'wavehalftone' && (
+                {currentEffect === 'wavehalftone' && image && (
                   <HalftoneWaveEffect 
-                    imageData={currentImageDataUrl}
+                    imageUrl={currentImageDataUrl || ''}
                     onProcessedImage={handleProcessedImage}
                   />
                 )}
