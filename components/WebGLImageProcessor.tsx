@@ -23,7 +23,7 @@ export default function WebGLImageProcessor() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isError, setIsError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [uniformValues, setUniformValues] = useState<Record<string, number>>({});
+  const [uniformValues, setUniformValues] = useState<Record<string, any>>({});
   const [imageOriginalDimensions, setImageOriginalDimensions] = useState<{width: number; height: number} | null>(null);
   const [isImageResized, setIsImageResized] = useState(false);
   
@@ -77,11 +77,14 @@ export default function WebGLImageProcessor() {
     const effect = SHADER_EFFECTS[selectedEffect];
     if (!effect) return;
     
-    const initialValues: Record<string, number> = {};
+    const initialValues: Record<string, any> = {};
     
-    // Initialize values from effect definition
+    // Initialize values from effect definition with proper type checking
     Object.entries(effect.uniforms).forEach(([key, uniform]) => {
-      initialValues[key] = uniform.value;
+      // Handle all possible value types
+      if (uniform.value !== undefined) {
+        initialValues[key] = uniform.value;
+      }
     });
     
     setUniformValues(initialValues);
@@ -192,7 +195,7 @@ export default function WebGLImageProcessor() {
   };
   
   // Handle uniform value changes
-  const handleUniformChange = (key: string, value: number) => {
+  const handleUniformChange = (key: string, value: any) => {
     setUniformValues(prev => ({
       ...prev,
       [key]: value
@@ -302,7 +305,11 @@ export default function WebGLImageProcessor() {
                                   {key.replace(/^[u_]/, '')}
                                 </Label>
                                 <span className="text-xs">
-                                  {uniformValues[key]?.toFixed(2) || uniform.value.toFixed(2)}
+                                  {typeof uniformValues[key] === 'number' 
+                                    ? uniformValues[key].toFixed(2) 
+                                    : typeof uniform.value === 'number'
+                                      ? uniform.value.toFixed(2)
+                                      : String(uniform.value)}
                                 </span>
                               </div>
                               
@@ -311,7 +318,13 @@ export default function WebGLImageProcessor() {
                                 min={uniform.min || 0}
                                 max={uniform.max || 1}
                                 step={uniform.step || 0.01}
-                                value={[uniformValues[key] || uniform.value]}
+                                value={[
+                                  typeof uniformValues[key] === 'number'
+                                    ? uniformValues[key]
+                                    : typeof uniform.value === 'number'
+                                      ? uniform.value
+                                      : 0
+                                ]}
                                 onValueChange={values => handleUniformChange(key, values[0])}
                                 disabled={isProcessing}
                               />
