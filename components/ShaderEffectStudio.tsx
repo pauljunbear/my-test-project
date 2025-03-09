@@ -146,9 +146,9 @@ export default function ShaderEffectStudio({
   };
   
   // Handle processed image from shader effect
-  const handleProcessedImage = (dataUrl: string) => {
+  const handleProcessedImage = (blob: Blob, url: string) => {
     if (onProcessedImage) {
-      onProcessedImage(dataUrl);
+      onProcessedImage(url);
     }
   };
   
@@ -210,11 +210,8 @@ export default function ShaderEffectStudio({
             {/* Export Options */}
             <div className="mt-6 flex flex-wrap gap-4">
               <EnhancedGifExport
-                frames={capturedFrames}
-                canvas={canvasRef.current}
-                captureFunction={captureAnimationFrames}
+                imageUrl={imageUrl}  
                 onExportComplete={handleProcessedImage}
-                onError={handleExportError}
               />
               
               <Button
