@@ -83,7 +83,25 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
   // Import GIF.js dynamically to avoid SSR issues
   const loadGifJs = async () => {
     try {
-      const GIF = (await import('gif.js.optimized')).default;
+      // Try to dynamically import the package
+      let GIF;
+      
+      // In Next.js, we need to handle the dynamic import carefully
+      try {
+        GIF = (await import('gif.js.optimized')).default;
+      } catch (importError) {
+        console.error('Primary import failed, trying alternative import:', importError);
+        
+        // Try alternative import syntax as fallback
+        try {
+          const module = await import('gif.js.optimized');
+          GIF = module.default || module;
+        } catch (fallbackError) {
+          console.error('Fallback import also failed:', fallbackError);
+          throw new Error('Could not import GIF.js library');
+        }
+      }
+      
       return GIF;
     } catch (error) {
       console.error('Error loading GIF.js library:', error);
@@ -106,6 +124,9 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
   const [showExportOptions, setShowExportOptions] = useState(false);
   const [gifFrames, setGifFrames] = useState(10);
   const [gifQuality, setGifQuality] = useState(10);
+  
+  // Add state to track if GIF export is available
+  const [isGifExportAvailable, setIsGifExportAvailable] = useState<boolean | null>(null);
   
   // Initialize the canvas with the image
   useEffect(() => {
@@ -265,7 +286,62 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
     }
   };
   
-  // Add a new function to export GIF
+  // Add a function to export as fallback if GIF creation fails
+  const exportAsPNGSequence = () => {
+    if (!canvasRef.current || !originalImageRef.current) {
+      setError('Cannot export: canvas or image not initialized');
+      return;
+    }
+    
+    try {
+      // Get canvas and context
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d')!;
+      
+      // Pause animation
+      if (animationRef.current !== null) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+      
+      // Create a zip-like structure in memory (simplified for demonstration)
+      const frames = [];
+      const frameCount = gifFrames;
+      
+      // Generate frames
+      let frameTime = 0;
+      const timeIncrement = 2 * Math.PI / frameCount;
+      
+      // Just capture the current frame as a PNG
+      const dataURL = canvas.toDataURL('image/png');
+      
+      // Create download link
+      const link = document.createElement('a');
+      link.href = dataURL;
+      link.download = `halftone-frame.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Restart animation
+      if (isPlaying) {
+        startAnimation();
+      }
+      
+      // Show message to user
+      alert('GIF export not available. Exported current frame as PNG instead.');
+      
+      setIsExporting(false);
+      setExportProgress(0);
+      setShowExportOptions(false);
+    } catch (error) {
+      console.error('Error in fallback export:', error);
+      setError('Failed to export image');
+      setIsExporting(false);
+    }
+  };
+  
+  // Update the exportAsGif function
   const exportAsGif = async () => {
     if (!canvasRef.current || !originalImageRef.current) {
       setError('Cannot export: canvas or image not initialized');
@@ -282,8 +358,15 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
         animationRef.current = null;
       }
       
-      // Load GIF.js
-      const GIF = await loadGifJs();
+      // Try to load GIF.js
+      let GIF;
+      try {
+        GIF = await loadGifJs();
+      } catch (error) {
+        console.error('Could not load GIF.js library, falling back to PNG export', error);
+        exportAsPNGSequence();
+        return;
+      }
       
       // Initialize GIF with quality and worker options
       const gif = new GIF({
@@ -291,7 +374,8 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
         quality: gifQuality,
         width: canvasRef.current.width,
         height: canvasRef.current.height,
-        workerScript: 'https://cdn.jsdelivr.net/gh/jnordberg/gif.js/dist/gif.worker.js',
+        // Use a more reliable way to access the worker script
+        workerScript: '/gif.worker.js', // This requires copying the worker file to the public directory
       });
       
       // Setup progress callback
@@ -365,6 +449,22 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
     }
   };
   
+  // Check if GIF.js can be loaded when component mounts
+  useEffect(() => {
+    const checkGifLibrary = async () => {
+      try {
+        await loadGifJs();
+        setIsGifExportAvailable(true);
+        console.log('GIF.js library is available');
+      } catch (error) {
+        setIsGifExportAvailable(false);
+        console.warn('GIF.js library is not available:', error);
+      }
+    };
+    
+    checkGifLibrary();
+  }, []);
+  
   if (error) {
     return (
       <div className="p-4 bg-red-50 rounded-md">
@@ -413,18 +513,20 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
             Capture Frame
           </Button>
           
-          <Button 
-            variant="outline"
-            onClick={() => setShowExportOptions(!showExportOptions)}
-            className="w-auto"
-            disabled={isExporting}
-          >
-            Export GIF
-          </Button>
+          {isGifExportAvailable !== false && (
+            <Button 
+              variant="outline"
+              onClick={() => setShowExportOptions(!showExportOptions)}
+              className="w-auto"
+              disabled={isExporting}
+            >
+              Export GIF
+            </Button>
+          )}
         </div>
       </div>
       
-      {showExportOptions && (
+      {showExportOptions && isGifExportAvailable !== false && (
         <div className="p-4 border rounded-md bg-gray-50">
           <h3 className="text-sm font-medium mb-3">GIF Export Options</h3>
           <div className="grid gap-4 md:grid-cols-2">
