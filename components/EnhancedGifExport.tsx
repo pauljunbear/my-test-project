@@ -23,7 +23,7 @@ interface EnhancedGifExportProps {
 export default function EnhancedGifExport({ imageUrl, onExportComplete }: EnhancedGifExportProps) {
   // State for selected effect and parameters
   const [selectedEffectKey, setSelectedEffectKey] = useState<string>('none');
-  const [uniformValues, setUniformValues] = useState<Record<string, number>>({});
+  const [uniformValues, setUniformValues] = useState<Record<string, any>>({});
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [isGifLibraryAvailable, setIsGifLibraryAvailable] = useState<boolean | null>(null);
@@ -112,11 +112,14 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
     const effect = SHADER_EFFECTS[selectedEffectKey];
     if (!effect) return;
     
-    const initialValues: Record<string, number> = {};
+    const initialValues: Record<string, any> = {};
     
     // Initialize values from effect definition
     Object.entries(effect.uniforms).forEach(([key, uniform]) => {
-      initialValues[key] = uniform.value;
+      // Handle all possible value types
+      if (uniform.value !== undefined) {
+        initialValues[key] = uniform.value;
+      }
     });
     
     setUniformValues(initialValues);
@@ -189,23 +192,23 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
         
         // Modify parameters based on time for animation effect
         // This depends on the specific effect
-        if (selectedEffectKey === 'wave') {
+        if (selectedEffectKey === 'wave' && typeof uniformValues.uFrequency === 'number') {
           animatedUniforms.uFrequency = uniformValues.uFrequency + 
             Math.sin(time * Math.PI * 2) * (uniformValues.uFrequency * 0.2);
-        } else if (selectedEffectKey === 'pixelate') {
+        } else if (selectedEffectKey === 'pixelate' && typeof uniformValues.u_pixel_size === 'number') {
           animatedUniforms.u_pixel_size = uniformValues.u_pixel_size + 
             Math.sin(time * Math.PI * 2) * (uniformValues.u_pixel_size * 0.2);
-        } else if (selectedEffectKey === 'dither') {
+        } else if (selectedEffectKey === 'dither' && typeof uniformValues.u_dither_scale === 'number') {
           animatedUniforms.u_dither_scale = uniformValues.u_dither_scale +
             Math.sin(time * Math.PI * 2) * 0.5;
-        } else if (selectedEffectKey === 'halftone') {
+        } else if (selectedEffectKey === 'halftone' && typeof uniformValues.u_angle === 'number') {
           animatedUniforms.u_angle = (uniformValues.u_angle + time) % 6.28;
         } else if (selectedEffectKey === 'ripple') {
           // For ripple effect, time is the most important parameter
           animatedUniforms.u_time = time * 10.0; // Scale time for more noticeable animation
           
           // Optional: We can also vary other parameters for more dynamic effects
-          if (uniformValues.u_amplitude > 0) {
+          if (typeof uniformValues.u_amplitude === 'number' && uniformValues.u_amplitude > 0) {
             animatedUniforms.u_amplitude = uniformValues.u_amplitude * (0.8 + 0.4 * Math.sin(time * Math.PI));
           }
         }
@@ -254,7 +257,7 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
   }, [imageRef, selectedEffectKey, uniformValues, gifFrameCount, gifDuration, gifQuality, isGifLibraryAvailable, onExportComplete]);
   
   // Handle uniform value changes
-  const handleUniformChange = (key: string, value: number) => {
+  const handleUniformChange = (key: string, value: any) => {
     setUniformValues(prev => ({
       ...prev,
       [key]: value
@@ -304,11 +307,21 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
                         {key.replace(/^[u_]/, '')}
                       </label>
                       <span className="text-xs">
-                        {uniformValues[key]?.toFixed(2) || uniform.value.toFixed(2)}
+                        {typeof uniformValues[key] === 'number' 
+                          ? uniformValues[key].toFixed(2) 
+                          : typeof uniform.value === 'number' 
+                            ? uniform.value.toFixed(2)
+                            : String(uniform.value)}
                       </span>
                     </div>
                     <Slider
-                      value={[uniformValues[key] || uniform.value]}
+                      value={[
+                        typeof uniformValues[key] === 'number'
+                          ? uniformValues[key]
+                          : typeof uniform.value === 'number'
+                            ? uniform.value
+                            : 0
+                      ]}
                       min={uniform.min || 0}
                       max={uniform.max || 1}
                       step={uniform.step || 0.01}
