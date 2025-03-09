@@ -5,6 +5,10 @@
  * for browser environments.
  */
 
+// Ensure TypeScript recognizes the gif.js.optimized module
+// This is a fallback in case the separate .d.ts file isn't found
+declare module 'gif.js.optimized';
+
 // Types for our shader system
 export interface ShaderUniform {
   type: 'float' | 'vec2' | 'vec3' | 'vec4' | 'int' | 'bool' | 'sampler2D';
@@ -641,12 +645,27 @@ export const exportBrowserGif = async (
   } = {}
 ): Promise<Blob> => {
   try {
-    // Dynamic import to avoid build issues
-    const GIF = await (new Function('return import("gif.js.optimized")')())
-      .then((module: any) => module.default || module);
+    // Dynamic import with more robust error handling
+    // This approach avoids TypeScript issues with the import
+    const GIFModule = await new Promise<any>((resolve, reject) => {
+      try {
+        // Use a simple dynamic import that won't trigger TypeScript errors
+        import('gif.js.optimized')
+          .then(module => {
+            // Handle both default and named exports
+            resolve(module.default || module);
+          })
+          .catch(error => {
+            console.error('Failed to load gif.js.optimized:', error);
+            reject(new Error('Failed to load GIF library. Please make sure gif.js.optimized is installed.'));
+          });
+      } catch (err) {
+        reject(err);
+      }
+    });
     
     return new Promise((resolve, reject) => {
-      const gif = new GIF({
+      const gif = new GIFModule({
         workers: 2,
         quality: options.quality || 10,
         width: options.width,

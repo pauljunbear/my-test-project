@@ -40,11 +40,24 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
   useEffect(() => {
     const checkGifLibrary = async () => {
       try {
-        // Only try to load the browser GIF library
-        await import('gif.js.optimized');
-        setIsGifLibraryAvailable(true);
+        // Use a type-safe approach to check for GIF library availability
+        // that won't trigger TypeScript errors
+        await new Promise<void>((resolve, reject) => {
+          // Dynamically import the module
+          import('gif.js.optimized')
+            .then(() => {
+              setIsGifLibraryAvailable(true);
+              resolve();
+            })
+            .catch(err => {
+              console.error('GIF library not available:', err);
+              setIsGifLibraryAvailable(false);
+              reject(err);
+            });
+        });
       } catch (e) {
-        console.error('GIF library not available:', e);
+        // This catch is just a fallback, the real error is caught in the promise above
+        console.error('GIF library check failed:', e);
         setIsGifLibraryAvailable(false);
       }
     };
