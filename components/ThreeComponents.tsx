@@ -7,7 +7,7 @@ interface ThreeComponentsProps {
   imageUrl: string;
   selectedEffect: string;
   customShaderCode?: string;
-  uniformValues: Record<string, number>;
+  uniformValues: Record<string, number | number[]>;
   isPlaying: boolean;
   canvasRef: React.RefObject<HTMLCanvasElement>;
 }
@@ -169,8 +169,18 @@ export default function ThreeComponents(props: ThreeComponentsProps) {
             
           case 'wave':
             // Simple wave distortion (simplified version of shader)
-            const waveFrequency = uniformValues.uFrequency || 10;
-            const waveAmplitude = uniformValues.uAmplitude || 0.03;
+            // Handle both number and array types for uniform values
+            const waveFrequency = typeof uniformValues.uFrequency === 'number' 
+              ? uniformValues.uFrequency 
+              : Array.isArray(uniformValues.uFrequency) && uniformValues.uFrequency.length > 0
+                ? uniformValues.uFrequency[0]
+                : 10;
+                
+            const waveAmplitude = typeof uniformValues.uAmplitude === 'number'
+              ? uniformValues.uAmplitude
+              : Array.isArray(uniformValues.uAmplitude) && uniformValues.uAmplitude.length > 0
+                ? uniformValues.uAmplitude[0]
+                : 0.03;
             
             // Create a temporary canvas to avoid distortion artifacts
             const tempCanvas = document.createElement('canvas');
@@ -208,7 +218,13 @@ export default function ThreeComponents(props: ThreeComponentsProps) {
             
           case 'pixelate':
             // Pixelation effect
-            const pixelSize = Math.max(5, uniformValues.uPixels || 20);
+            const pixelSize = Math.max(5, 
+              typeof uniformValues.uPixels === 'number'
+                ? uniformValues.uPixels
+                : Array.isArray(uniformValues.uPixels) && uniformValues.uPixels.length > 0
+                  ? uniformValues.uPixels[0]
+                  : 20
+            );
             
             for (let y = 0; y < height; y += pixelSize) {
               for (let x = 0; x < width; x += pixelSize) {
@@ -236,7 +252,14 @@ export default function ThreeComponents(props: ThreeComponentsProps) {
             
           case 'rgb':
             // RGB shift effect
-            const amount = (uniformValues.uAmount || 2) * 0.01;
+            const amount = (
+              typeof uniformValues.uAmount === 'number'
+                ? uniformValues.uAmount
+                : Array.isArray(uniformValues.uAmount) && uniformValues.uAmount.length > 0
+                  ? uniformValues.uAmount[0]
+                  : 2
+            ) * 0.01;
+            
             const angle = time;
             const shiftX = Math.cos(angle) * amount * width;
             const shiftY = Math.sin(angle) * amount * height;
