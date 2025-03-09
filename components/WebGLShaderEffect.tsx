@@ -19,8 +19,25 @@ const ThreeComponents = dynamic(() => import('./ThreeComponents'), {
   )
 });
 
+// Define types for the shader effects
+interface UniformValue {
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+interface ShaderUniforms {
+  [key: string]: UniformValue;
+}
+
+interface ShaderEffect {
+  name: string;
+  uniforms: ShaderUniforms;
+}
+
 // Predefined effects with simplified parameters
-const SHADER_EFFECTS = {
+const SHADER_EFFECTS: Record<string, ShaderEffect> = {
   none: {
     name: 'None',
     uniforms: {}
@@ -70,32 +87,42 @@ const WebGLShaderEffect = forwardRef<
   { captureFrames: () => Promise<string[]> },
   ShaderEffectProps
 >(({ imageUrl, onProcessedImage }, ref) => {
-  const [selectedEffect, setSelectedEffect] = useState<string>('none');
-  const [customShaderCode, setCustomShaderCode] = useState<string>('');
-  const [isCustomShader, setIsCustomShader] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [captureFramesCount, setCaptureFramesCount] = useState(10);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  
-  // State for effect parameters
+  const [selectedEffect, setSelectedEffect] = useState<string>('none');
   const [uniformValues, setUniformValues] = useState<Record<string, number>>({});
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
+  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
+  const animationRef = useRef<number | null>(null);
+  const lastTimeRef = useRef<number>(0);
+  const componentRef = useRef<any>(null);
   
-  // Initialize uniform values when effect changes
+  // Effect to initialize uniform values when effect changes
   useEffect(() => {
-    if (selectedEffect in SHADER_EFFECTS) {
-      const effect = SHADER_EFFECTS[selectedEffect as keyof typeof SHADER_EFFECTS];
+    const effect = SHADER_EFFECTS[selectedEffect];
+    
+    if (effect && effect.uniforms) {
+      const initialValues: Record<string, number> = {};
       
-      if (effect.uniforms) {
-        const initialValues: Record<string, number> = {};
-        
-        Object.keys(effect.uniforms).forEach(key => {
-          initialValues[key] = effect.uniforms[key].value;
-        });
-        
-        setUniformValues(initialValues);
-      }
+      // Safely extract initial values from uniforms with proper type checking
+      Object.keys(effect.uniforms).forEach(key => {
+        const uniform = effect.uniforms[key as keyof typeof effect.uniforms];
+        if (uniform && 
+            typeof uniform === 'object' && 
+            'value' in uniform && 
+            (typeof uniform.value === 'number' || Array.isArray(uniform.value))) {
+          // Handle both number and array types (for vec2, vec3, etc.)
+          if (typeof uniform.value === 'number') {
+            initialValues[key] = uniform.value;
+          } else if (Array.isArray(uniform.value) && uniform.value.length > 0) {
+            // If it's an array, use the first value (this is a simplification)
+            initialValues[key] = uniform.value[0];
+          }
+        }
+      });
+      
+      setUniformValues(initialValues);
     }
   }, [selectedEffect]);
   
@@ -103,17 +130,23 @@ const WebGLShaderEffect = forwardRef<
   useEffect(() => {
     setIsLoading(true);
     
-    // Set loading state
     const img = new Image();
-    img.onload = () => setIsLoading(false);
-    img.onerror = () => {
-      setError('Failed to load image');
+    img.onload = () => {
       setIsLoading(false);
     };
-    if (imageUrl) img.src = imageUrl;
+    img.onerror = () => {
+      console.error('Failed to load image');
+      setIsLoading(false);
+    };
+    img.src = imageUrl;
+    
+    return () => {
+      img.onload = null;
+      img.onerror = null;
+    };
   }, [imageUrl]);
   
-  // Update a single uniform value
+  // Update uniform values
   const updateUniformValue = (key: string, value: number) => {
     setUniformValues(prev => ({
       ...prev,
@@ -121,230 +154,235 @@ const WebGLShaderEffect = forwardRef<
     }));
   };
   
-  // Capture current frame as an image
+  // Capture current frame
   const captureCurrentFrame = () => {
-    if (!canvasRef.current) {
-      setError('Cannot capture: canvas not initialized');
-      return;
-    }
+    if (!componentRef.current) return;
     
     try {
-      const canvas = canvasRef.current;
-      const dataURL = canvas.toDataURL('image/png');
-      
+      const dataUrl = componentRef.current.captureScreenshot();
       if (onProcessedImage) {
-        onProcessedImage(dataURL);
+        onProcessedImage(dataUrl);
       }
-      
-      // Also provide direct download
-      const link = document.createElement('a');
-      link.href = dataURL;
-      link.download = 'shader-effect-frame.png';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      return dataUrl;
     } catch (error) {
       console.error('Error capturing frame:', error);
-      setError('Failed to capture frame');
+      return null;
     }
   };
   
-  // Capture multiple frames for animation
+  // Function to capture multiple frames for animation
   const captureFrames = async () => {
-    if (!canvasRef.current) {
-      setError('Cannot capture: canvas not initialized');
-      return null;
-    }
+    if (!componentRef.current) return [];
     
+    setIsCapturing(true);
     const frames: string[] = [];
-    const canvas = canvasRef.current;
-    const frameCount = captureFramesCount;
-    
-    // Temporarily pause the animation
-    const wasPlaying = isPlaying;
-    setIsPlaying(false);
     
     try {
-      // Wait for any pending renders to complete
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Just capture the current frame multiple times as a simple implementation
-      for (let i = 0; i < frameCount; i++) {
-        const dataURL = canvas.toDataURL('image/png');
-        frames.push(dataURL);
+      // For wave effect, capture frames with varying time
+      if (selectedEffect === 'wave') {
+        const frameCount = 30;
+        const originalFrequency = uniformValues.uFrequency;
+        
+        for (let i = 0; i < frameCount; i++) {
+          // Simulate time passing for wave effect
+          const time = i / frameCount * Math.PI * 2;
+          updateUniformValue('uFrequency', originalFrequency + Math.sin(time) * 5);
+          
+          // Wait for the next frame to render
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          const dataUrl = componentRef.current.captureScreenshot();
+          frames.push(dataUrl);
+        }
+        
+        // Reset to original value
+        updateUniformValue('uFrequency', originalFrequency);
+      } else {
+        // For other effects, capture 10 slightly different frames
+        const frameCount = 10;
+        const effect = SHADER_EFFECTS[selectedEffect];
+        const uniformKey = Object.keys(effect.uniforms)[0];
+        
+        if (uniformKey) {
+          const originalValue = uniformValues[uniformKey];
+          const uniformObject = effect.uniforms[uniformKey as keyof typeof effect.uniforms];
+          // Ensure the uniform object exists and has min/max properties
+          const min = uniformObject && 'min' in uniformObject ? 
+            (uniformObject.min as number) || 0 : 0;
+          const max = uniformObject && 'max' in uniformObject ? 
+            (uniformObject.max as number) || 100 : 100;
+          const range = max - min;
+          
+          for (let i = 0; i < frameCount; i++) {
+            // Vary the primary parameter slightly
+            const variation = Math.sin(i / frameCount * Math.PI * 2) * (range * 0.1);
+            updateUniformValue(uniformKey, Math.max(min, Math.min(max, originalValue + variation)));
+            
+            // Wait for the next frame to render
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            const dataUrl = componentRef.current.captureScreenshot();
+            frames.push(dataUrl);
+          }
+          
+          // Reset to original value
+          updateUniformValue(uniformKey, originalValue);
+        } else {
+          // Just capture current frame if no uniforms to animate
+          const dataUrl = componentRef.current.captureScreenshot();
+          frames.push(dataUrl);
+        }
       }
-      
-      // Restore animation state
-      setIsPlaying(wasPlaying);
-      
-      return frames;
     } catch (error) {
       console.error('Error capturing frames:', error);
-      setError('Failed to capture animation frames');
-      setIsPlaying(wasPlaying);
-      return null;
     }
+    
+    setIsCapturing(false);
+    setCapturedFrames(frames);
+    return frames;
   };
   
-  // Expose methods via useImperativeHandle
+  // Handle animation playback
+  useEffect(() => {
+    if (isAnimating && capturedFrames.length > 0) {
+      const animate = (time: number) => {
+        if (time - lastTimeRef.current > 100) { // 100ms between frames (10 FPS)
+          setCurrentFrameIndex(prev => (prev + 1) % capturedFrames.length);
+          lastTimeRef.current = time;
+        }
+        animationRef.current = requestAnimationFrame(animate);
+      };
+      
+      animationRef.current = requestAnimationFrame(animate);
+    } else if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+    
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+    };
+  }, [isAnimating, capturedFrames]);
+  
+  // Expose capture frames method via ref
   useImperativeHandle(ref, () => ({
     captureFrames: async () => {
-      const result = await captureFrames();
-      return result || [];
+      return await captureFrames();
     }
   }));
   
-  // Render error state
-  if (error) {
-    return (
-      <div className="p-4 bg-red-50 rounded-md">
-        <p className="text-red-600">{error}</p>
-        <Button 
-          variant="outline" 
-          onClick={() => location.reload()}
-          className="mt-2"
-        >
-          Try Again
-        </Button>
-      </div>
-    );
-  }
-  
-  // Render loading state
-  if (isLoading) {
-    return (
-      <div className="w-full h-64 flex items-center justify-center bg-gray-100 rounded-md">
-        <div className="text-center">
-          <div className="inline-block animate-spin h-8 w-8 border-4 border-gray-300 border-t-blue-600 rounded-full mb-2"></div>
-          <p>Loading shader effect...</p>
-        </div>
-      </div>
-    );
-  }
-  
-  // Get current effect controls
-  const currentEffect = SHADER_EFFECTS[selectedEffect as keyof typeof SHADER_EFFECTS];
-  const effectControls = currentEffect?.uniforms || {};
-  
   return (
-    <div className="w-full flex flex-col space-y-4">
-      {/* Effect selection controls */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <label className="block text-sm font-medium mb-1">Image Effect</label>
-          <select 
-            className="w-full border rounded-md p-2"
-            value={selectedEffect}
-            onChange={(e) => {
-              setSelectedEffect(e.target.value);
-              setIsCustomShader(e.target.value === 'custom');
-            }}
+    <div className="w-full space-y-4">
+      {/* Effect selector */}
+      <div className="flex flex-wrap gap-2">
+        {Object.entries(SHADER_EFFECTS).map(([key, effect]) => (
+          <Button
+            key={key}
+            variant={selectedEffect === key ? "default" : "outline"}
+            onClick={() => setSelectedEffect(key)}
+            disabled={isLoading || isCapturing}
+            className="text-sm h-8"
           >
-            {Object.keys(SHADER_EFFECTS).map(key => (
-              <option key={key} value={key}>
-                {SHADER_EFFECTS[key as keyof typeof SHADER_EFFECTS].name}
-              </option>
-            ))}
-            <option value="custom">Custom Effect</option>
-          </select>
-        </div>
-        
-        <div>
-          <div className="flex justify-between items-center mb-1">
-            <label className="text-sm font-medium">Capture Frames</label>
-            <span className="text-xs text-gray-500">{captureFramesCount}</span>
-          </div>
-          <Slider
-            value={[captureFramesCount]}
-            min={5}
-            max={60}
-            step={1}
-            onValueChange={(values) => setCaptureFramesCount(values[0])}
-          />
-        </div>
+            {effect.name}
+          </Button>
+        ))}
       </div>
       
-      {/* Effect-specific controls */}
-      {Object.keys(effectControls).length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {Object.keys(effectControls).map(key => (
+      {/* Uniform sliders */}
+      {selectedEffect !== 'none' && (
+        <div className="space-y-2">
+          {Object.entries(SHADER_EFFECTS[selectedEffect].uniforms).map(([key, uniform]) => (
             <div key={key} className="space-y-1">
-              <div className="flex justify-between items-center">
-                <label className="text-sm">{key.replace('u', '')}</label>
-                <span className="text-xs text-gray-500">
-                  {uniformValues[key]?.toFixed(2) || effectControls[key].value.toFixed(2)}
+              <div className="text-sm font-medium">{key.replace(/^u/, '')}</div>
+              <div className="flex items-center gap-3">
+                <Slider
+                  min={uniform.min || 0}
+                  max={uniform.max || 1}
+                  step={uniform.step || 0.01}
+                  value={[uniformValues[key] || uniform.value]}
+                  onValueChange={(value) => updateUniformValue(key, value[0])}
+                  disabled={isCapturing}
+                  className="flex-1"
+                />
+                <span className="text-xs w-12 text-right">
+                  {uniformValues[key]?.toFixed(2) || uniform.value.toFixed(2)}
                 </span>
               </div>
-              <Slider
-                value={[uniformValues[key] || effectControls[key].value]}
-                min={effectControls[key].min}
-                max={effectControls[key].max}
-                step={effectControls[key].step}
-                onValueChange={(values) => updateUniformValue(key, values[0])}
-              />
             </div>
           ))}
         </div>
       )}
       
-      {/* Canvas and controls */}
-      <div className="flex flex-wrap justify-between items-center gap-4">
-        <Button 
-          variant={isPlaying ? "default" : "outline"}
-          onClick={() => setIsPlaying(!isPlaying)}
-          className="w-auto"
-        >
-          {isPlaying ? '❚❚ Pause' : '▶ Play'}
-        </Button>
-        
-        <div className="flex gap-2">
-          <Button 
-            variant="default"
-            onClick={captureCurrentFrame}
-            className="w-auto"
-          >
-            Capture Frame
-          </Button>
-          
-          <Button 
-            variant="outline"
-            onClick={() => captureFrames()}
-            className="w-auto"
-          >
-            Capture Animation
-          </Button>
-        </div>
-      </div>
-      
-      {/* Canvas container */}
-      <div className="relative aspect-video w-full border rounded-md overflow-hidden">
-        <canvas 
-          ref={canvasRef} 
-          className="absolute top-0 left-0 w-full h-full"
-        />
+      {/* Three.js renderer */}
+      <div className="border rounded-md overflow-hidden">
         <Suspense fallback={
-          <div className="w-full h-full flex items-center justify-center bg-gray-100">
-            <div className="text-center">
-              <div className="inline-block animate-spin h-8 w-8 border-4 border-gray-300 border-t-blue-600 rounded-full mb-2"></div>
-              <p>Loading effect...</p>
-            </div>
+          <div className="w-full aspect-video bg-gray-100 flex items-center justify-center">
+            <div className="animate-spin h-8 w-8 border-4 border-gray-300 border-t-blue-600 rounded-full"></div>
           </div>
         }>
           <ThreeComponents
+            ref={componentRef}
             imageUrl={imageUrl}
-            selectedEffect={selectedEffect}
-            customShaderCode={isCustomShader ? customShaderCode : undefined}
+            effectName={selectedEffect}
             uniformValues={uniformValues}
-            isPlaying={isPlaying}
-            canvasRef={canvasRef}
           />
         </Suspense>
       </div>
       
-      <p className="text-xs text-gray-500 mt-2">
-        Use the controls above to customize the image effect. 
-        Press 'Capture Frame' to save a still image or 'Capture Animation' to create an animated sequence.
-      </p>
+      {/* Capture buttons */}
+      <div className="flex flex-wrap gap-2">
+        <Button 
+          variant="secondary"
+          onClick={captureCurrentFrame}
+          disabled={isLoading || isCapturing}
+        >
+          Capture Frame
+        </Button>
+        
+        <Button 
+          variant="secondary"
+          onClick={captureFrames}
+          disabled={isLoading || isCapturing || selectedEffect === 'none'}
+        >
+          {isCapturing ? (
+            <>
+              <span className="animate-spin mr-2">⟳</span>
+              Capturing...
+            </>
+          ) : (
+            'Capture Animation'
+          )}
+        </Button>
+        
+        {capturedFrames.length > 0 && (
+          <Button
+            variant="outline"
+            onClick={() => setIsAnimating(!isAnimating)}
+          >
+            {isAnimating ? 'Pause' : 'Play'} Animation
+          </Button>
+        )}
+      </div>
+      
+      {/* Animation preview */}
+      {capturedFrames.length > 0 && (
+        <div className="mt-4 border rounded-md p-4">
+          <h3 className="text-lg font-medium mb-2">Animation Preview</h3>
+          <div className="aspect-video bg-gray-100 rounded-md overflow-hidden">
+            <img 
+              src={capturedFrames[currentFrameIndex]} 
+              alt="Animation preview"
+              className="w-full h-full object-contain"
+            />
+          </div>
+          <div className="mt-2 text-sm text-gray-600">
+            Frame {currentFrameIndex + 1} of {capturedFrames.length}
+          </div>
+        </div>
+      )}
     </div>
   );
 });
