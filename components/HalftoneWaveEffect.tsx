@@ -80,34 +80,37 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
   const animationRef = useRef<number | null>(null);
   const timeRef = useRef<number>(0);
   
-  // Import GIF.js dynamically to avoid SSR issues
-  const loadGifJs = async () => {
+  // Replace the direct gif.js import with a more robust dynamic import
+  const [GifJsLib, setGifJsLib] = useState<any>(null);
+  const [isGifJsLoading, setIsGifJsLoading] = useState(false);
+  
+  // Attempt to load the GIF.js library at runtime only
+  const loadGifJs = useCallback(async () => {
+    if (GifJsLib) return GifJsLib;
+    if (isGifJsLoading) return null;
+    
+    setIsGifJsLoading(true);
+    
     try {
-      // Try to dynamically import the package
-      let GIF;
+      // Use a more dynamic approach that Next.js won't try to analyze during build
+      const importDynamic = new Function('modulePath', 'return import(modulePath)');
       
-      // In Next.js, we need to handle the dynamic import carefully
       try {
-        GIF = (await import('gif.js.optimized')).default;
-      } catch (importError) {
-        console.error('Primary import failed, trying alternative import:', importError);
-        
-        // Try alternative import syntax as fallback
-        try {
-          const module = await import('gif.js.optimized');
-          GIF = module.default || module;
-        } catch (fallbackError) {
-          console.error('Fallback import also failed:', fallbackError);
-          throw new Error('Could not import GIF.js library');
-        }
+        const module = await importDynamic('gif.js.optimized');
+        const GIF = module.default || module;
+        setGifJsLib(GIF);
+        return GIF;
+      } catch (error) {
+        console.error('Failed to load GIF.js library:', error);
+        return null;
       }
-      
-      return GIF;
     } catch (error) {
-      console.error('Error loading GIF.js library:', error);
-      throw new Error('Failed to load GIF export library');
+      console.error('Dynamic import failed:', error);
+      return null;
+    } finally {
+      setIsGifJsLoading(false);
     }
-  };
+  }, [GifJsLib, isGifJsLoading]);
   
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -286,7 +289,23 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
     }
   };
   
-  // Add a function to export as fallback if GIF creation fails
+  // Check if GIF.js is available when component mounts
+  useEffect(() => {
+    const checkGifAvailability = async () => {
+      try {
+        const GIF = await loadGifJs();
+        setIsGifExportAvailable(!!GIF);
+      } catch (error) {
+        setIsGifExportAvailable(false);
+        console.warn('GIF export not available:', error);
+      }
+    };
+    
+    checkGifAvailability();
+    // No dependency array here to run only once when component mounts
+  }, [loadGifJs]);
+  
+  // Export as PNG when GIF is not available
   const exportAsPNGSequence = () => {
     if (!canvasRef.current || !originalImageRef.current) {
       setError('Cannot export: canvas or image not initialized');
@@ -294,39 +313,17 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
     }
     
     try {
-      // Get canvas and context
+      // Capture current frame as PNG
       const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d')!;
-      
-      // Pause animation
-      if (animationRef.current !== null) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
-      
-      // Create a zip-like structure in memory (simplified for demonstration)
-      const frames = [];
-      const frameCount = gifFrames;
-      
-      // Generate frames
-      let frameTime = 0;
-      const timeIncrement = 2 * Math.PI / frameCount;
-      
-      // Just capture the current frame as a PNG
       const dataURL = canvas.toDataURL('image/png');
       
       // Create download link
       const link = document.createElement('a');
       link.href = dataURL;
-      link.download = `halftone-frame.png`;
+      link.download = 'halftone-frame.png';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
-      // Restart animation
-      if (isPlaying) {
-        startAnimation();
-      }
       
       // Show message to user
       alert('GIF export not available. Exported current frame as PNG instead.');
@@ -334,57 +331,60 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
       setIsExporting(false);
       setExportProgress(0);
       setShowExportOptions(false);
+      
+      // Restart animation if it was playing
+      if (isPlaying) {
+        startAnimation();
+      }
     } catch (error) {
-      console.error('Error in fallback export:', error);
+      console.error('Error exporting PNG:', error);
       setError('Failed to export image');
       setIsExporting(false);
     }
   };
   
-  // Update the exportAsGif function
+  // Export as GIF
   const exportAsGif = async () => {
     if (!canvasRef.current || !originalImageRef.current) {
       setError('Cannot export: canvas or image not initialized');
       return;
     }
     
+    setIsExporting(true);
+    setExportProgress(0);
+    
+    // Pause animation during export
+    if (animationRef.current !== null) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+    
+    // Try to load GIF.js
+    const GIF = await loadGifJs();
+    
+    if (!GIF) {
+      console.warn('GIF.js not available, falling back to PNG');
+      exportAsPNGSequence();
+      return;
+    }
+    
     try {
-      setIsExporting(true);
-      setExportProgress(0);
-      
-      // Pause animation during export
-      if (animationRef.current !== null) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
-      
-      // Try to load GIF.js
-      let GIF;
-      try {
-        GIF = await loadGifJs();
-      } catch (error) {
-        console.error('Could not load GIF.js library, falling back to PNG export', error);
-        exportAsPNGSequence();
-        return;
-      }
-      
-      // Initialize GIF with quality and worker options
+      // Create GIF instance
       const gif = new GIF({
         workers: 2,
         quality: gifQuality,
         width: canvasRef.current.width,
         height: canvasRef.current.height,
-        // Use a more reliable way to access the worker script
-        workerScript: '/gif.worker.js', // This requires copying the worker file to the public directory
+        workerScript: '/gif.worker.js',
       });
       
-      // Setup progress callback
-      gif.on('progress', (p) => {
+      // Set up progress callback
+      gif.on('progress', (p: number) => {
         setExportProgress(Math.floor(p * 100));
       });
       
-      // Setup finished callback
-      gif.on('finished', (blob) => {
+      // Set up finished callback
+      gif.on('finished', (blob: Blob) => {
         // Create URL for download
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -409,15 +409,11 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
         }
       });
       
-      // Get canvas and context
+      // Generate frames
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d')!;
-      
-      // Create frames for the GIF
       const frameCount = gifFrames;
       const duration = 100; // milliseconds per frame
-      
-      console.log(`Creating GIF with ${frameCount} frames...`);
       
       // Reset time for consistent animation
       let frameTime = 0;
@@ -438,32 +434,14 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
       gif.render();
       
     } catch (error) {
-      console.error('Error exporting GIF:', error);
-      setError('Failed to export GIF');
+      console.error('Error creating GIF:', error);
+      setError('Failed to create GIF');
       setIsExporting(false);
       
-      // Restart animation on error
-      if (isPlaying) {
-        startAnimation();
-      }
+      // Fall back to PNG export
+      exportAsPNGSequence();
     }
   };
-  
-  // Check if GIF.js can be loaded when component mounts
-  useEffect(() => {
-    const checkGifLibrary = async () => {
-      try {
-        await loadGifJs();
-        setIsGifExportAvailable(true);
-        console.log('GIF.js library is available');
-      } catch (error) {
-        setIsGifExportAvailable(false);
-        console.warn('GIF.js library is not available:', error);
-      }
-    };
-    
-    checkGifLibrary();
-  }, []);
   
   if (error) {
     return (
