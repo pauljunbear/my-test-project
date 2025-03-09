@@ -5,6 +5,8 @@
  * for browser environments.
  */
 
+import { isBrowser, createCanvas, safelyImportBrowserModule } from './browser-utils';
+
 // Ensure TypeScript recognizes the gif.js.optimized module
 // This is a fallback in case the separate .d.ts file isn't found
 declare module 'gif.js.optimized';
@@ -47,7 +49,7 @@ export const DEFAULT_VERTEX_SHADER = `
 // Helper function to check if we're in a Node.js environment
 // Note: For now, this always returns false since we're focusing on browser-only functionality
 export const isNode = (): boolean => {
-  return false; // Browser-only mode for now
+  return !isBrowser();
 };
 
 // Initialize WebGL context
@@ -339,15 +341,17 @@ export const processImageWithShader = async (
   shaderEffect: ShaderEffect,
   uniformValues: Record<string, any>
 ): Promise<ImageData> => {
+  if (!isBrowser()) {
+    throw new Error('WebGL processing is only available in browser environments');
+  }
+
   // Determine dimensions
   const width = 'width' in imageSource ? imageSource.width : imageSource.naturalWidth;
   const height = 'height' in imageSource ? imageSource.height : imageSource.naturalHeight;
   
   try {
     // Create canvas for WebGL rendering
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
+    const canvas = createCanvas(width, height);
     
     // Initialize WebGL context
     const gl = initWebGL(canvas);
@@ -644,25 +648,20 @@ export const exportBrowserGif = async (
     repeat?: number;
   } = {}
 ): Promise<Blob> => {
+  if (!isBrowser()) {
+    throw new Error('GIF export is only available in browser environments');
+  }
+
   try {
-    // Dynamic import with more robust error handling
-    // This approach avoids TypeScript issues with the import
-    const GIFModule = await new Promise<any>((resolve, reject) => {
-      try {
-        // Use a simple dynamic import that won't trigger TypeScript errors
-        import('gif.js.optimized')
-          .then(module => {
-            // Handle both default and named exports
-            resolve(module.default || module);
-          })
-          .catch(error => {
-            console.error('Failed to load gif.js.optimized:', error);
-            reject(new Error('Failed to load GIF library. Please make sure gif.js.optimized is installed.'));
-          });
-      } catch (err) {
-        reject(err);
-      }
-    });
+    // Use our safe module import function
+    const GIFModule = await safelyImportBrowserModule(
+      () => import('gif.js.optimized').then(module => module.default || module),
+      null
+    );
+    
+    if (!GIFModule) {
+      throw new Error('Failed to load GIF library. Please make sure gif.js.optimized is installed.');
+    }
     
     return new Promise((resolve, reject) => {
       const gif = new GIFModule({
@@ -674,11 +673,9 @@ export const exportBrowserGif = async (
       });
       
       // Add each frame to the GIF
-      frames.forEach((frameData, index) => {
+      frames.forEach((frameData) => {
         // Create temporary canvas to draw the frame
-        const canvas = document.createElement('canvas');
-        canvas.width = frameData.width;
-        canvas.height = frameData.height;
+        const canvas = createCanvas(frameData.width, frameData.height);
         
         const ctx = canvas.getContext('2d')!;
         ctx.putImageData(frameData, 0, 0);

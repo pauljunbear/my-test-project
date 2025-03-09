@@ -16,7 +16,14 @@ const nextConfig = {
     
     // Prevent problematic libraries from being bundled on the server
     if (isServer) {
-      config.externals = [...config.externals, 'gif.js.optimized'];
+      config.externals = [
+        ...config.externals, 
+        'gif.js.optimized',
+        'gl',
+        'pixi.js',
+        'glsl-canvas',
+        'fabric',
+      ];
     }
     
     // Provide fallbacks for browser modules
@@ -24,12 +31,15 @@ const nextConfig = {
       ...config.resolve.fallback,
       fs: false,
       path: false,
-      'gif.js.optimized': false,
+      os: false,
+      crypto: false,
+      stream: false,
+      'gif.js.optimized': !isServer && require.resolve('gif.js.optimized'),
     };
     
-    // Add a specific rule to ignore gif.js during build analysis
+    // Add a specific rule to ignore browser-only modules during build analysis
     config.module.rules.push({
-      test: /gif\.js\.optimized/,
+      test: /gif\.js\.optimized|gl|glsl-canvas|pixi\.js/,
       use: 'null-loader',
       include: /[\\/]node_modules[\\/]/,
     });

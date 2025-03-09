@@ -15,6 +15,8 @@ import {
   ShaderEffect
 } from '@/lib/webgl-utils';
 
+import { createImage, createCanvas, isBrowser, safelyImportBrowserModule } from '@/lib/browser-utils';
+
 interface EnhancedGifExportProps {
   imageUrl: string;
   onExportComplete?: (blob: Blob, url: string) => void;
@@ -40,29 +42,24 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
   useEffect(() => {
     const checkGifLibrary = async () => {
       try {
-        // Use a type-safe approach to check for GIF library availability
-        // that won't trigger TypeScript errors
-        await new Promise<void>((resolve, reject) => {
-          // Dynamically import the module
-          import('gif.js.optimized')
-            .then(() => {
-              setIsGifLibraryAvailable(true);
-              resolve();
-            })
-            .catch(err => {
-              console.error('GIF library not available:', err);
-              setIsGifLibraryAvailable(false);
-              reject(err);
-            });
-        });
+        // Use our safe browser module import
+        await safelyImportBrowserModule(
+          () => import('gif.js.optimized'),
+          null
+        );
+        setIsGifLibraryAvailable(true);
       } catch (e) {
-        // This catch is just a fallback, the real error is caught in the promise above
         console.error('GIF library check failed:', e);
         setIsGifLibraryAvailable(false);
       }
     };
     
-    checkGifLibrary();
+    // Only run in browser
+    if (isBrowser()) {
+      checkGifLibrary();
+    } else {
+      setIsGifLibraryAvailable(false);
+    }
   }, []);
   
   // Load and initialize the image

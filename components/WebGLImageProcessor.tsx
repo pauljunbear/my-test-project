@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import EnhancedGifExport from './EnhancedGifExport';
 import { Slider } from './ui/slider';
 import Image from 'next/image';
+import { createImage, createCanvas, isBrowser, downloadFile } from '@/lib/browser-utils';
 
 import { processImageWithShader, SHADER_EFFECTS } from '@/lib/webgl-utils';
 
@@ -50,7 +51,7 @@ export default function WebGLImageProcessor() {
       setErrorMessage('');
       
       // Check image dimensions when loaded
-      const img = new Image();
+      const img = createImage();
       img.onload = () => {
         const { width, height } = img;
         setImageOriginalDimensions({ width, height });
@@ -114,9 +115,7 @@ export default function WebGLImageProcessor() {
     }
     
     // Create a temporary canvas to resize the image
-    const canvas = document.createElement('canvas');
-    canvas.width = newWidth;
-    canvas.height = newHeight;
+    const canvas = createCanvas(newWidth, newHeight);
     
     const ctx = canvas.getContext('2d');
     if (!ctx) return img;
@@ -125,7 +124,7 @@ export default function WebGLImageProcessor() {
     ctx.drawImage(img, 0, 0, width, height, 0, 0, newWidth, newHeight);
     
     // Create a new image from the canvas
-    const resizedImg = new Image();
+    const resizedImg = createImage();
     resizedImg.src = canvas.toDataURL('image/png');
     
     return resizedImg;
@@ -140,7 +139,7 @@ export default function WebGLImageProcessor() {
     
     try {
       // Load the image
-      const img = new Image();
+      const img = createImage();
       img.crossOrigin = 'anonymous';
       
       img.onload = async () => {
@@ -159,9 +158,7 @@ export default function WebGLImageProcessor() {
           );
           
           // Create a temporary canvas to convert the processed image data to a data URL
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = processedImageData.width;
-          tempCanvas.height = processedImageData.height;
+          const tempCanvas = createCanvas(processedImageData.width, processedImageData.height);
           
           const ctx = tempCanvas.getContext('2d');
           if (ctx) {
