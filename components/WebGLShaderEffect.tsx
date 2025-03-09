@@ -186,7 +186,21 @@ const WebGLShaderEffect = forwardRef<
         for (let i = 0; i < frameCount; i++) {
           // Simulate time passing for wave effect
           const time = i / frameCount * Math.PI * 2;
-          updateUniformValue('uFrequency', originalFrequency + Math.sin(time) * 5);
+          
+          // Handle both number and array types for originalFrequency
+          if (typeof originalFrequency === 'number') {
+            // If it's a number, add variation directly
+            updateUniformValue('uFrequency', originalFrequency + Math.sin(time) * 5);
+          } else if (Array.isArray(originalFrequency) && originalFrequency.length > 0) {
+            // If it's an array, create a new array with the first value varied
+            const newArray = [...originalFrequency];
+            newArray[0] = originalFrequency[0] + Math.sin(time) * 5;
+            updateUniformValue('uFrequency', newArray);
+          } else {
+            // If it's neither (shouldn't happen, but TypeScript needs this case)
+            // Just use a fallback value
+            updateUniformValue('uFrequency', Math.sin(time) * 5 + 10);
+          }
           
           // Wait for the next frame to render
           await new Promise(resolve => setTimeout(resolve, 100));
