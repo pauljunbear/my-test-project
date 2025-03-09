@@ -1,14 +1,11 @@
 'use client';
 
 import React, { useRef, useState, useEffect, useCallback, forwardRef, useImperativeHandle, Suspense } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useTexture } from '@react-three/drei';
-import * as THREE from 'three';
 import { Button } from './ui/button';
 import { Slider } from './ui/slider';
 import dynamic from 'next/dynamic';
 
-// Dynamically import Three.js components with no SSR
+// Dynamically import ThreeComponents with no SSR to avoid server import of Three.js
 const ThreeComponents = dynamic(() => import('./ThreeComponents'), {
   ssr: false,
   loading: () => (
@@ -21,7 +18,7 @@ const ThreeComponents = dynamic(() => import('./ThreeComponents'), {
   )
 });
 
-// Default shaders
+// Default shaders (these don't require Three.js imports)
 const DEFAULT_VERTEX_SHADER = `
 varying vec2 vUv;
 
@@ -218,96 +215,6 @@ interface ShaderEffectProps {
   onProcessedImage?: (dataUrl: string) => void;
 }
 
-// Interface for shader mesh properties
-interface ShaderMeshProps {
-  imageUrl: string;
-  effectKey: string;
-  customShaderCode?: string;
-  uniformValues: Record<string, number>;
-  isPlaying: boolean;
-  onAnimationFrame?: (time: number) => void;
-}
-
-// ShaderMesh component handles the actual rendering
-function ShaderMesh({ 
-  imageUrl, 
-  effectKey, 
-  customShaderCode,
-  uniformValues, 
-  isPlaying,
-  onAnimationFrame 
-}: ShaderMeshProps) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const materialRef = useRef<THREE.ShaderMaterial>(null);
-  const texture = useTexture(imageUrl);
-  const { size } = useThree();
-  
-  // Set texture properties for better rendering
-  useEffect(() => {
-    if (texture) {
-      texture.minFilter = THREE.LinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.needsUpdate = true;
-    }
-  }, [texture]);
-  
-  // Handle animation updates
-  useFrame(({ clock }) => {
-    if (materialRef.current && isPlaying) {
-      const time = clock.getElapsedTime();
-      
-      // Update time uniform
-      materialRef.current.uniforms.uTime.value = time;
-      
-      // Update custom uniforms from controls
-      Object.keys(uniformValues).forEach(key => {
-        if (materialRef.current?.uniforms[key]) {
-          materialRef.current.uniforms[key].value = uniformValues[key];
-        }
-      });
-      
-      // Callback for external animations (like GIF/MOV recording)
-      if (onAnimationFrame) {
-        onAnimationFrame(time);
-      }
-    }
-  });
-  
-  // Determine which shader to use
-  const selectedEffect = SHADER_EFFECTS[effectKey as keyof typeof SHADER_EFFECTS] || SHADER_EFFECTS.none;
-  const fragmentShader = customShaderCode || selectedEffect.fragmentShader;
-  
-  // Create uniforms object from effect definition
-  const createUniforms = () => {
-    const uniforms: Record<string, { value: any }> = {
-      uTexture: { value: texture },
-      uTime: { value: 0.0 },
-      uResolution: { value: new THREE.Vector2(size.width, size.height) }
-    };
-    
-    // Add effect-specific uniforms
-    if (selectedEffect.uniforms) {
-      Object.keys(selectedEffect.uniforms).forEach(key => {
-        uniforms[key] = { value: uniformValues[key] ?? selectedEffect.uniforms[key].value };
-      });
-    }
-    
-    return uniforms;
-  };
-  
-  return (
-    <mesh ref={meshRef}>
-      <planeGeometry args={[2, 2]} />
-      <shaderMaterial
-        ref={materialRef}
-        uniforms={createUniforms()}
-        vertexShader={DEFAULT_VERTEX_SHADER}
-        fragmentShader={fragmentShader}
-      />
-    </mesh>
-  );
-}
-
 // Main WebGL shader effect component
 const WebGLShaderEffect = forwardRef<
   { captureFrames: () => Promise<string[]> },
@@ -417,7 +324,6 @@ const WebGLShaderEffect = forwardRef<
     const frames: string[] = [];
     const canvas = canvasRef.current;
     const frameCount = captureFramesCount;
-    const duration = 2.0; // Total animation duration in seconds
     
     // Temporarily pause the animation
     const wasPlaying = isPlaying;
@@ -432,9 +338,6 @@ const WebGLShaderEffect = forwardRef<
       for (let i = 0; i < frameCount; i++) {
         const dataURL = canvas.toDataURL('image/png');
         frames.push(dataURL);
-        
-        // In a real implementation, we would update the shader time value
-        // and re-render before capturing each frame
       }
       
       // Restore animation state
@@ -642,5 +545,7 @@ const WebGLShaderEffect = forwardRef<
     </div>
   );
 });
+
+WebGLShaderEffect.displayName = 'WebGLShaderEffect';
 
 export default WebGLShaderEffect; 

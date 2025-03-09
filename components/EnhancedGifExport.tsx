@@ -13,10 +13,10 @@ import {
   DialogTitle
 } from './ui/dialog';
 
-// GIF.js loader with fallback strategies
+// Modify the GIF.js loading function to be more resilient
 const loadGifJs = async () => {
   try {
-    // Use a dynamic import approach that avoids Next.js analysis during build
+    // Use a dynamic import approach that completely avoids Next.js analysis during build
     const importDynamic = new Function('modulePath', 'return import(modulePath)');
     
     try {
@@ -24,11 +24,25 @@ const loadGifJs = async () => {
       const GIF = module.default || module;
       return GIF;
     } catch (error) {
-      console.error('Failed to load GIF.js library:', error);
-      throw new Error('GIF.js library not available');
+      console.error('Primary import strategy failed:', error);
+      
+      // Try alternative approach
+      try {
+        // Use eval as last resort (safe in this controlled context)
+        // This helps avoid webpack analyzing the import during build
+        const modulePathEval = 'gif.js.optimized';
+        // @ts-ignore - We're intentionally using eval as a workaround
+        const evalImport = eval(`import('${modulePathEval}')`);
+        const module = await evalImport;
+        const GIF = module.default || module;
+        return GIF;
+      } catch (fallbackError) {
+        console.error('Fallback import also failed:', fallbackError);
+        throw new Error('Could not import GIF.js library after multiple attempts');
+      }
     }
   } catch (error) {
-    console.error('Dynamic import failed:', error);
+    console.error('All GIF import strategies failed:', error);
     throw error;
   }
 };

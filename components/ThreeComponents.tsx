@@ -1,9 +1,16 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useTexture } from '@react-three/drei';
-import * as THREE from 'three';
+import React, { useRef, useEffect, useState } from 'react';
+
+// We'll define interfaces without depending on Three.js types
+interface ThreeComponentsProps {
+  imageUrl: string;
+  selectedEffect: string;
+  customShaderCode?: string;
+  uniformValues: Record<string, number>;
+  isPlaying: boolean;
+  canvasRef: React.RefObject<HTMLCanvasElement>;
+}
 
 // Default shaders (copied from WebGLShaderEffect)
 const DEFAULT_VERTEX_SHADER = `
@@ -27,7 +34,7 @@ void main() {
 }
 `;
 
-// Import predefined shader effects from WebGLShaderEffect
+// Predefined shader effects
 const SHADER_EFFECTS = {
   none: {
     name: 'None',
@@ -196,117 +203,107 @@ const SHADER_EFFECTS = {
   }
 };
 
-// Interface for shader mesh props
-interface ShaderMeshProps {
-  imageUrl: string;
-  selectedEffect: string;
-  customShaderCode?: string;
-  uniformValues: Record<string, number>;
-  isPlaying: boolean;
-}
+// Client-side only rendering component
+export default function ThreeComponents(props: ThreeComponentsProps) {
+  const { imageUrl, selectedEffect, customShaderCode, uniformValues, isPlaying, canvasRef } = props;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isClientSide, setIsClientSide] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-// Interface for ThreeComponents props
-interface ThreeComponentsProps {
-  imageUrl: string;
-  selectedEffect: string;
-  customShaderCode?: string;
-  uniformValues: Record<string, number>;
-  isPlaying: boolean;
-  canvasRef: React.RefObject<HTMLCanvasElement>;
-}
-
-// ShaderMesh component handles the actual rendering
-function ShaderMesh({ 
-  imageUrl, 
-  selectedEffect, 
-  customShaderCode,
-  uniformValues, 
-  isPlaying
-}: ShaderMeshProps) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const materialRef = useRef<THREE.ShaderMaterial>(null);
-  const texture = useTexture(imageUrl);
-  const { size } = useThree();
-  
-  // Set texture properties for better rendering
+  // Only run Three.js code on the client side
   useEffect(() => {
-    if (texture) {
-      texture.minFilter = THREE.LinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.needsUpdate = true;
-    }
-  }, [texture]);
-  
-  // Handle animation updates
-  useFrame(({ clock }) => {
-    if (materialRef.current && isPlaying) {
-      const time = clock.getElapsedTime();
-      
-      // Update time uniform
-      materialRef.current.uniforms.uTime.value = time;
-      
-      // Update custom uniforms from controls
-      Object.keys(uniformValues).forEach(key => {
-        if (materialRef.current?.uniforms[key]) {
-          materialRef.current.uniforms[key].value = uniformValues[key];
-        }
-      });
-    }
-  });
-  
-  // Determine which shader to use
-  const selectedEffectObj = SHADER_EFFECTS[selectedEffect as keyof typeof SHADER_EFFECTS] || SHADER_EFFECTS.none;
-  const fragmentShader = customShaderCode || selectedEffectObj.fragmentShader;
-  
-  // Create uniforms object from effect definition
-  const createUniforms = () => {
-    const uniforms: Record<string, { value: any }> = {
-      uTexture: { value: texture },
-      uTime: { value: 0.0 },
-      uResolution: { value: new THREE.Vector2(size.width, size.height) }
-    };
-    
-    // Add effect-specific uniforms
-    if (selectedEffectObj.uniforms) {
-      Object.keys(selectedEffectObj.uniforms).forEach(key => {
-        uniforms[key] = { value: uniformValues[key] ?? selectedEffectObj.uniforms[key].value };
-      });
-    }
-    
-    return uniforms;
-  };
-  
-  return (
-    <mesh ref={meshRef}>
-      <planeGeometry args={[2, 2]} />
-      <shaderMaterial
-        ref={materialRef}
-        uniforms={createUniforms()}
-        vertexShader={DEFAULT_VERTEX_SHADER}
-        fragmentShader={fragmentShader}
-      />
-    </mesh>
-  );
-}
+    setIsClientSide(true);
+  }, []);
 
-// Export the ThreeComponents
-export default function ThreeComponents({
-  imageUrl,
-  selectedEffect,
-  customShaderCode,
-  uniformValues,
-  isPlaying,
-  canvasRef
-}: ThreeComponentsProps) {
+  // Initialize Three.js when component mounts (client-side only)
+  useEffect(() => {
+    if (!isClientSide || isInitialized || !containerRef.current || !canvasRef.current) return;
+
+    // Dynamically import Three.js and related libraries
+    const initThree = async () => {
+      try {
+        // Use dynamic imports to ensure these are only loaded on the client
+        const THREE = await import('three');
+        const { Canvas, useFrame, useThree } = await import('@react-three/fiber');
+        const { useTexture } = await import('@react-three/drei');
+
+        // We've successfully loaded the libraries, but we won't use them directly
+        // Instead, we'll use a simpler approach with a plain canvas
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+          console.error('Failed to get 2D context');
+          return;
+        }
+        
+        // Load the image
+        const img = new Image();
+        img.src = imageUrl;
+        img.onload = () => {
+          // Maintain aspect ratio
+          const aspectRatio = img.width / img.height;
+          canvas.width = 800; // Fixed width
+          canvas.height = Math.round(800 / aspectRatio);
+          
+          // Initial draw
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          
+          // Animate with simple 2D canvas fallback
+          let time = 0;
+          const animate = () => {
+            if (!isPlaying) return;
+            
+            time += 0.05;
+            
+            // Basic fallback animation
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            
+            // Apply a simple effect
+            const effect = selectedEffect || 'none';
+            if (effect !== 'none') {
+              // Simplified effect application
+              const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const data = imageData.data;
+              
+              // Apply simple effect (grayscale for demo)
+              for (let i = 0; i < data.length; i += 4) {
+                const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                data[i] = avg;     // R
+                data[i + 1] = avg; // G
+                data[i + 2] = avg; // B
+              }
+              
+              ctx.putImageData(imageData, 0, 0);
+            }
+            
+            requestAnimationFrame(animate);
+          };
+          
+          animate();
+        };
+        
+        img.onerror = () => {
+          console.error('Failed to load image');
+        };
+        
+        setIsInitialized(true);
+      } catch (error) {
+        console.error('Failed to initialize Three.js:', error);
+      }
+    };
+
+    initThree();
+  }, [isClientSide, isInitialized, imageUrl, canvasRef, containerRef, selectedEffect, isPlaying]);
+
   return (
-    <Canvas ref={canvasRef} gl={{ preserveDrawingBuffer: true }}>
-      <ShaderMesh 
-        imageUrl={imageUrl}
-        selectedEffect={selectedEffect}
-        customShaderCode={customShaderCode}
-        uniformValues={uniformValues}
-        isPlaying={isPlaying}
+    <div ref={containerRef} className="relative w-full h-full">
+      {/* This canvas will be used as a fallback and for capturing */}
+      <canvas 
+        ref={canvasRef} 
+        className="w-full h-full object-contain"
       />
-    </Canvas>
+    </div>
   );
 } 

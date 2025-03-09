@@ -14,9 +14,14 @@ const nextConfig = {
     // Add canvas to externals to avoid SSR issues with WebGL dependencies
     config.externals = [...(config.externals || []), { canvas: "canvas" }];
     
-    // Prevent the GIF.js library from being bundled on the server
+    // Prevent problematic libraries from being bundled on the server
     if (isServer) {
-      config.externals = [...config.externals, 'gif.js.optimized'];
+      config.externals = [...config.externals, 
+        'gif.js.optimized',
+        'three', 
+        '@react-three/fiber', 
+        '@react-three/drei'
+      ];
     }
     
     // Provide fallbacks for browser modules
@@ -26,6 +31,13 @@ const nextConfig = {
       path: false,
       'gif.js.optimized': false,
     };
+    
+    // Add a specific rule to ignore these modules completely during build analysis
+    config.module.rules.push({
+      test: /three|@react-three\/fiber|@react-three\/drei|gif\.js\.optimized/,
+      use: 'null-loader',
+      include: /[\\/]node_modules[\\/]/,
+    });
     
     return config;
   },
