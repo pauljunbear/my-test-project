@@ -345,9 +345,12 @@ export const processImageWithShader = async (
     throw new Error('WebGL processing is only available in browser environments');
   }
 
-  // Determine dimensions
-  const width = 'width' in imageSource ? imageSource.width : imageSource.naturalWidth;
-  const height = 'height' in imageSource ? imageSource.height : imageSource.naturalHeight;
+  // Determine dimensions using type guards
+  const isHTMLImage = (img: HTMLImageElement | ImageData): img is HTMLImageElement => 
+    'naturalWidth' in img;
+  
+  const width = isHTMLImage(imageSource) ? imageSource.naturalWidth : imageSource.width;
+  const height = isHTMLImage(imageSource) ? imageSource.naturalHeight : imageSource.height;
   
   try {
     // Create canvas for WebGL rendering
