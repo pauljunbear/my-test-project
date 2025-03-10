@@ -700,8 +700,9 @@ export const exportBrowserGif = async (
         resolve(blob);
       });
       
-      gif.on('error', (error: Error) => {
-        reject(error);
+      // Handle aborted rendering
+      gif.on('abort', () => {
+        reject(new Error('GIF rendering was aborted'));
       });
       
       // Start rendering
