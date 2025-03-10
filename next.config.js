@@ -4,7 +4,7 @@ const path = require('path');
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  output: 'standalone', // Use standalone output for better compatibility
+  output: 'export', // Change from 'standalone' to 'export' for Vercel compatibility
   images: {
     domains: [],
     remotePatterns: [],
