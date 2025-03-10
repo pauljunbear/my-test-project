@@ -328,7 +328,7 @@ export default function TweetGLSLImageProcessor({
       
       // Capture frames for GIF
       const frameCount = 20;
-      const frames = [];
+      const frames: string[] = [];
       const canvas = canvasRef.current;
       
       // Create GIF instance

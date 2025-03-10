@@ -79,7 +79,7 @@ export default function ShaderEffects({ imageData, onProcessedImage }: ShaderEff
     console.log("Updating filters...");
     
     // Create a fresh array of active filters
-    const activeFilters = [];
+    const activeFilters: any[] = [];
     
     if (isGrayscale && filtersRef.current.grayscale) {
       console.log("Adding grayscale filter");
