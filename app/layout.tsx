@@ -23,12 +23,12 @@ export default function RootLayout({
     <html lang="en" className="h-full">
       <body className={`${inter.variable} font-sans antialiased h-full bg-gray-50 dark:bg-gray-950`}>
         <div className="h-full w-full flex flex-col">
-          {/* Header */}
-          <header className="border-b bg-white dark:bg-gray-900 px-6 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+          {/* Header - Simplified to be more compact */}
+          <header className="border-b bg-white dark:bg-gray-900 px-6 py-2 flex items-center justify-between sticky top-0 z-10 shadow-sm">
             <div className="flex items-center space-x-2">
               <svg 
-                width="32" 
-                height="32" 
+                width="24" 
+                height="24" 
                 viewBox="0 0 24 24" 
                 fill="none" 
                 stroke="currentColor" 
@@ -43,7 +43,6 @@ export default function RootLayout({
               </svg>
               <div>
                 <h1 className="text-lg font-bold tracking-tight">Halftone & Duotone</h1>
-                <p className="text-xs text-muted-foreground">Image Effect Editor</p>
               </div>
             </div>
             
@@ -71,15 +70,12 @@ export default function RootLayout({
             </nav>
           </header>
           
-          {/* Main content */}
-          <main className="flex-1 overflow-auto">
+          {/* Main content - Takes full remaining height */}
+          <main className="flex-1 overflow-hidden">
             {children}
           </main>
           
-          {/* Footer */}
-          <footer className="border-t bg-white dark:bg-gray-900 px-6 py-4 text-center text-sm text-muted-foreground">
-            <p>© {new Date().getFullYear()} Halftone & Duotone Editor. All rights reserved.</p>
-          </footer>
+          {/* Footer - Removed for more space */}
         </div>
       </body>
     </html>

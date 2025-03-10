@@ -2,14 +2,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent } from './ui/card';
 import { Label } from './ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import EnhancedGifExport from './EnhancedGifExport';
 import { Slider } from './ui/slider';
-import Image from 'next/image';
 import { createImage, createCanvas, isBrowser, downloadFile } from '@/lib/browser-utils';
-
 import { processImageWithShader, SHADER_EFFECTS } from '@/lib/webgl-utils';
 
 // Maximum texture size for WebGL (common safe limit is 4096x4096)
@@ -26,6 +24,7 @@ export default function WebGLImageProcessor() {
   const [uniformValues, setUniformValues] = useState<Record<string, any>>({});
   const [imageOriginalDimensions, setImageOriginalDimensions] = useState<{width: number; height: number} | null>(null);
   const [isImageResized, setIsImageResized] = useState(false);
+  const [activeSidebarTab, setActiveSidebarTab] = useState('effects');
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -44,25 +43,31 @@ export default function WebGLImageProcessor() {
       }
       
       setSelectedFile(file);
+      
+      // Create a high-quality object URL for the image
       const fileUrl = URL.createObjectURL(file);
       setImageUrl(fileUrl);
       setProcessedImageUrl(null); // Reset processed image
       setIsError(false);
-      setErrorMessage('');
       
-      // Check image dimensions when loaded
-      const img = createImage();
+      // Load the image to check its dimensions
+      const img = new Image();
       img.onload = () => {
-        const { width, height } = img;
-        setImageOriginalDimensions({ width, height });
+        // Store original dimensions
+        setImageOriginalDimensions({
+          width: img.width,
+          height: img.height
+        });
         
-        // Check if image needs resizing for WebGL processing
-        if (width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE) {
-          setIsImageResized(true);
-        } else {
-          setIsImageResized(false);
-        }
+        // Check if image needs to be resized for WebGL processing but maintain quality
+        const needsResize = img.width > MAX_TEXTURE_SIZE || img.height > MAX_TEXTURE_SIZE;
+        setIsImageResized(needsResize);
+        
+        // Save the image reference for processing
+        imageRef.current = img;
       };
+      
+      // Set image source to the object URL
       img.src = fileUrl;
     }
   };
@@ -133,63 +138,40 @@ export default function WebGLImageProcessor() {
     return resizedImg;
   };
   
-  // Apply selected shader effect
-  const applyEffect = async () => {
-    if (!imageUrl || selectedEffect === 'none') return;
+  // Handle applying the selected effect
+  const handleApplyEffect = async () => {
+    if (!imageRef.current || selectedEffect === 'none') {
+      return;
+    }
     
     setIsProcessing(true);
-    setIsError(false);
     
     try {
-      // Load the image
-      const img = createImage();
-      img.crossOrigin = 'anonymous';
+      // Get the effect definition
+      const effect = SHADER_EFFECTS[selectedEffect];
       
-      img.onload = async () => {
-        try {
-          // Get the shader effect
-          const effect = SHADER_EFFECTS[selectedEffect];
-          
-          // Resize image if needed to fit WebGL texture size limits
-          const processableImg = resizeImageForWebGL(img);
-          
-          // Process the image with the shader
-          const processedImageData = await processImageWithShader(
-            processableImg,
-            effect,
-            uniformValues
-          );
-          
-          // Create a temporary canvas to convert the processed image data to a data URL
-          const tempCanvas = createCanvas(processedImageData.width, processedImageData.height);
-          
-          const ctx = tempCanvas.getContext('2d');
-          if (ctx) {
-            ctx.putImageData(processedImageData, 0, 0);
-            const dataUrl = tempCanvas.toDataURL('image/png');
-            setProcessedImageUrl(dataUrl);
-          }
-          
-          setIsProcessing(false);
-        } catch (error) {
-          console.error('Error processing image:', error);
-          setIsError(true);
-          setErrorMessage('Error processing image. Please try a different effect or image.');
-          setIsProcessing(false);
-        }
-      };
+      // Process the image with maximum quality preservation
+      const processedImageData = await processImageWithShader(
+        imageRef.current,
+        effect,
+        uniformValues
+      );
       
-      img.onerror = () => {
-        setIsError(true);
-        setErrorMessage('Error loading image.');
-        setIsProcessing(false);
-      };
+      // Convert to URL for display with highest quality (use PNG)
+      const canvas = createCanvas(processedImageData.width, processedImageData.height);
+      const ctx = canvas.getContext('2d');
       
-      img.src = imageUrl;
+      if (ctx) {
+        ctx.putImageData(processedImageData, 0, 0);
+        // Use PNG format for lossless quality
+        const dataUrl = canvas.toDataURL('image/png', 1.0);
+        setProcessedImageUrl(dataUrl);
+      }
     } catch (error) {
-      console.error('Error applying effect:', error);
+      console.error('Error processing image:', error);
       setIsError(true);
-      setErrorMessage('Error processing image. Please try again.');
+      setErrorMessage('Failed to process image with selected effect.');
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -202,280 +184,338 @@ export default function WebGLImageProcessor() {
     }));
   };
   
-  // Handle GIF export completion
+  // Handle export completion
   const handleExportComplete = (blob: Blob, url: string) => {
-    console.log('Export complete:', url);
-    
-    // Create a direct download link
     const exportResult = document.getElementById('export-result');
     if (exportResult) {
-      // Create download link
-      const downloadLink = document.createElement('a');
-      downloadLink.href = url;
-      downloadLink.download = `webgl-effect-${new Date().getTime()}.gif`;
-      downloadLink.className = 'block w-full text-center p-3 bg-green-100 border border-green-300 rounded-md text-green-800 hover:bg-green-200 transition-colors font-medium';
-      downloadLink.innerHTML = 'Download GIF <span class="text-xs">(Right-click and Save As... if download doesn\'t start)</span>';
-      
-      // Clear previous content and add the new link
-      exportResult.innerHTML = '';
-      
-      // Add file info
-      const fileInfo = document.createElement('div');
-      fileInfo.className = 'text-xs text-gray-500 mb-2 text-center';
-      fileInfo.textContent = `File size: ${(blob.size / 1024).toFixed(1)} KB`;
-      exportResult.appendChild(fileInfo);
-      
-      exportResult.appendChild(downloadLink);
-      
-      // Auto-click to start download (optional)
-      // downloadLink.click();
+      exportResult.innerHTML = `
+        <div class="p-3 bg-green-50 border border-green-200 rounded-md">
+          <p class="text-green-800 font-medium mb-2">GIF Export Complete!</p>
+          <a href="${url}" download="animation.gif" class="inline-flex items-center px-4 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 text-sm">
+            <span class="mr-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+            </span>
+            Download GIF
+          </a>
+        </div>
+      `;
     }
-    
-    // Open in new tab as fallback
-    window.open(url, '_blank');
+  };
+  
+  // Function to download the processed image
+  const handleDownload = () => {
+    if (processedImageUrl) {
+      downloadFile(processedImageUrl, 'processed-image.png');
+    }
   };
   
   return (
-    <div className="container mx-auto p-4">
-      <Card className="w-full max-w-4xl mx-auto shadow-lg">
-        <CardHeader>
-          <CardTitle>WebGL Image Processor</CardTitle>
-          <CardDescription>
-            Upload an image and apply WebGL shader effects. Export as a single frame or animated GIF.
-          </CardDescription>
-        </CardHeader>
-        
-        <CardContent>
-          <Tabs defaultValue="upload" className="w-full">
-            <TabsList className="grid grid-cols-2 mb-4">
-              <TabsTrigger value="upload">Upload & Process</TabsTrigger>
-              <TabsTrigger value="export" disabled={!processedImageUrl}>Export</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="upload" className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Left column - Input controls */}
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="image-upload">Upload Image</Label>
-                    <input
-                      id="image-upload"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      className="w-full p-2 border border-gray-300 rounded"
-                    />
-                  </div>
-                  
-                  {imageUrl && (
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label>Select Effect</Label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Button
-                            variant={selectedEffect === 'none' ? 'default' : 'outline'}
-                            onClick={() => setSelectedEffect('none')}
-                            className="w-full"
-                          >
-                            None
-                          </Button>
-                          
-                          {Object.entries(SHADER_EFFECTS).map(([key, effect]) => (
-                            <Button
-                              key={key}
-                              variant={selectedEffect === key ? 'default' : 'outline'}
-                              onClick={() => setSelectedEffect(key)}
-                              className="w-full"
-                            >
-                              {effect.name}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      {/* Effect parameters */}
-                      {selectedEffect !== 'none' && SHADER_EFFECTS[selectedEffect] && (
-                        <div className="space-y-4 p-4 border rounded-md">
-                          <h3 className="text-sm font-medium">Effect Parameters</h3>
-                          
-                          {Object.entries(SHADER_EFFECTS[selectedEffect].uniforms).map(([key, uniform]) => (
-                            <div key={key} className="space-y-1">
-                              <div className="flex justify-between">
-                                <Label htmlFor={`param-${key}`} className="text-sm">
-                                  {key.replace(/^[u_]/, '')}
-                                </Label>
-                                <span className="text-xs">
-                                  {typeof uniformValues[key] === 'number' 
-                                    ? uniformValues[key].toFixed(2) 
-                                    : typeof uniform.value === 'number'
-                                      ? uniform.value.toFixed(2)
-                                      : String(uniform.value)}
-                                </span>
-                              </div>
-                              
-                              <Slider
-                                id={`param-${key}`}
-                                min={uniform.min || 0}
-                                max={uniform.max || 1}
-                                step={uniform.step || 0.01}
-                                value={[
-                                  typeof uniformValues[key] === 'number'
-                                    ? uniformValues[key]
-                                    : typeof uniform.value === 'number'
-                                      ? uniform.value
-                                      : 0
-                                ]}
-                                onValueChange={values => handleUniformChange(key, values[0])}
-                                disabled={isProcessing}
-                              />
-                            </div>
-                          ))}
-                          
-                          <Button 
-                            onClick={applyEffect}
-                            disabled={isProcessing || !imageUrl}
-                            className="w-full"
-                          >
-                            {isProcessing ? 'Processing...' : 'Apply Effect'}
-                          </Button>
-                        </div>
-                      )}
+    <div className="flex flex-col h-full">
+      <div className="text-center mb-8">
+        <h2 className="text-2xl font-bold">WebGL Image Processor</h2>
+        <p className="text-muted-foreground">Upload an image and apply WebGL shader effects. Export as a single frame or animated GIF.</p>
+      </div>
+      
+      <div className="flex flex-1 gap-6">
+        {/* Left Sidebar */}
+        <div className="w-80 flex-shrink-0 bg-white dark:bg-gray-800 border rounded-lg shadow-sm overflow-hidden flex flex-col">
+          {/* File Upload Section */}
+          <div className="p-4 border-b">
+            <h3 className="font-medium mb-3">Image Upload</h3>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="image-upload" className="block mb-1.5">Select Image</Label>
+                <input
+                  id="image-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="w-full p-2 text-sm border rounded-md"
+                />
+              </div>
+              
+              {isError && (
+                <div className="p-3 bg-red-50 text-red-700 rounded-md text-sm">
+                  {errorMessage}
+                </div>
+              )}
+              
+              {imageOriginalDimensions && (
+                <div className="text-xs text-gray-500">
+                  Image dimensions: {imageOriginalDimensions.width} × {imageOriginalDimensions.height}px
+                  {isImageResized && (
+                    <div className="mt-1 text-amber-600">
+                      (Will be resized for processing)
                     </div>
                   )}
                 </div>
-                
-                {/* Right column - Image preview */}
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4">
-                    {imageUrl && (
-                      <div className="space-y-1">
-                        <Label className="text-sm">Original Image</Label>
-                        <div className="relative aspect-video bg-gray-100 rounded overflow-hidden">
-                          <img
-                            src={imageUrl}
-                            alt="Original image"
-                            ref={imageRef}
-                            className="w-full h-full object-contain"
-                          />
-                        </div>
-                      </div>
-                    )}
-                    
-                    <div className="space-y-1">
-                      <Label className="text-sm">Processed Image</Label>
-                      <div className="relative aspect-video bg-gray-100 rounded overflow-hidden">
-                        {isProcessing ? (
-                          <div className="flex h-full items-center justify-center">
-                            <div className="animate-spin h-8 w-8 border-4 border-gray-300 border-t-blue-600 rounded-full"></div>
-                          </div>
-                        ) : processedImageUrl ? (
-                          <img
-                            src={processedImageUrl}
-                            alt="Processed image"
-                            className="w-full h-full object-contain"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-gray-400">
-                            {imageUrl ? 'Apply an effect to see result' : 'Upload an image and apply effects'}
-                          </div>
-                        )}
-                        
-                        <canvas
-                          ref={canvasRef}
-                          className="hidden"
-                        />
-                      </div>
-                    </div>
-                    
-                    {isError && (
-                      <div className="p-4 bg-red-50 border border-red-200 rounded-md">
-                        <p className="text-red-700 text-sm">{errorMessage}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="export">
-              {processedImageUrl && imageUrl ? (
-                <div className="space-y-6">
-                  <div className="p-4 bg-blue-50 border border-blue-100 rounded-md">
-                    <h3 className="font-medium text-blue-800 mb-2">GIF Export Instructions</h3>
-                    <ul className="list-disc pl-5 text-sm text-blue-700 space-y-1">
-                      <li>Use the controls below to set up your GIF animation</li>
-                      <li>For best results with animated effects, try the <strong>Ripple</strong> effect</li>
-                      <li>Adjust frame count, duration, and quality to balance file size and quality</li>
-                      <li>Higher frame counts produce smoother animations but larger files</li>
-                      <li>Lower quality values (1-5) produce better quality GIFs but larger files</li>
-                    </ul>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-                    <div>
-                      <h3 className="text-lg font-medium mb-3">GIF Export Preview</h3>
-                      <div className="bg-gray-100 p-4 rounded-md text-center">
-                        <img
-                          src={processedImageUrl}
-                          alt="Preview"
-                          className="max-w-full h-auto max-h-64 mx-auto"
-                        />
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <EnhancedGifExport
-                        imageUrl={processedImageUrl}
-                        onExportComplete={handleExportComplete}
-                      />
-                      
-                      {/* Add a direct download link for the last exported GIF if available */}
-                      <div id="export-result" className="mt-4">
-                        {/* This div will be populated by handleExportComplete */}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-8 text-center">
-                  <div className="mx-auto w-16 h-16 text-gray-400 mb-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Image Processed</h3>
-                  <p className="text-gray-500">Apply an effect to your image first, then come back to export it as a GIF.</p>
-                </div>
               )}
-            </TabsContent>
-          </Tabs>
+            </div>
+          </div>
           
-          {isImageResized && (
-            <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-md mt-2">
-              <p className="text-xs text-yellow-700">
-                Your image has been automatically resized for WebGL processing. 
-                Original dimensions: {imageOriginalDimensions?.width}×{imageOriginalDimensions?.height}px
+          {/* Controls Tabs */}
+          <div className="flex-1 overflow-y-auto">
+            <Tabs 
+              defaultValue="effects" 
+              value={activeSidebarTab} 
+              onValueChange={setActiveSidebarTab}
+              className="w-full"
+            >
+              <div className="border-b">
+                <TabsList className="w-full justify-start p-0 h-auto bg-transparent border-b">
+                  <TabsTrigger 
+                    value="effects" 
+                    className="data-[state=active]:bg-gray-100 dark:data-[state=active]:bg-gray-700 rounded-none py-3 px-4"
+                  >
+                    Effects
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="settings" 
+                    className="data-[state=active]:bg-gray-100 dark:data-[state=active]:bg-gray-700 rounded-none py-3 px-4"
+                  >
+                    Settings
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="export" 
+                    className="data-[state=active]:bg-gray-100 dark:data-[state=active]:bg-gray-700 rounded-none py-3 px-4"
+                    disabled={!processedImageUrl}
+                  >
+                    Export
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+              
+              <TabsContent value="effects" className="p-4 space-y-6 mt-0">
+                {/* Effect Selection */}
+                <div>
+                  <h3 className="font-medium mb-4">Select Effect</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.keys(SHADER_EFFECTS).map((effectKey) => (
+                      <Button
+                        key={effectKey}
+                        variant={selectedEffect === effectKey ? "default" : "outline"}
+                        className={`text-sm justify-start px-3 py-2 h-auto ${selectedEffect === effectKey ? 'bg-primary text-white' : ''}`}
+                        onClick={() => setSelectedEffect(effectKey)}
+                      >
+                        {SHADER_EFFECTS[effectKey].name}
+                      </Button>
+                    ))}
+                    <Button
+                      variant={selectedEffect === 'none' ? "default" : "outline"}
+                      className={`text-sm justify-start px-3 py-2 h-auto ${selectedEffect === 'none' ? 'bg-primary text-white' : ''}`}
+                      onClick={() => setSelectedEffect('none')}
+                    >
+                      None
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Effect Parameters */}
+                {selectedEffect !== 'none' && selectedEffect in SHADER_EFFECTS && (
+                  <div>
+                    <h3 className="font-medium mb-4">Effect Parameters</h3>
+                    <div className="space-y-5">
+                      {Object.entries(SHADER_EFFECTS[selectedEffect].uniforms).map(([key, uniform]) => {
+                        // Skip standard uniforms like resolution and time that shouldn't be adjusted manually
+                        if (['u_resolution', 'u_texture', 'u_textureSize'].includes(key)) {
+                          return null;
+                        }
+                        
+                        // Get the current value, falling back to the default
+                        const value = uniformValues[key] !== undefined ? uniformValues[key] : uniform.value;
+                        
+                        // Only render slider controls for numeric uniforms
+                        if (typeof value === 'number') {
+                          return (
+                            <div key={key} className="space-y-2">
+                              <div className="flex justify-between">
+                                <Label htmlFor={key} className="text-sm">
+                                  {uniform.name || key.replace('u_', '')}
+                                </Label>
+                                <span className="text-sm font-mono">
+                                  {Number(value).toFixed(2)}
+                                </span>
+                              </div>
+                              <Slider
+                                id={key}
+                                min={uniform.min || 0}
+                                max={uniform.max || 10}
+                                step={uniform.step || 0.01}
+                                value={[value]}
+                                onValueChange={([newValue]) => handleUniformChange(key, newValue)}
+                                className="pt-2"
+                              />
+                            </div>
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
+                    
+                    <Button 
+                      className="w-full mt-6" 
+                      onClick={handleApplyEffect}
+                      disabled={isProcessing || !imageUrl}
+                    >
+                      {isProcessing ? 'Processing...' : 'Apply Effect'}
+                    </Button>
+                  </div>
+                )}
+              </TabsContent>
+              
+              <TabsContent value="settings" className="p-4 space-y-6 mt-0">
+                <div>
+                  <h3 className="font-medium mb-4">Processing Settings</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm">Image Quality</Label>
+                      <div className="text-xs text-gray-500 mb-2">
+                        Images are processed in full resolution for maximum quality
+                      </div>
+                      <select 
+                        className="w-full p-2 border rounded-md" 
+                        defaultValue="png"
+                      >
+                        <option value="png">PNG (Lossless)</option>
+                        <option value="jpg">JPG (High Quality)</option>
+                      </select>
+                    </div>
+                    
+                    {/* Additional settings could go here */}
+                    <div className="pt-4">
+                      <h4 className="text-sm font-medium mb-2">Performance Mode</h4>
+                      <div className="flex items-center">
+                        <input type="checkbox" id="performance-mode" className="mr-2" />
+                        <Label htmlFor="performance-mode" className="text-sm">
+                          Enable for large images
+                        </Label>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        For very large images, this may improve performance but could reduce quality
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="export" className="p-4 space-y-6 mt-0">
+                {processedImageUrl && imageUrl ? (
+                  <div className="space-y-6">
+                    <div className="bg-blue-50 border border-blue-100 rounded-md p-3">
+                      <h3 className="font-medium text-blue-800 text-sm mb-2">GIF Export Options</h3>
+                      <ul className="text-xs text-blue-700 space-y-1">
+                        <li>Higher frame count = smoother animation</li>
+                        <li>Lower quality = smaller file size</li>
+                      </ul>
+                    </div>
+                    
+                    <EnhancedGifExport
+                      imageUrl={processedImageUrl}
+                      onExportComplete={handleExportComplete}
+                    />
+                    
+                    <div id="export-result" className="mt-4">
+                      {/* Will be populated by handleExportComplete */}
+                    </div>
+                    
+                    <div className="border-t pt-4">
+                      <Button
+                        onClick={handleDownload}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        Download As PNG
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">
+                      Apply an effect first to enable export options
+                    </p>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+        
+        {/* Main Canvas Area */}
+        <div className="flex-1 bg-white dark:bg-gray-800 rounded-lg border shadow-sm overflow-hidden flex flex-col">
+          <div className="p-4 border-b flex justify-between items-center">
+            <h3 className="font-medium">Canvas</h3>
+            
+            {processedImageUrl && (
+              <Button size="sm" variant="outline" onClick={handleDownload}>
+                <svg className="w-4 h-4 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Save Image
+              </Button>
+            )}
+          </div>
+          
+          <div className="flex-1 overflow-auto p-6 flex items-center justify-center bg-[#f0f0f0] dark:bg-gray-700" style={{ backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAALGPC/xhBQAAAAlwSFlzAAAOwgAADsIBFShKgAAAABh0RVh0U29mdHdhcmUAcGFpbnQubmV0IDQuMS4xYwSAYwAAADRJREFUOE9jGAUD17+6//9xYbA+TAwXhxkCVs9EAYQYTAwXB6PBbyDMAEIYJg4SPwgBAyMAACyBl26j/nYGAAAAAElFTkSuQmCC")' }}>
+            {imageUrl && !processedImageUrl && (
+              <div className="relative max-w-full max-h-full">
+                <img
+                  src={imageUrl}
+                  alt="Original"
+                  className="max-w-full max-h-full object-contain"
+                  style={{ maxHeight: 'calc(100vh - 230px)' }}
+                />
+                <canvas ref={canvasRef} className="hidden" />
+              </div>
+            )}
+            
+            {processedImageUrl && (
+              <div className="relative max-w-full max-h-full">
+                <img
+                  src={processedImageUrl}
+                  alt="Processed"
+                  className="max-w-full max-h-full object-contain"
+                  style={{ maxHeight: 'calc(100vh - 230px)' }}
+                />
+              </div>
+            )}
+            
+            {!imageUrl && (
+              <div className="text-center p-12 bg-white dark:bg-gray-800 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600">
+                <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">No Image Loaded</h3>
+                <p className="text-gray-500 dark:text-gray-400 mb-4">Upload an image from the sidebar to get started</p>
+                <label htmlFor="image-upload-center" className="cursor-pointer inline-flex items-center px-4 py-2 bg-blue-600 border border-transparent rounded-md text-sm text-white hover:bg-blue-700">
+                  Select Image
+                  <input
+                    id="image-upload-center"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="sr-only"
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+          
+          {isImageResized && imageOriginalDimensions && (
+            <div className="px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border-t border-yellow-100 dark:border-yellow-900/30">
+              <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                Original image size: {imageOriginalDimensions.width}×{imageOriginalDimensions.height}px
+                {' '}- Display scaled for preview but processing uses maximum possible resolution
               </p>
             </div>
           )}
-        </CardContent>
-        
-        <CardFooter className="flex justify-between">
-          <div className="text-xs text-gray-500">
-            WebGL shader effects are applied in real-time on your device.
-          </div>
-          
-          {processedImageUrl && (
-            <a
-              href={processedImageUrl}
-              download="processed-image.png"
-              className="text-sm text-blue-600 hover:underline"
-            >
-              Download Processed Image
-            </a>
-          )}
-        </CardFooter>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 } 

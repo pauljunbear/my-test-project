@@ -338,38 +338,90 @@ export const applyShaderEffect = (
   );
 };
 
-// Apply shader effect to an image (high-level function)
-export const processImageWithShader = async (
-  imageSource: HTMLImageElement | ImageData,
-  shaderEffect: ShaderEffect,
-  uniformValues: Record<string, any>
-): Promise<ImageData> => {
-  if (!isBrowser()) {
-    throw new Error('WebGL processing is only available in browser environments');
+/**
+ * Handles image resizing while maintaining the maximum possible quality
+ * This is used for WebGL processing of large images that exceed texture size limits
+ * 
+ * @param img - The original image to process
+ * @param maxTextureSize - The maximum allowed texture size (typically 4096 or 8192)
+ * @returns An image that can be processed by WebGL while preserving as much quality as possible
+ */
+export const prepareImageForWebGL = (img: HTMLImageElement, maxTextureSize: number = 4096): HTMLImageElement | HTMLCanvasElement => {
+  const { width, height } = img;
+  
+  // If the image is already within limits, return it as is for maximum quality
+  if (width <= maxTextureSize && height <= maxTextureSize) {
+    return img;
   }
-
-  // Determine dimensions using type guards
-  const isHTMLImage = (img: HTMLImageElement | ImageData): img is HTMLImageElement => 
-    'naturalWidth' in img;
   
-  const width = isHTMLImage(imageSource) ? imageSource.naturalWidth : imageSource.width;
-  const height = isHTMLImage(imageSource) ? imageSource.naturalHeight : imageSource.height;
+  // Calculate aspect ratio to maintain proportions
+  const aspectRatio = width / height;
   
-  try {
-    // Create canvas for WebGL rendering
-    const canvas = createCanvas(width, height);
+  // Determine new dimensions while preserving aspect ratio
+  let newWidth = width;
+  let newHeight = height;
+  
+  if (width > height && width > maxTextureSize) {
+    newWidth = maxTextureSize;
+    newHeight = Math.round(maxTextureSize / aspectRatio);
+  } else if (height > width && height > maxTextureSize) {
+    newHeight = maxTextureSize;
+    newWidth = Math.round(maxTextureSize * aspectRatio);
+  } else if (width === height && width > maxTextureSize) {
+    newWidth = maxTextureSize;
+    newHeight = maxTextureSize;
+  }
+  
+  // Create a canvas to resize the image
+  const canvas = document.createElement('canvas');
+  canvas.width = newWidth;
+  canvas.height = newHeight;
+  
+  // Draw the resized image on the canvas using high-quality interpolation
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    // Set image smoothing for high quality
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     
-    // Initialize WebGL context
-    const gl = initWebGL(canvas);
+    ctx.drawImage(img, 0, 0, newWidth, newHeight);
+    
+    console.log(`Image resized for WebGL processing: ${width}x${height} → ${newWidth}x${newHeight}`);
+  }
+  
+  return canvas;
+};
+
+/**
+ * Process an image with a shader effect
+ */
+export const processImageWithShader = async (
+  image: HTMLImageElement, 
+  effect: ShaderEffect,
+  uniformValues: Record<string, any> = {}
+): Promise<ImageData> => {
+  try {
+    // Create a canvas element
+    const canvas = document.createElement('canvas');
+    
+    // Use our function to handle large images while preserving maximum quality
+    const processableImage = prepareImageForWebGL(image);
+    
+    // Set canvas size to match the image dimensions
+    canvas.width = processableImage.width;
+    canvas.height = processableImage.height;
+    
+    // Get WebGL context
+    const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true });
     if (!gl) {
-      throw new Error('Failed to initialize WebGL');
+      throw new Error('WebGL not supported');
     }
     
     // Create shader program
     const program = createShaderProgram(
       gl, 
-      shaderEffect.vertexShader || DEFAULT_VERTEX_SHADER, 
-      shaderEffect.fragmentShader
+      effect.vertexShader || DEFAULT_VERTEX_SHADER, 
+      effect.fragmentShader
     );
     
     if (!program) {
@@ -377,7 +429,7 @@ export const processImageWithShader = async (
     }
     
     // Create texture from image
-    const texture = createTextureFromImage(gl, imageSource);
+    const texture = createTextureFromImage(gl, processableImage);
     if (!texture) {
       throw new Error('Failed to create texture from image');
     }
@@ -386,7 +438,7 @@ export const processImageWithShader = async (
     const uniforms: Record<string, { type: string; value: any }> = {};
     
     // Merge default values with provided values
-    Object.entries(shaderEffect.uniforms).forEach(([name, uniform]) => {
+    Object.entries(effect.uniforms).forEach(([name, uniform]) => {
       uniforms[name] = { 
         type: uniform.type,
         value: name in uniformValues ? uniformValues[name] : uniform.value
@@ -399,8 +451,8 @@ export const processImageWithShader = async (
       program, 
       texture, 
       uniforms, 
-      width, 
-      height
+      processableImage.width, 
+      processableImage.height
     );
     
     if (!resultImageData) {
