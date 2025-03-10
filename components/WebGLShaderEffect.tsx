@@ -4,6 +4,7 @@ import React, { useRef, useState, useEffect, useCallback, forwardRef, useImperat
 import { Button } from './ui/button';
 import { Slider } from './ui/slider';
 import dynamic from 'next/dynamic';
+import type { ThreeComponentsRef } from './ThreeComponents';
 
 // Dynamically import ThreeComponents with no SSR
 // This ensures the component will only be loaded at runtime on the client
@@ -96,7 +97,7 @@ const WebGLShaderEffect = forwardRef<
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
-  const componentRef = useRef<any>(null);
+  const componentRef = useRef<ThreeComponentsRef>(null);
   
   // Effect to initialize uniform values when effect changes
   useEffect(() => {

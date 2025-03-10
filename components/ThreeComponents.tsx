@@ -1,6 +1,11 @@
 'use client';
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
+
+// Component API exposed through ref
+export interface ThreeComponentsRef {
+  captureScreenshot: () => string | null;
+}
 
 // We'll define interfaces without depending on Three.js types
 interface ThreeComponentsProps {
@@ -8,8 +13,8 @@ interface ThreeComponentsProps {
   selectedEffect: string;
   customShaderCode?: string;
   uniformValues: Record<string, number | number[]>;
-  isPlaying: boolean;
-  canvasRef: React.RefObject<HTMLCanvasElement>;
+  isPlaying?: boolean; // Made optional with default
+  canvasRef?: React.RefObject<HTMLCanvasElement>; // Made optional
 }
 
 // Default shaders (copied from WebGLShaderEffect)
@@ -45,14 +50,41 @@ const SHADER_EFFECTS = {
 };
 
 // Client-side only rendering component using canvas 2D instead of WebGL
-export default function ThreeComponents(props: ThreeComponentsProps) {
-  const { imageUrl, selectedEffect, customShaderCode, uniformValues, isPlaying, canvasRef } = props;
+const ThreeComponents = forwardRef<ThreeComponentsRef, ThreeComponentsProps>((props, ref) => {
+  const { 
+    imageUrl, 
+    selectedEffect, 
+    customShaderCode, 
+    uniformValues, 
+    isPlaying = false, 
+    canvasRef: externalCanvasRef 
+  } = props;
+  
   const containerRef = useRef<HTMLDivElement>(null);
+  const internalCanvasRef = useRef<HTMLCanvasElement>(null);
   const [isClientSide, setIsClientSide] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const animationRef = useRef<number | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const timeRef = useRef<number>(0);
+  
+  // Use the provided canvas ref or our internal one
+  const canvasRef = externalCanvasRef || internalCanvasRef;
+  
+  // Expose methods to parent component via ref
+  useImperativeHandle(ref, () => ({
+    captureScreenshot: () => {
+      if (!canvasRef.current) return null;
+      
+      try {
+        // Return the canvas contents as a data URL
+        return canvasRef.current.toDataURL('image/png');
+      } catch (error) {
+        console.error('Failed to capture screenshot:', error);
+        return null;
+      }
+    }
+  }));
 
   // Check if we're on the client side
   useEffect(() => {
@@ -331,7 +363,18 @@ export default function ThreeComponents(props: ThreeComponentsProps) {
 
   return (
     <div ref={containerRef} className="relative w-full h-full">
-      {/* Canvas is referenced by the parent component */}
+      {/* Use internal canvas if external one not provided */}
+      {!externalCanvasRef && (
+        <canvas 
+          ref={internalCanvasRef}
+          className="w-full h-full"
+        />
+      )}
     </div>
   );
-} 
+});
+
+// Add display name for better debugging
+ThreeComponents.displayName = 'ThreeComponents';
+
+export default ThreeComponents; 
