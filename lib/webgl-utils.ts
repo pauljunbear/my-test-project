@@ -21,6 +21,7 @@ export interface ShaderUniform {
   min?: number;
   max?: number;
   step?: number;
+  name?: string; // Display name for the UI
 }
 
 export interface ShaderProgram {
