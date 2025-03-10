@@ -161,10 +161,14 @@ const WebGLShaderEffect = forwardRef<
     
     try {
       const dataUrl = componentRef.current.captureScreenshot();
-      if (onProcessedImage) {
-        onProcessedImage(dataUrl);
+      // Only proceed if we received a valid dataUrl
+      if (dataUrl) {
+        if (onProcessedImage) {
+          onProcessedImage(dataUrl);
+        }
+        return dataUrl;
       }
-      return dataUrl;
+      return null;
     } catch (error) {
       console.error('Error capturing frame:', error);
       return null;
@@ -207,7 +211,7 @@ const WebGLShaderEffect = forwardRef<
           await new Promise(resolve => setTimeout(resolve, 100));
           
           const dataUrl = componentRef.current.captureScreenshot();
-          frames.push(dataUrl);
+          if (dataUrl) frames.push(dataUrl);
         }
         
         // Reset to original value
@@ -239,7 +243,7 @@ const WebGLShaderEffect = forwardRef<
               await new Promise(resolve => setTimeout(resolve, 100));
               
               const dataUrl = componentRef.current.captureScreenshot();
-              frames.push(dataUrl);
+              if (dataUrl) frames.push(dataUrl);
             }
             
             // Reset to original value
@@ -258,7 +262,7 @@ const WebGLShaderEffect = forwardRef<
               await new Promise(resolve => setTimeout(resolve, 100));
               
               const dataUrl = componentRef.current.captureScreenshot();
-              frames.push(dataUrl);
+              if (dataUrl) frames.push(dataUrl);
             }
             
             // Reset to original value
@@ -268,13 +272,13 @@ const WebGLShaderEffect = forwardRef<
             for (let i = 0; i < frameCount; i++) {
               await new Promise(resolve => setTimeout(resolve, 100));
               const dataUrl = componentRef.current.captureScreenshot();
-              frames.push(dataUrl);
+              if (dataUrl) frames.push(dataUrl);
             }
           }
         } else {
           // Just capture current frame if no uniforms to animate
           const dataUrl = componentRef.current.captureScreenshot();
-          frames.push(dataUrl);
+          if (dataUrl) frames.push(dataUrl);
         }
       }
     } catch (error) {
