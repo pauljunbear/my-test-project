@@ -27,7 +27,7 @@ export default function WebGLImageProcessor() {
   const [activeSidebarTab, setActiveSidebarTab] = useState('effects');
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
   
   // Handle file selection
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
