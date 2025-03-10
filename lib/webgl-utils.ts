@@ -173,49 +173,56 @@ export const loadShaderFile = async (url: string): Promise<string> => {
 // Create a texture from an image source
 export const createTextureFromImage = (
   gl: WebGLRenderingContext,
-  image: HTMLImageElement | ImageData
+  image: HTMLImageElement | ImageData | HTMLCanvasElement
 ): WebGLTexture | null => {
-  const texture = gl.createTexture();
-  if (!texture) {
-    console.error('Failed to create texture');
+  try {
+    const texture = gl.createTexture();
+    if (!texture) {
+      throw new Error('Failed to create WebGL texture');
+    }
+    
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    
+    // Handle different image sources (HTMLImageElement, ImageData, or HTMLCanvasElement)
+    if ('width' in image && 'height' in image && 'data' in image) {
+      // It's ImageData
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        image.width,
+        image.height,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        image.data
+      );
+    } else {
+      // It's HTMLImageElement or HTMLCanvasElement
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        image
+      );
+    }
+    
+    // Set texture parameters
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    
+    // Unbind the texture
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    
+    return texture;
+  } catch (error) {
+    console.error('Error creating texture from image:', error);
     return null;
   }
-  
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  
-  // Different handling for ImageData vs HTMLImageElement
-  if ('data' in image && 'width' in image && 'height' in image) {
-    // It's an ImageData object
-    gl.texImage2D(
-      gl.TEXTURE_2D, 
-      0, 
-      gl.RGBA, 
-      image.width, 
-      image.height, 
-      0, 
-      gl.RGBA, 
-      gl.UNSIGNED_BYTE, 
-      new Uint8Array(image.data.buffer)
-    );
-  } else {
-    // It's an HTMLImageElement
-    gl.texImage2D(
-      gl.TEXTURE_2D, 
-      0, 
-      gl.RGBA, 
-      gl.RGBA, 
-      gl.UNSIGNED_BYTE, 
-      image
-    );
-  }
-  
-  // Set texture parameters
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  
-  return texture;
 };
 
 // Set uniform values based on their type
