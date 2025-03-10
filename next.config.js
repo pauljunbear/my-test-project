@@ -18,7 +18,7 @@ const nextConfig = {
     if (isServer) {
       config.externals = [
         ...config.externals, 
-        'gif.js.optimized',
+        'gif.js',
         'gl',
         'pixi.js',
         'glsl-canvas',
@@ -34,12 +34,12 @@ const nextConfig = {
       os: false,
       crypto: false,
       stream: false,
-      'gif.js.optimized': !isServer && require.resolve('gif.js.optimized'),
+      'gif.js': !isServer && require.resolve('gif.js'),
     };
     
     // Add a specific rule to ignore browser-only modules during build analysis
     config.module.rules.push({
-      test: /gif\.js\.optimized|gl|glsl-canvas|pixi\.js/,
+      test: /gif\.js|gl|glsl-canvas|pixi\.js/,
       use: 'null-loader',
       include: /[\\/]node_modules[\\/]/,
     });

@@ -11,6 +11,9 @@ import { isBrowser, createCanvas, safelyImportBrowserModule } from './browser-ut
 // This is a fallback in case the separate .d.ts file isn't found
 declare module 'gif.js.optimized';
 
+// Ensure TypeScript recognizes the gif.js module
+declare module 'gif.js';
+
 // Types for our shader system
 export interface ShaderUniform {
   type: 'float' | 'vec2' | 'vec3' | 'vec4' | 'int' | 'bool' | 'sampler2D';
@@ -654,39 +657,39 @@ export const exportBrowserGif = async (
   if (!isBrowser()) {
     throw new Error('GIF export is only available in browser environments');
   }
-
+  
   try {
-    // Use our safe module import function
-    const GIFModule = await safelyImportBrowserModule(
-      () => import('gif.js.optimized').then(module => module.default || module),
-      null
-    );
+    // Dynamically import gif.js
+    const GifModule = await import('gif.js').then(module => module.default || module);
     
-    if (!GIFModule) {
-      throw new Error('Failed to load GIF library. Please make sure gif.js.optimized is installed.');
+    if (!GifModule) {
+      throw new Error('Failed to load GIF library');
     }
     
     return new Promise((resolve, reject) => {
-      const gif = new GIFModule({
+      // Create a GIF instance with the provided options
+      const gif = new GifModule({
         workers: 2,
         quality: options.quality || 10,
         width: options.width,
         height: options.height,
-        workerScript: '/gif.worker.js',
+        workerScript: '/gif.worker.js', // Make sure this file exists in public/ directory
       });
       
       // Add each frame to the GIF
-      frames.forEach((frameData) => {
-        // Create temporary canvas to draw the frame
-        const canvas = createCanvas(frameData.width, frameData.height);
+      frames.forEach(frame => {
+        // Create a temporary canvas to draw the ImageData
+        const canvas = createCanvas(frame.width, frame.height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Could not get 2D context for canvas');
         
-        const ctx = canvas.getContext('2d')!;
-        ctx.putImageData(frameData, 0, 0);
+        // Draw the frame data to the canvas
+        ctx.putImageData(frame, 0, 0);
         
-        // Add the frame
-        gif.addFrame(canvas, { 
+        // Add the canvas to the GIF
+        gif.addFrame(canvas, {
           delay: options.delay || 100,
-          copy: true 
+          copy: true
         });
       });
       
@@ -700,9 +703,9 @@ export const exportBrowserGif = async (
         resolve(blob);
       });
       
-      // Handle aborted rendering
-      gif.on('abort', () => {
-        reject(new Error('GIF rendering was aborted'));
+      // Handle errors properly using the 'error' event that gif.js supports
+      gif.on('error', (error: Error) => {
+        reject(error);
       });
       
       // Start rendering

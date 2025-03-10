@@ -96,7 +96,7 @@ export default function HalftoneWaveEffect({ imageUrl, onProcessedImage }: Halft
       const importDynamic = new Function('modulePath', 'return import(modulePath)');
       
       try {
-        const module = await importDynamic('gif.js.optimized');
+        const module = await importDynamic('gif.js');
         const GIF = module.default || module;
         setGifJsLib(GIF);
         return GIF;

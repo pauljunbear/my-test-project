@@ -315,10 +315,7 @@ export default function TweetGLSLImageProcessor({
     
     try {
       // Import the GIF.js library dynamically
-      const GifModule = await safelyImportBrowserModule(
-        () => import('gif.js.optimized').then(module => module.default || module),
-        null
-      );
+      const GifModule = await import('gif.js').then(module => module.default || module);
       
       if (!GifModule) {
         console.error('Failed to load GIF library');

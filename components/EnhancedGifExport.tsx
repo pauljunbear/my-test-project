@@ -44,7 +44,7 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
       try {
         // Use our safe browser module import
         await safelyImportBrowserModule(
-          () => import('gif.js.optimized'),
+          () => import('gif.js'),
           null
         );
         setIsGifLibraryAvailable(true);
@@ -444,7 +444,7 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
                 The GIF export library is not available in your environment. Please install the required dependencies:
               </p>
               <pre className="mt-2 text-xs bg-yellow-100 p-2 rounded">
-                npm install gif.js.optimized
+                npm install gif.js
               </pre>
             </div>
           )}
