@@ -4,7 +4,7 @@ import React, { useRef, useState, useEffect, useCallback, forwardRef, useImperat
 import { Button } from './ui/button';
 import { Slider } from './ui/slider';
 import dynamic from 'next/dynamic';
-import type { ThreeComponentsRef } from './ThreeComponents';
+import type { ThreeComponentsRef, ThreeComponentsProps } from './ThreeComponents';
 
 // Dynamically import ThreeComponents with no SSR
 // This ensures the component will only be loaded at runtime on the client
@@ -389,7 +389,7 @@ const WebGLShaderEffect = forwardRef<
           <ThreeComponents
             ref={componentRef}
             imageUrl={imageUrl}
-            effectName={selectedEffect}
+            selectedEffect={selectedEffect}
             uniformValues={uniformValues}
           />
         </Suspense>

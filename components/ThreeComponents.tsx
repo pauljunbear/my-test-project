@@ -8,7 +8,7 @@ export interface ThreeComponentsRef {
 }
 
 // We'll define interfaces without depending on Three.js types
-interface ThreeComponentsProps {
+export interface ThreeComponentsProps {
   imageUrl: string;
   selectedEffect: string;
   customShaderCode?: string;
