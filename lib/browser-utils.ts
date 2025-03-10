@@ -46,6 +46,22 @@ export const safelyImportBrowserModule = async <T>(
   }
 };
 
+// Safely load GlslCanvas module
+export const loadGlslCanvas = async () => {
+  if (!isBrowser()) {
+    throw new Error('GlslCanvas can only be used in browser environments');
+  }
+  
+  try {
+    // Dynamic import to avoid SSR issues
+    const module = await import('glsl-canvas');
+    return module.default;
+  } catch (error) {
+    console.error('Error loading GlslCanvas:', error);
+    throw new Error('Failed to load shader library: glsl-canvas');
+  }
+};
+
 // Create a canvas element safely
 export const createCanvas = (width: number, height: number): HTMLCanvasElement => {
   if (!isBrowser()) {

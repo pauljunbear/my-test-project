@@ -10,10 +10,6 @@
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
-    "@mantine/core": "^7.17.0",
-    "@mantine/dropzone": "^7.17.0",
-    "@mantine/hooks": "^7.17.0",
-    "@mantine/notifications": "^7.17.0",
     "@radix-ui/react-dialog": "^1.1.6",
     "@radix-ui/react-label": "^2.1.2",
     "@radix-ui/react-popover": "^1.1.6",
@@ -27,7 +23,8 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "fabric": "^6.0.0",
-    "gif.js.optimized": "^1.0.1",
+    "gif.js": "^0.2.0",
+    "glsl-canvas": "^1.0.0",
     "lucide-react": "^0.344.0",
     "next": "14.2.24",
     "pixi.js": "^7.3.2",
@@ -41,6 +38,7 @@
   },
   "devDependencies": {
     "@types/fabric": "^5.3.9",
+    "@types/gif.js": "^0.2.5",
     "@types/node": "20.11.19",
     "@types/react": "18.2.57",
     "@types/react-color": "^3.0.13",

@@ -1,6 +1,8 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+// Import our UI patch to fix styleSingleton issues
+import '@/lib/ui-patch';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -44,6 +46,7 @@ export default function RootLayout({
                 <p className="text-xs text-muted-foreground">Image Effect Editor</p>
               </div>
             </div>
+            
             <nav className="flex items-center space-x-4">
               <a 
                 href="/shader-studio" 

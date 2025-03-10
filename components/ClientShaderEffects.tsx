@@ -3,23 +3,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { loadGlslCanvas, isBrowser } from '@/lib/browser-utils';
 
 interface ClientShaderEffectsProps {
   imageData: string | null;
   onProcessedImage?: (processedImageData: string) => void;
 }
-
-// Import GlslCanvas dynamically
-const loadGlslCanvas = async () => {
-  try {
-    // Dynamic import to avoid SSR issues
-    const module = await import('glsl-canvas');
-    return module.default;
-  } catch (error) {
-    console.error('Error loading GlslCanvas:', error);
-    throw new Error('Failed to load shader library');
-  }
-};
 
 // Shader effects collection
 const SHADER_EFFECTS = {
@@ -114,14 +103,14 @@ export default function ClientShaderEffects({ imageData, onProcessedImage }: Cli
   
   // Initialize shader canvas when component mounts
   useEffect(() => {
-    if (!canvasRef.current || !imageData) return;
+    if (!canvasRef.current || !imageData || !isBrowser()) return;
     
     const setupShader = async () => {
       try {
         setIsLoading(true);
         setError(null);
         
-        // Load GlslCanvas library
+        // Load GlslCanvas library using our utility function
         const GlslCanvas = await loadGlslCanvas();
         
         // Create image element
