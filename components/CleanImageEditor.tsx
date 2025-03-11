@@ -6,7 +6,7 @@ import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, Undo } from "lucide-react";
+import { Download, Undo, Crop, RefreshCw, Trash2 } from "lucide-react";
 
 // Type definitions
 type EffectType = 'none' | 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'dither';
@@ -41,6 +41,15 @@ interface ImageHistory {
 interface AppliedEffect {
   type: EffectType;
   settings: EffectSettings;
+}
+
+// Add new interface for crop state
+interface CropState {
+  active: boolean;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
 }
 
 // UploadDropzone Component
@@ -236,6 +245,7 @@ export default function CleanImageEditor() {
   // Refs for DOM elements
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
+  const cropCanvasRef = useRef<HTMLCanvasElement>(null);
   
   // State for the app
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -245,6 +255,21 @@ export default function CleanImageEditor() {
   const [history, setHistory] = useState<ImageHistory[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [currentImageDataUrl, setCurrentImageDataUrl] = useState<string | null>(null);
+  
+  // Add new states for cropping and resizing
+  const [isCropping, setIsCropping] = useState<boolean>(false);
+  const [cropState, setCropState] = useState<CropState>({
+    active: false,
+    startX: 0,
+    startY: 0,
+    endX: 0,
+    endY: 0
+  });
+  const [isResizing, setIsResizing] = useState<boolean>(false);
+  const [resizeWidth, setResizeWidth] = useState<number>(0);
+  const [resizeHeight, setResizeHeight] = useState<number>(0);
+  const [aspectRatio, setAspectRatio] = useState<number>(1);
+  const [maintainAspectRatio, setMaintainAspectRatio] = useState<boolean>(true);
   
   // Effect settings state
   const [halftoneSettings, setHalftoneSettings] = useState<HalftoneSettings>({
@@ -1040,6 +1065,309 @@ export default function CleanImageEditor() {
     return new ImageData(outputData, imageData.width, imageData.height);
   };
 
+  // Function to reset the editor and allow uploading a new image
+  const handleResetEditor = () => {
+    if (window.confirm('Are you sure you want to remove this image? All applied effects will be lost.')) {
+      setImage(null);
+      setOriginalImageData(null);
+      setAppliedEffects([]);
+      setCurrentEffect('none');
+      setHistory([]);
+      setHistoryIndex(-1);
+      setCurrentImageDataUrl(null);
+      setIsCropping(false);
+      setIsResizing(false);
+      
+      // Clear canvases
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      }
+      
+      if (hiddenCanvasRef.current) {
+        const ctx = hiddenCanvasRef.current.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, hiddenCanvasRef.current.width, hiddenCanvasRef.current.height);
+      }
+    }
+  };
+
+  // Start cropping mode
+  const startCropping = () => {
+    if (!image || !canvasRef.current) return;
+    
+    setIsCropping(true);
+    setIsResizing(false);
+    
+    // Reset crop state
+    setCropState({
+      active: false,
+      startX: 0,
+      startY: 0,
+      endX: 0,
+      endY: 0
+    });
+    
+    // Setup crop canvas
+    if (cropCanvasRef.current) {
+      cropCanvasRef.current.width = canvasRef.current.width;
+      cropCanvasRef.current.height = canvasRef.current.height;
+      const ctx = cropCanvasRef.current.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(canvasRef.current, 0, 0);
+      }
+    }
+  };
+  
+  // Handle mouse down for crop selection
+  const handleCropMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isCropping || !cropCanvasRef.current) return;
+    
+    const rect = cropCanvasRef.current.getBoundingClientRect();
+    const scaleX = cropCanvasRef.current.width / rect.width;
+    const scaleY = cropCanvasRef.current.height / rect.height;
+    
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    
+    setCropState({
+      active: true,
+      startX: x,
+      startY: y,
+      endX: x,
+      endY: y
+    });
+  };
+  
+  // Handle mouse move for crop selection
+  const handleCropMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isCropping || !cropState.active || !cropCanvasRef.current) return;
+    
+    const rect = cropCanvasRef.current.getBoundingClientRect();
+    const scaleX = cropCanvasRef.current.width / rect.width;
+    const scaleY = cropCanvasRef.current.height / rect.height;
+    
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    
+    setCropState(prev => ({
+      ...prev,
+      endX: x,
+      endY: y
+    }));
+    
+    // Draw crop overlay
+    drawCropOverlay();
+  };
+  
+  // Handle mouse up for crop selection
+  const handleCropMouseUp = () => {
+    if (!isCropping) return;
+    
+    setCropState(prev => ({
+      ...prev,
+      active: false
+    }));
+  };
+  
+  // Draw crop overlay
+  const drawCropOverlay = () => {
+    if (!cropCanvasRef.current || !canvasRef.current) return;
+    
+    const ctx = cropCanvasRef.current.getContext('2d');
+    if (!ctx) return;
+    
+    // Clear canvas and redraw image
+    ctx.clearRect(0, 0, cropCanvasRef.current.width, cropCanvasRef.current.height);
+    ctx.drawImage(canvasRef.current, 0, 0);
+    
+    // Calculate crop rectangle
+    const startX = Math.min(cropState.startX, cropState.endX);
+    const startY = Math.min(cropState.startY, cropState.endY);
+    const width = Math.abs(cropState.endX - cropState.startX);
+    const height = Math.abs(cropState.endY - cropState.startY);
+    
+    // Draw semi-transparent overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, cropCanvasRef.current.width, cropCanvasRef.current.height);
+    
+    // Clear the crop area
+    ctx.clearRect(startX, startY, width, height);
+    
+    // Draw border around crop area
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(startX, startY, width, height);
+  };
+  
+  // Apply crop
+  const applyCrop = () => {
+    if (!isCropping || !canvasRef.current || !hiddenCanvasRef.current || !image) return;
+    
+    // Calculate crop rectangle
+    const startX = Math.min(cropState.startX, cropState.endX);
+    const startY = Math.min(cropState.startY, cropState.endY);
+    const width = Math.abs(cropState.endX - cropState.startX);
+    const height = Math.abs(cropState.endY - cropState.startY);
+    
+    // Ensure we have a valid crop area
+    if (width < 10 || height < 10) {
+      alert('Please select a larger area to crop');
+      return;
+    }
+    
+    // Create temporary canvas for cropped image
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    if (!tempCtx) return;
+    
+    // Draw cropped portion
+    tempCtx.drawImage(
+      canvasRef.current,
+      startX, startY, width, height,
+      0, 0, width, height
+    );
+    
+    // Create new image from cropped canvas
+    const croppedImage = new Image();
+    croppedImage.onload = () => {
+      // Reset canvas dimensions
+      canvasRef.current!.width = width;
+      canvasRef.current!.height = height;
+      hiddenCanvasRef.current!.width = width;
+      hiddenCanvasRef.current!.height = height;
+      
+      // Draw cropped image to both canvases
+      const ctx = canvasRef.current!.getContext('2d');
+      const hiddenCtx = hiddenCanvasRef.current!.getContext('2d');
+      
+      if (ctx && hiddenCtx) {
+        ctx.drawImage(croppedImage, 0, 0);
+        hiddenCtx.drawImage(croppedImage, 0, 0);
+        
+        // Update original image data
+        const newImageData = hiddenCtx.getImageData(0, 0, width, height);
+        setOriginalImageData(newImageData);
+        
+        // Update current image data URL
+        setCurrentImageDataUrl(canvasRef.current!.toDataURL('image/png'));
+        
+        // Update image dimensions
+        const newImg = new Image();
+        newImg.src = tempCanvas.toDataURL('image/png');
+        setImage(newImg);
+        
+        // Reset applied effects since we're working with a new image
+        setAppliedEffects([]);
+        setHistory([]);
+        setHistoryIndex(-1);
+      }
+      
+      // Exit crop mode
+      setIsCropping(false);
+    };
+    
+    croppedImage.src = tempCanvas.toDataURL('image/png');
+  };
+  
+  // Cancel crop
+  const cancelCrop = () => {
+    setIsCropping(false);
+  };
+  
+  // Start resize mode
+  const startResizing = () => {
+    if (!image || !canvasRef.current) return;
+    
+    setIsResizing(true);
+    setIsCropping(false);
+    
+    // Set initial resize dimensions
+    setResizeWidth(canvasRef.current.width);
+    setResizeHeight(canvasRef.current.height);
+    setAspectRatio(canvasRef.current.width / canvasRef.current.height);
+  };
+  
+  // Handle resize width change
+  const handleResizeWidthChange = (value: number) => {
+    setResizeWidth(value);
+    if (maintainAspectRatio) {
+      setResizeHeight(Math.round(value / aspectRatio));
+    }
+  };
+  
+  // Handle resize height change
+  const handleResizeHeightChange = (value: number) => {
+    setResizeHeight(value);
+    if (maintainAspectRatio) {
+      setResizeWidth(Math.round(value * aspectRatio));
+    }
+  };
+  
+  // Apply resize
+  const applyResize = () => {
+    if (!isResizing || !canvasRef.current || !hiddenCanvasRef.current || !image) return;
+    
+    // Create temporary canvas for resized image
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = resizeWidth;
+    tempCanvas.height = resizeHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    if (!tempCtx) return;
+    
+    // Draw resized image
+    tempCtx.drawImage(canvasRef.current, 0, 0, resizeWidth, resizeHeight);
+    
+    // Create new image from resized canvas
+    const resizedImage = new Image();
+    resizedImage.onload = () => {
+      // Reset canvas dimensions
+      canvasRef.current!.width = resizeWidth;
+      canvasRef.current!.height = resizeHeight;
+      hiddenCanvasRef.current!.width = resizeWidth;
+      hiddenCanvasRef.current!.height = resizeHeight;
+      
+      // Draw resized image to both canvases
+      const ctx = canvasRef.current!.getContext('2d');
+      const hiddenCtx = hiddenCanvasRef.current!.getContext('2d');
+      
+      if (ctx && hiddenCtx) {
+        ctx.drawImage(resizedImage, 0, 0);
+        hiddenCtx.drawImage(resizedImage, 0, 0);
+        
+        // Update original image data
+        const newImageData = hiddenCtx.getImageData(0, 0, resizeWidth, resizeHeight);
+        setOriginalImageData(newImageData);
+        
+        // Update current image data URL
+        setCurrentImageDataUrl(canvasRef.current!.toDataURL('image/png'));
+        
+        // Update image dimensions
+        const newImg = new Image();
+        newImg.src = tempCanvas.toDataURL('image/png');
+        setImage(newImg);
+        
+        // Reset applied effects since we're working with a new image
+        setAppliedEffects([]);
+        setHistory([]);
+        setHistoryIndex(-1);
+      }
+      
+      // Exit resize mode
+      setIsResizing(false);
+    };
+    
+    resizedImage.src = tempCanvas.toDataURL('image/png');
+  };
+  
+  // Cancel resize
+  const cancelResize = () => {
+    setIsResizing(false);
+  };
+
   // Component implementation will continue...
   return (
     <div className="w-full h-full flex flex-col space-y-6 p-4 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950">
@@ -1053,6 +1381,7 @@ export default function CleanImageEditor() {
             variant={currentEffect === 'none' ? 'default' : 'outline'}
             onClick={() => setCurrentEffect('none')}
             className="rounded-lg"
+            disabled={isCropping || isResizing}
           >
             Original
           </Button>
@@ -1060,6 +1389,7 @@ export default function CleanImageEditor() {
             variant={currentEffect === 'halftone' ? 'default' : 'outline'}
             onClick={() => setCurrentEffect('halftone')}
             className="rounded-lg"
+            disabled={isCropping || isResizing}
           >
             Halftone
           </Button>
@@ -1067,6 +1397,7 @@ export default function CleanImageEditor() {
             variant={currentEffect === 'duotone' ? 'default' : 'outline'}
             onClick={() => setCurrentEffect('duotone')}
             className="rounded-lg"
+            disabled={isCropping || isResizing}
           >
             Duotone
           </Button>
@@ -1074,6 +1405,7 @@ export default function CleanImageEditor() {
             variant={currentEffect === 'blackwhite' ? 'default' : 'outline'}
             onClick={() => setCurrentEffect('blackwhite')}
             className="rounded-lg"
+            disabled={isCropping || isResizing}
           >
             B&W
           </Button>
@@ -1081,6 +1413,7 @@ export default function CleanImageEditor() {
             variant={currentEffect === 'sepia' ? 'default' : 'outline'}
             onClick={() => setCurrentEffect('sepia')}
             className="rounded-lg"
+            disabled={isCropping || isResizing}
           >
             Sepia
           </Button>
@@ -1088,6 +1421,7 @@ export default function CleanImageEditor() {
             variant={currentEffect === 'noise' ? 'default' : 'outline'}
             onClick={() => setCurrentEffect('noise')}
             className="rounded-lg"
+            disabled={isCropping || isResizing}
           >
             Noise
           </Button>
@@ -1095,32 +1429,105 @@ export default function CleanImageEditor() {
             variant={currentEffect === 'dither' ? 'default' : 'outline'}
             onClick={() => setCurrentEffect('dither')}
             className="rounded-lg"
+            disabled={isCropping || isResizing}
           >
             Dither
           </Button>
         </div>
         
         <div className="flex space-x-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleUndo}
-            disabled={historyIndex <= 0}
-            title="Undo"
-            className="rounded-lg"
-          >
-            <Undo className="h-4 w-4" />
-          </Button>
+          {image && !isCropping && !isResizing && (
+            <>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleUndo}
+                disabled={historyIndex <= 0}
+                title="Undo"
+                className="rounded-lg"
+              >
+                <Undo className="h-4 w-4" />
+              </Button>
+              
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={startCropping}
+                title="Crop Image"
+                className="rounded-lg"
+              >
+                <Crop className="h-4 w-4" />
+              </Button>
+              
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={startResizing}
+                title="Resize Image"
+                className="rounded-lg"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleResetEditor}
+                title="Remove Image"
+                className="rounded-lg text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              
+              <Button 
+                variant="default"
+                onClick={handleDownload}
+                className="flex items-center rounded-lg"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download
+              </Button>
+            </>
+          )}
           
-          {image && (
-            <Button 
-              variant="default"
-              onClick={handleDownload}
-              className="flex items-center rounded-lg"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Download
-            </Button>
+          {isCropping && (
+            <>
+              <Button
+                variant="default"
+                onClick={applyCrop}
+                className="rounded-lg"
+              >
+                Apply Crop
+              </Button>
+              
+              <Button
+                variant="outline"
+                onClick={cancelCrop}
+                className="rounded-lg"
+              >
+                Cancel
+              </Button>
+            </>
+          )}
+          
+          {isResizing && (
+            <>
+              <Button
+                variant="default"
+                onClick={applyResize}
+                className="rounded-lg"
+              >
+                Apply Resize
+              </Button>
+              
+              <Button
+                variant="outline"
+                onClick={cancelResize}
+                className="rounded-lg"
+              >
+                Cancel
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -1144,15 +1551,32 @@ export default function CleanImageEditor() {
               </div>
               <div className="flex-1 flex items-center justify-center p-8 bg-[#f0f0f0] dark:bg-gray-900 bg-grid-pattern">
                 <div className="relative rounded-lg overflow-hidden shadow-xl transition-all duration-300 hover:shadow-2xl">
-                  <canvas
-                    ref={canvasRef}
-                    style={{
-                      imageRendering: 'auto',
-                      display: 'block',
-                      maxWidth: '100%',
-                      maxHeight: '70vh',
-                    }}
-                  />
+                  {isCropping ? (
+                    <canvas
+                      ref={cropCanvasRef}
+                      style={{
+                        imageRendering: 'auto',
+                        display: 'block',
+                        maxWidth: '100%',
+                        maxHeight: '70vh',
+                        cursor: 'crosshair'
+                      }}
+                      onMouseDown={handleCropMouseDown}
+                      onMouseMove={handleCropMouseMove}
+                      onMouseUp={handleCropMouseUp}
+                      onMouseLeave={handleCropMouseUp}
+                    />
+                  ) : (
+                    <canvas
+                      ref={canvasRef}
+                      style={{
+                        imageRendering: 'auto',
+                        display: 'block',
+                        maxWidth: '100%',
+                        maxHeight: '70vh',
+                      }}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -1161,8 +1585,63 @@ export default function CleanImageEditor() {
         
         {/* Side Panel */}
         <div className="w-full lg:w-80 flex-shrink-0 flex flex-col gap-4">
+          {/* Resize Controls */}
+          {isResizing && image && (
+            <Card className="rounded-xl shadow-sm overflow-hidden border-0">
+              <CardHeader className="bg-white dark:bg-gray-800 border-b pb-3">
+                <CardTitle className="text-lg font-semibold">Resize Image</CardTitle>
+              </CardHeader>
+              <CardContent className="bg-white dark:bg-gray-800 p-4 space-y-5">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label htmlFor="resize-width" className="text-sm font-medium">Width</Label>
+                      <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">{resizeWidth}px</span>
+                    </div>
+                    <Slider 
+                      id="resize-width"
+                      min={50} 
+                      max={Math.max(2000, canvasRef.current?.width || 0)} 
+                      step={1} 
+                      value={[resizeWidth]} 
+                      onValueChange={([value]) => handleResizeWidthChange(value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label htmlFor="resize-height" className="text-sm font-medium">Height</Label>
+                      <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">{resizeHeight}px</span>
+                    </div>
+                    <Slider 
+                      id="resize-height"
+                      min={50} 
+                      max={Math.max(2000, canvasRef.current?.height || 0)} 
+                      step={1} 
+                      value={[resizeHeight]} 
+                      onValueChange={([value]) => handleResizeHeightChange(value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  
+                  <div className="flex items-center space-x-2 pt-2">
+                    <input
+                      type="checkbox"
+                      id="maintain-aspect-ratio"
+                      checked={maintainAspectRatio}
+                      onChange={(e) => setMaintainAspectRatio(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                    <Label htmlFor="maintain-aspect-ratio" className="text-sm">Maintain aspect ratio</Label>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
           {/* Applied Effects List */}
-          {image && (
+          {image && !isResizing && (
             <Card className="rounded-xl shadow-sm overflow-hidden border-0">
               <CardHeader className="bg-white dark:bg-gray-800 border-b pb-3">
                 <CardTitle className="text-lg font-semibold">Applied Effects</CardTitle>
@@ -1202,7 +1681,7 @@ export default function CleanImageEditor() {
           )}
           
           {/* Effect Controls Panel */}
-          {currentEffect !== 'none' && (
+          {currentEffect !== 'none' && !isCropping && !isResizing && (
             <Card className="rounded-xl shadow-sm overflow-hidden border-0">
               <CardHeader className="bg-white dark:bg-gray-800 border-b pb-3">
                 <CardTitle className="text-lg font-semibold">
