@@ -1,28 +1,15 @@
-"use client";
+'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { UploadDropzone } from './ui/upload-dropzone';
-import { Button } from './ui/button';
-import { Slider } from './ui/slider';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from './ui/card';
-import { Label } from './ui/label';
-import { Download, Undo, Wand2 } from 'lucide-react';
-import { ColorSetSelector } from './ui/color-set-selector';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from './ui/select';
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Download, Undo } from "lucide-react";
 
-// Define types
-type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'wavehalftone' | 'none';
+// Type definitions
+type EffectType = 'none' | 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'dither';
 
 interface HalftoneSettings {
   dotSize: number;
@@ -52,11 +39,200 @@ interface ImageHistory {
 }
 
 interface AppliedEffect {
-  type: Effect;
+  type: EffectType;
   settings: EffectSettings;
 }
 
-export default function ImageEditorComponent() {
+// UploadDropzone Component
+const UploadDropzone = ({ onUpload }: { onUpload: (file: File) => void }) => {
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (file.type.startsWith('image/')) {
+        onUpload(file);
+      }
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      onUpload(e.target.files[0]);
+    }
+  };
+
+  return (
+    <div
+      className={`w-full max-w-md p-8 border-2 border-dashed rounded-xl transition-all duration-200 flex flex-col items-center justify-center text-center ${
+        isDragging 
+          ? 'border-primary bg-primary/5' 
+          : 'border-gray-200 dark:border-gray-700 hover:border-primary/50 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      onClick={() => fileInputRef.current?.click()}
+    >
+      <div className="w-16 h-16 mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/><line x1="16" x2="22" y1="5" y2="5"/><line x1="19" x2="19" y1="2" y2="8"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+      </div>
+      <h3 className="text-lg font-medium mb-2">Upload an image</h3>
+      <p className="text-sm text-muted-foreground mb-4">
+        Drag and drop an image here, or click to select
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Supports: JPG, PNG, GIF, WebP
+      </p>
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept="image/*"
+        className="hidden"
+      />
+    </div>
+  );
+};
+
+// ColorSetSelector Component
+const ColorSetSelector = ({ 
+  onSelectColor, 
+  onSelectPair,
+  selectedColor 
+}: { 
+  onSelectColor: (color: string, index: 1 | 2) => void;
+  onSelectPair: (color1: string, color2: string) => void;
+  selectedColor?: string;
+}) => {
+  // Predefined color pairs for duotone effect
+  const colorPairs = [
+    { name: 'Blue/Yellow', color1: '#0062ff', color2: '#ffe100' },
+    { name: 'Purple/Pink', color1: '#6b0096', color2: '#ff88ce' },
+    { name: 'Green/Blue', color1: '#00b36b', color2: '#0097b3' },
+    { name: 'Orange/Blue', color1: '#ff6b00', color2: '#0088ff' },
+    { name: 'Red/Teal', color1: '#ff0062', color2: '#00ffe1' },
+  ];
+
+  // Individual colors for custom selection
+  const colors = [
+    '#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff',
+    '#ffff00', '#00ffff', '#ff00ff', '#ff6b00', '#6b00ff',
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Preset Color Pairs</Label>
+        <div className="grid grid-cols-2 gap-2">
+          {colorPairs.map((pair, index) => (
+            <Button
+              key={index}
+              variant="outline"
+              className="h-auto py-2 px-3 flex items-center justify-between"
+              onClick={() => onSelectPair(pair.color1, pair.color2)}
+            >
+              <span className="text-xs truncate mr-2">{pair.name}</span>
+              <div className="flex">
+                <div 
+                  className="w-4 h-4 rounded-sm border border-gray-300 dark:border-gray-600" 
+                  style={{ backgroundColor: pair.color1 }}
+                />
+                <div 
+                  className="w-4 h-4 rounded-sm border border-gray-300 dark:border-gray-600 ml-1" 
+                  style={{ backgroundColor: pair.color2 }}
+                />
+              </div>
+            </Button>
+          ))}
+        </div>
+      </div>
+      
+      <div className="space-y-2">
+        <div className="flex justify-between">
+          <Label className="text-xs text-muted-foreground">Custom Colors</Label>
+          <div className="flex space-x-1">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-5 px-2 text-xs"
+              onClick={() => onSelectColor('#000000', 1)}
+            >
+              Color 1
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-5 px-2 text-xs"
+              onClick={() => onSelectColor('#ffffff', 2)}
+            >
+              Color 2
+            </Button>
+          </div>
+        </div>
+        <div className="grid grid-cols-5 gap-2">
+          {colors.map((color, index) => (
+            <button
+              key={index}
+              className={`w-full aspect-square rounded-md border ${
+                selectedColor === color 
+                  ? 'ring-2 ring-primary ring-offset-2' 
+                  : 'border-gray-300 dark:border-gray-600'
+              }`}
+              style={{ backgroundColor: color }}
+              onClick={() => onSelectColor(color, 1)}
+            />
+          ))}
+        </div>
+      </div>
+      
+      <div className="pt-2">
+        <div className="flex space-x-2">
+          <input
+            type="color"
+            id="color-picker-1"
+            className="sr-only"
+            onChange={(e) => onSelectColor(e.target.value, 1)}
+          />
+          <label 
+            htmlFor="color-picker-1"
+            className="flex-1 h-8 flex items-center justify-center text-xs font-medium bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md cursor-pointer"
+          >
+            Custom Color 1
+          </label>
+          
+          <input
+            type="color"
+            id="color-picker-2"
+            className="sr-only"
+            onChange={(e) => onSelectColor(e.target.value, 2)}
+          />
+          <label 
+            htmlFor="color-picker-2"
+            className="flex-1 h-8 flex items-center justify-center text-xs font-medium bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md cursor-pointer"
+          >
+            Custom Color 2
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default function CleanImageEditor() {
   // Refs for DOM elements
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -65,7 +241,7 @@ export default function ImageEditorComponent() {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [originalImageData, setOriginalImageData] = useState<ImageData | null>(null);
   const [appliedEffects, setAppliedEffects] = useState<AppliedEffect[]>([]);
-  const [currentEffect, setCurrentEffect] = useState<Effect>('none');
+  const [currentEffect, setCurrentEffect] = useState<EffectType>('none');
   const [history, setHistory] = useState<ImageHistory[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [currentImageDataUrl, setCurrentImageDataUrl] = useState<string | null>(null);
@@ -107,12 +283,7 @@ export default function ImageEditorComponent() {
     
     return debouncedValue;
   }
-  
-  // Use effect to handle initialization
-  useEffect(() => {
-    console.log("Component initialized");
-  }, []);
-  
+
   // Function to add current state to history
   const addToHistory = useCallback((dataUrl: string, effects: AppliedEffect[]) => {
     if (!canvasRef.current) return;
@@ -260,7 +431,7 @@ export default function ImageEditorComponent() {
     
     reader.readAsDataURL(file);
   }, [canvasRef, hiddenCanvasRef]);
-  
+
   // Function to apply a single effect to image data
   const applyEffect = useCallback((imageData: ImageData, effect: AppliedEffect): ImageData => {
     const { type, settings } = effect;
@@ -287,6 +458,8 @@ export default function ImageEditorComponent() {
         return applySepiaEffect(ctx, imageData);
       case 'noise':
         return applyNoiseEffect(ctx, imageData, (settings as NoiseSettings).level);
+      case 'dither':
+        return applyDitheringEffect(ctx, imageData);
       default:
         return imageData;
     }
@@ -342,6 +515,9 @@ export default function ImageEditorComponent() {
           settings: { level: debouncedNoiseLevel } 
         };
         break;
+      case 'dither':
+        currentEffectObj = { type: 'dither', settings: {} };
+        break;
       default:
         return;
     }
@@ -378,7 +554,7 @@ export default function ImageEditorComponent() {
     applyEffectWithReset,
     image
   ]);
-  
+
   // Improved renderAllEffects function
   const renderAllEffects = useCallback(() => {
     console.log("Rendering all effects to canvas");
@@ -474,11 +650,9 @@ export default function ImageEditorComponent() {
       case 'noise':
         effectSettings = { level: noiseLevel };
         break;
-      case 'wavehalftone':
-        // For wavehalftone effects, we don't add them here
-        // They're handled by the HalftoneWaveEffect component's onProcessedImage callback
-        console.log('Wavehalftone effect is applied directly via HalftoneWaveEffect component');
-        return;
+      case 'dither':
+        effectSettings = {};
+        break;
       default:
         effectSettings = {};
     }
@@ -591,7 +765,8 @@ export default function ImageEditorComponent() {
       console.error("Error during image download:", error);
     }
   };
-  
+
+  // Effect implementation functions
   const applyHalftoneEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, settings: HalftoneSettings): ImageData => {
     const { dotSize, spacing, angle, shape } = settings;
     
@@ -762,8 +937,19 @@ export default function ImageEditorComponent() {
     const outputData = new Uint8ClampedArray(imageData.data);
     
     for (let i = 0; i < outputData.length; i += 4) {
-      const avg = (imageData.data[i] + imageData.data[i + 1] + imageData.data[i + 2]) / 3;
-      outputData[i] = outputData[i + 1] = outputData[i + 2] = avg;
+      // Use proper grayscale conversion formula
+      const r = imageData.data[i];
+      const g = imageData.data[i + 1];
+      const b = imageData.data[i + 2];
+      
+      // Luminance formula: 0.299*R + 0.587*G + 0.114*B
+      const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+      
+      // Set all RGB channels to the grayscale value
+      outputData[i] = gray;     // R
+      outputData[i + 1] = gray; // G
+      outputData[i + 2] = gray; // B
+      // Keep alpha channel unchanged
     }
     
     return new ImageData(outputData, imageData.width, imageData.height);
@@ -785,9 +971,9 @@ export default function ImageEditorComponent() {
     return new ImageData(outputData, imageData.width, imageData.height);
   };
   
-  const applyNoiseEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, settings: number): ImageData => {
+  const applyNoiseEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, level: number): ImageData => {
     const outputData = new Uint8ClampedArray(imageData.data);
-    const amount = settings * 50; // Scale to appropriate noise level
+    const amount = level * 2.5; // Scale to appropriate noise level
     
     for (let i = 0; i < outputData.length; i += 4) {
       // Generate random noise
@@ -802,6 +988,59 @@ export default function ImageEditorComponent() {
     return new ImageData(outputData, imageData.width, imageData.height);
   };
   
+  const applyDitheringEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData): ImageData => {
+    const outputData = new Uint8ClampedArray(imageData.data);
+    const width = imageData.width;
+    
+    // Floyd-Steinberg dithering algorithm
+    // Convert to grayscale first
+    const grayscale = new Uint8ClampedArray(imageData.width * imageData.height);
+    
+    // Convert to grayscale
+    for (let i = 0; i < outputData.length; i += 4) {
+      const r = imageData.data[i];
+      const g = imageData.data[i + 1];
+      const b = imageData.data[i + 2];
+      
+      // Luminance formula: 0.299*R + 0.587*G + 0.114*B
+      grayscale[i/4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+    }
+    
+    // Apply Floyd-Steinberg dithering
+    for (let y = 0; y < imageData.height; y++) {
+      for (let x = 0; x < imageData.width; x++) {
+        const idx = y * width + x;
+        const oldPixel = grayscale[idx];
+        const newPixel = oldPixel > 127 ? 255 : 0;
+        grayscale[idx] = newPixel;
+        
+        const error = oldPixel - newPixel;
+        
+        // Distribute error to neighboring pixels
+        if (x + 1 < width) {
+          grayscale[idx + 1] += error * 7 / 16;
+        }
+        if (y + 1 < imageData.height) {
+          if (x > 0) {
+            grayscale[idx + width - 1] += error * 3 / 16;
+          }
+          grayscale[idx + width] += error * 5 / 16;
+          if (x + 1 < width) {
+            grayscale[idx + width + 1] += error * 1 / 16;
+          }
+        }
+      }
+    }
+    
+    // Convert back to RGBA
+    for (let i = 0; i < outputData.length; i += 4) {
+      outputData[i] = outputData[i + 1] = outputData[i + 2] = grayscale[i/4];
+    }
+    
+    return new ImageData(outputData, imageData.width, imageData.height);
+  };
+
+  // Component implementation will continue...
   return (
     <div className="w-full h-full flex flex-col space-y-6 p-4 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950">
       {/* Hidden canvas for processing */}
@@ -853,12 +1092,11 @@ export default function ImageEditorComponent() {
             Noise
           </Button>
           <Button
-            variant={currentEffect === 'wavehalftone' ? 'default' : 'outline'}
-            onClick={() => setCurrentEffect('wavehalftone')}
+            variant={currentEffect === 'dither' ? 'default' : 'outline'}
+            onClick={() => setCurrentEffect('dither')}
             className="rounded-lg"
           >
-            <Wand2 className="h-4 w-4 mr-2" />
-            Wavehalftone
+            Dither
           </Button>
         </div>
         
@@ -1092,8 +1330,6 @@ export default function ImageEditorComponent() {
                     />
                   </div>
                 )}
-                
-                {/* Removed HalftoneWaveEffect as it's not defined */}
                 
                 {/* Apply Effect Button */}
                 <Button 

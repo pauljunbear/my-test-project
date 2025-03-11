@@ -32,13 +32,13 @@ interface ShaderUniforms {
   [key: string]: UniformValue;
 }
 
-interface ShaderEffect {
+interface LocalShaderEffect {
   name: string;
   uniforms: ShaderUniforms;
 }
 
 // Predefined effects with simplified parameters
-const SHADER_EFFECTS: Record<string, ShaderEffect> = {
+const SHADER_EFFECTS: Record<string, LocalShaderEffect> = {
   none: {
     name: 'None',
     uniforms: {}

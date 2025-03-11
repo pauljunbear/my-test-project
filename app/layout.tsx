@@ -49,15 +49,15 @@ export default function RootLayout({
             <nav className="flex items-center space-x-4">
               <a 
                 href="/shader-studio" 
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
               >
                 Shader Studio
               </a>
               <a 
-                href="https://github.com" 
+                href="https://github.com/pauljunbear/my-test-project" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
               >
                 GitHub
               </a>

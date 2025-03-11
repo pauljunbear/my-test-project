@@ -195,7 +195,7 @@ export default function TwiglShaderProcessor() {
     }
   }, []);
 
-  // Helper function to implement actual WebGL shader processing
+  // Update the implementShaderEffect function with better type checking
   const implementShaderEffect = (canvas: HTMLCanvasElement, sourceImage: HTMLImageElement, shaderCode: string, uniforms: Record<string, any>) => {
     try {
       // Get WebGL context
@@ -217,6 +217,9 @@ export default function TwiglShaderProcessor() {
         }
         return false;
       }
+
+      // Now that we know gl is a WebGLRenderingContext, we can safely use it
+      const webGLContext = gl as WebGLRenderingContext;
 
       // Vertex shader source - just pass through positions and texture coordinates
       const vsSource = `
@@ -263,7 +266,7 @@ export default function TwiglShaderProcessor() {
       // For non-geekest modes, we'd need different adaptations
       
       // Create shader program
-      const program = createShaderProgram(gl, vsSource, fsSource);
+      const program = createShaderProgram(webGLContext, vsSource, fsSource);
       if (!program) {
         console.error('Failed to create shader program');
         return false;
@@ -285,72 +288,72 @@ export default function TwiglShaderProcessor() {
       const indices = [0, 1, 2, 0, 2, 3];
       
       // Create buffers
-      const positionBuffer = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+      const positionBuffer = webGLContext.createBuffer();
+      webGLContext.bindBuffer(webGLContext.ARRAY_BUFFER, positionBuffer);
+      webGLContext.bufferData(webGLContext.ARRAY_BUFFER, new Float32Array(positions), webGLContext.STATIC_DRAW);
       
-      const texCoordBuffer = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texCoords), gl.STATIC_DRAW);
+      const texCoordBuffer = webGLContext.createBuffer();
+      webGLContext.bindBuffer(webGLContext.ARRAY_BUFFER, texCoordBuffer);
+      webGLContext.bufferData(webGLContext.ARRAY_BUFFER, new Float32Array(texCoords), webGLContext.STATIC_DRAW);
       
-      const indexBuffer = gl.createBuffer();
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+      const indexBuffer = webGLContext.createBuffer();
+      webGLContext.bindBuffer(webGLContext.ELEMENT_ARRAY_BUFFER, indexBuffer);
+      webGLContext.bufferData(webGLContext.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), webGLContext.STATIC_DRAW);
       
       // Set up attributes
-      const aVertexPosition = gl.getAttribLocation(program, 'aVertexPosition');
-      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-      gl.vertexAttribPointer(aVertexPosition, 2, gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(aVertexPosition);
+      const aVertexPosition = webGLContext.getAttribLocation(program, 'aVertexPosition');
+      webGLContext.bindBuffer(webGLContext.ARRAY_BUFFER, positionBuffer);
+      webGLContext.vertexAttribPointer(aVertexPosition, 2, webGLContext.FLOAT, false, 0, 0);
+      webGLContext.enableVertexAttribArray(aVertexPosition);
       
-      const aTextureCoord = gl.getAttribLocation(program, 'aTextureCoord');
-      gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
-      gl.vertexAttribPointer(aTextureCoord, 2, gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(aTextureCoord);
+      const aTextureCoord = webGLContext.getAttribLocation(program, 'aTextureCoord');
+      webGLContext.bindBuffer(webGLContext.ARRAY_BUFFER, texCoordBuffer);
+      webGLContext.vertexAttribPointer(aTextureCoord, 2, webGLContext.FLOAT, false, 0, 0);
+      webGLContext.enableVertexAttribArray(aTextureCoord);
       
       // Create texture from source image
-      const texture = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, texture);
+      const texture = webGLContext.createTexture();
+      webGLContext.bindTexture(webGLContext.TEXTURE_2D, texture);
       
       // Set texture parameters
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      webGLContext.texParameteri(webGLContext.TEXTURE_2D, webGLContext.TEXTURE_WRAP_S, webGLContext.CLAMP_TO_EDGE);
+      webGLContext.texParameteri(webGLContext.TEXTURE_2D, webGLContext.TEXTURE_WRAP_T, webGLContext.CLAMP_TO_EDGE);
+      webGLContext.texParameteri(webGLContext.TEXTURE_2D, webGLContext.TEXTURE_MIN_FILTER, webGLContext.LINEAR);
+      webGLContext.texParameteri(webGLContext.TEXTURE_2D, webGLContext.TEXTURE_MAG_FILTER, webGLContext.LINEAR);
       
       // Upload the image into the texture
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sourceImage);
+      webGLContext.texImage2D(webGLContext.TEXTURE_2D, 0, webGLContext.RGBA, webGLContext.RGBA, webGLContext.UNSIGNED_BYTE, sourceImage);
       
       // Use the shader program
-      gl.useProgram(program);
+      webGLContext.useProgram(program);
       
       // Set uniforms
-      const uResolution = gl.getUniformLocation(program, 'r');
-      gl.uniform2f(uResolution, canvas.width, canvas.height);
+      const uResolution = webGLContext.getUniformLocation(program, 'r');
+      webGLContext.uniform2f(uResolution, canvas.width, canvas.height);
       
-      const uTime = gl.getUniformLocation(program, 't');
-      gl.uniform1f(uTime, performance.now() / 1000.0);
+      const uTime = webGLContext.getUniformLocation(program, 't');
+      webGLContext.uniform1f(uTime, performance.now() / 1000.0);
       
-      const uTexture = gl.getUniformLocation(program, 'b');
-      gl.uniform1i(uTexture, 0);
+      const uTexture = webGLContext.getUniformLocation(program, 'b');
+      webGLContext.uniform1i(uTexture, 0);
       
       // Set custom uniforms
       Object.entries(uniforms).forEach(([key, value]) => {
-        const uCustom = gl.getUniformLocation(program, key);
+        const uCustom = webGLContext.getUniformLocation(program, key);
         if (uCustom) {
           if (typeof value === 'number') {
-            gl.uniform1f(uCustom, value);
+            webGLContext.uniform1f(uCustom, value);
           }
           // Add other types as needed
         }
       });
       
       // Clear the canvas and draw
-      gl.clearColor(0.0, 0.0, 0.0, 1.0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+      webGLContext.clearColor(0.0, 0.0, 0.0, 1.0);
+      webGLContext.clear(webGLContext.COLOR_BUFFER_BIT);
       
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-      gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+      webGLContext.bindBuffer(webGLContext.ELEMENT_ARRAY_BUFFER, indexBuffer);
+      webGLContext.drawElements(webGLContext.TRIANGLES, 6, webGLContext.UNSIGNED_SHORT, 0);
       
       return true;
     } catch (error) {
@@ -365,34 +368,7 @@ export default function TwiglShaderProcessor() {
     }
   };
 
-  // Helper function to create a WebGL shader program
-  const createShaderProgram = (gl: WebGLRenderingContext, vsSource: string, fsSource: string) => {
-    const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
-    const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
-    
-    if (!vertexShader || !fragmentShader) {
-      return null;
-    }
-    
-    const program = gl.createProgram();
-    if (!program) {
-      return null;
-    }
-    
-    gl.attachShader(program, vertexShader);
-    gl.attachShader(program, fragmentShader);
-    gl.linkProgram(program);
-    
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      console.error('Unable to link shader program:', gl.getProgramInfoLog(program));
-      gl.deleteProgram(program);
-      return null;
-    }
-    
-    return program;
-  };
-
-  // Helper function to compile a shader
+  // Update the loadShader function to use proper WebGL context typing
   const loadShader = (gl: WebGLRenderingContext, type: number, source: string) => {
     const shader = gl.createShader(type);
     if (!shader) {
@@ -400,16 +376,54 @@ export default function TwiglShaderProcessor() {
       return null;
     }
     
+    // Set the shader source code
     gl.shaderSource(shader, source);
+    
+    // Compile the shader
     gl.compileShader(shader);
     
+    // Check if it compiled successfully
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      console.error('Shader compilation error:', gl.getShaderInfoLog(shader));
+      console.error('An error occurred compiling the shader: ' + gl.getShaderInfoLog(shader));
       gl.deleteShader(shader);
       return null;
     }
     
     return shader;
+  };
+
+  // Update the createShaderProgram function to use proper WebGL context typing
+  const createShaderProgram = (gl: WebGLRenderingContext, vsSource: string, fsSource: string) => {
+    // Create the shader objects
+    const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+    const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+    
+    if (!vertexShader || !fragmentShader) {
+      return null;
+    }
+    
+    // Create the shader program
+    const program = gl.createProgram();
+    if (!program) {
+      console.error('Unable to create shader program');
+      return null;
+    }
+    
+    // Attach the shaders to the program
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    
+    // Link the program
+    gl.linkProgram(program);
+    
+    // Check if it linked successfully
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      console.error('Unable to link shader program: ' + gl.getProgramInfoLog(program));
+      gl.deleteProgram(program);
+      return null;
+    }
+    
+    return program;
   };
 
   // Now update the debouncedProcessShader function to use our real shader implementation
@@ -595,7 +609,7 @@ export default function TwiglShaderProcessor() {
     console.log(`Changed shader mode to: ${mode}`);
   };
 
-  // Improve the generateAnimationFrames function to ensure frames are properly created
+  // Update the generateAnimationFrames function for proper typing
   const generateAnimationFrames = useCallback(async (numFrames: number, effect: string, values: Record<string, any>) => {
     if (!imageRef.current || effect === 'none' || isWebGLSupported === false) {
       console.warn('Cannot generate animation frames: image not loaded, no effect selected, or WebGL not supported');
@@ -638,6 +652,9 @@ export default function TwiglShaderProcessor() {
           continue;
         }
         
+        // We know gl is a WebGLRenderingContext
+        const webGLContext = gl as WebGLRenderingContext;
+        
         // Create shader program from scratch for each frame to avoid state issues
         // Set up basic vertex shader
         const vsSource = `
@@ -678,27 +695,27 @@ export default function TwiglShaderProcessor() {
         `;
         
         // Create program
-        const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
-        const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+        const vertexShader = loadShader(webGLContext, webGLContext.VERTEX_SHADER, vsSource);
+        const fragmentShader = loadShader(webGLContext, webGLContext.FRAGMENT_SHADER, fsSource);
         
         if (!vertexShader || !fragmentShader) {
           console.error('Failed to compile shaders for animation frame');
           continue;
         }
         
-        const program = gl.createProgram();
+        const program = webGLContext.createProgram();
         if (!program) {
           console.error('Failed to create shader program for animation frame');
           continue;
         }
         
-        gl.attachShader(program, vertexShader);
-        gl.attachShader(program, fragmentShader);
-        gl.linkProgram(program);
+        webGLContext.attachShader(program, vertexShader);
+        webGLContext.attachShader(program, fragmentShader);
+        webGLContext.linkProgram(program);
         
-        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-          console.error('Unable to link shader program:', gl.getProgramInfoLog(program));
-          gl.deleteProgram(program);
+        if (!webGLContext.getProgramParameter(program, webGLContext.LINK_STATUS)) {
+          console.error('Unable to link shader program:', webGLContext.getProgramInfoLog(program));
+          webGLContext.deleteProgram(program);
           continue;
         }
         
@@ -720,84 +737,84 @@ export default function TwiglShaderProcessor() {
         const indices = [0, 1, 2, 0, 2, 3];
         
         // Create buffers
-        const positionBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+        const positionBuffer = webGLContext.createBuffer();
+        webGLContext.bindBuffer(webGLContext.ARRAY_BUFFER, positionBuffer);
+        webGLContext.bufferData(webGLContext.ARRAY_BUFFER, new Float32Array(positions), webGLContext.STATIC_DRAW);
         
-        const texCoordBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texCoords), gl.STATIC_DRAW);
+        const texCoordBuffer = webGLContext.createBuffer();
+        webGLContext.bindBuffer(webGLContext.ARRAY_BUFFER, texCoordBuffer);
+        webGLContext.bufferData(webGLContext.ARRAY_BUFFER, new Float32Array(texCoords), webGLContext.STATIC_DRAW);
         
-        const indexBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+        const indexBuffer = webGLContext.createBuffer();
+        webGLContext.bindBuffer(webGLContext.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        webGLContext.bufferData(webGLContext.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), webGLContext.STATIC_DRAW);
         
         // Set up attributes
-        const aVertexPosition = gl.getAttribLocation(program, 'aVertexPosition');
-        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-        gl.vertexAttribPointer(aVertexPosition, 2, gl.FLOAT, false, 0, 0);
-        gl.enableVertexAttribArray(aVertexPosition);
+        const aVertexPosition = webGLContext.getAttribLocation(program, 'aVertexPosition');
+        webGLContext.bindBuffer(webGLContext.ARRAY_BUFFER, positionBuffer);
+        webGLContext.vertexAttribPointer(aVertexPosition, 2, webGLContext.FLOAT, false, 0, 0);
+        webGLContext.enableVertexAttribArray(aVertexPosition);
         
-        const aTextureCoord = gl.getAttribLocation(program, 'aTextureCoord');
-        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
-        gl.vertexAttribPointer(aTextureCoord, 2, gl.FLOAT, false, 0, 0);
-        gl.enableVertexAttribArray(aTextureCoord);
+        const aTextureCoord = webGLContext.getAttribLocation(program, 'aTextureCoord');
+        webGLContext.bindBuffer(webGLContext.ARRAY_BUFFER, texCoordBuffer);
+        webGLContext.vertexAttribPointer(aTextureCoord, 2, webGLContext.FLOAT, false, 0, 0);
+        webGLContext.enableVertexAttribArray(aTextureCoord);
         
         // Create texture from source image
-        const texture = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, texture);
+        const texture = webGLContext.createTexture();
+        webGLContext.bindTexture(webGLContext.TEXTURE_2D, texture);
         
         // Set texture parameters
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        webGLContext.texParameteri(webGLContext.TEXTURE_2D, webGLContext.TEXTURE_WRAP_S, webGLContext.CLAMP_TO_EDGE);
+        webGLContext.texParameteri(webGLContext.TEXTURE_2D, webGLContext.TEXTURE_WRAP_T, webGLContext.CLAMP_TO_EDGE);
+        webGLContext.texParameteri(webGLContext.TEXTURE_2D, webGLContext.TEXTURE_MIN_FILTER, webGLContext.LINEAR);
+        webGLContext.texParameteri(webGLContext.TEXTURE_2D, webGLContext.TEXTURE_MAG_FILTER, webGLContext.LINEAR);
         
         // Upload the image into the texture
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, imageRef.current);
+        webGLContext.texImage2D(webGLContext.TEXTURE_2D, 0, webGLContext.RGBA, webGLContext.RGBA, webGLContext.UNSIGNED_BYTE, imageRef.current);
         
         // Use the shader program
-        gl.useProgram(program);
+        webGLContext.useProgram(program);
         
         // Set uniforms
-        const uResolution = gl.getUniformLocation(program, 'r');
-        gl.uniform2f(uResolution, canvas.width, canvas.height);
+        const uResolution = webGLContext.getUniformLocation(program, 'r');
+        webGLContext.uniform2f(uResolution, canvas.width, canvas.height);
         
-        const uTime = gl.getUniformLocation(program, 't');
-        gl.uniform1f(uTime, timeValue);
+        const uTime = webGLContext.getUniformLocation(program, 't');
+        webGLContext.uniform1f(uTime, timeValue);
         
-        const uTexture = gl.getUniformLocation(program, 'b');
-        gl.uniform1i(uTexture, 0);
+        const uTexture = webGLContext.getUniformLocation(program, 'b');
+        webGLContext.uniform1i(uTexture, 0);
         
         // Set custom uniforms
         Object.entries(frameValues).forEach(([key, value]) => {
           if (key === 't') return; // Already set above
-          const uCustom = gl.getUniformLocation(program, key);
+          const uCustom = webGLContext.getUniformLocation(program, key);
           if (uCustom) {
             if (typeof value === 'number') {
-              gl.uniform1f(uCustom, value);
+              webGLContext.uniform1f(uCustom, value);
             }
           }
         });
         
         // Clear the canvas and draw
-        gl.clearColor(0.0, 0.0, 0.0, 1.0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
+        webGLContext.clearColor(0.0, 0.0, 0.0, 1.0);
+        webGLContext.clear(webGLContext.COLOR_BUFFER_BIT);
         
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-        gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+        webGLContext.bindBuffer(webGLContext.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        webGLContext.drawElements(webGLContext.TRIANGLES, 6, webGLContext.UNSIGNED_SHORT, 0);
         
         // Add frame to the array
         frames.push(canvas.toDataURL('image/png', 1.0));
         
         // Clean up
-        gl.deleteProgram(program);
-        gl.deleteShader(vertexShader);
-        gl.deleteShader(fragmentShader);
-        gl.deleteBuffer(positionBuffer);
-        gl.deleteBuffer(texCoordBuffer);
-        gl.deleteBuffer(indexBuffer);
-        gl.deleteTexture(texture);
+        webGLContext.deleteProgram(program);
+        webGLContext.deleteShader(vertexShader);
+        webGLContext.deleteShader(fragmentShader);
+        webGLContext.deleteBuffer(positionBuffer);
+        webGLContext.deleteBuffer(texCoordBuffer);
+        webGLContext.deleteBuffer(indexBuffer);
+        webGLContext.deleteTexture(texture);
         
       } catch (error) {
         console.error('Error generating animation frame:', error);
@@ -869,8 +886,15 @@ export default function TwiglShaderProcessor() {
       // Start rendering
       gif.render();
       
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error exporting GIF:', error);
+      let errorMessage = 'Unknown error';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      alert(`Error exporting GIF: ${errorMessage}`);
       setIsExporting(false);
     }
   }, [gifLib]);
@@ -961,8 +985,15 @@ export default function TwiglShaderProcessor() {
       // Start animation loop
       animationRef.current = requestAnimationFrame(animateAndRecord);
       
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error exporting WebM:', error);
+      let errorMessage = 'Unknown error';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      alert(`Error exporting WebM: ${errorMessage}`);
       setIsExporting(false);
     }
   }, []);
@@ -1003,9 +1034,15 @@ export default function TwiglShaderProcessor() {
         // Start WebM export with longer animation
         await exportToWebM(selectedEffect, uniformValues, 5.0);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error exporting:', error);
-      alert(`Export failed: ${error.message || 'Unknown error'}`);
+      let errorMessage = 'Unknown error';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      alert(`Export failed: ${errorMessage}`);
     } finally {
       setIsAnimating(false);
     }

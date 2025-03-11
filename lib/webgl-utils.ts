@@ -16,7 +16,7 @@ declare module 'gif.js';
 
 // Types for our shader system
 export interface ShaderUniform {
-  type: 'float' | 'vec2' | 'vec3' | 'vec4' | 'int' | 'bool' | 'sampler2D';
+  type: 'float' | 'vec2' | 'vec3' | 'vec4' | 'int' | 'bool' | 'sampler2D' | 'color';
   value: number | number[] | boolean | null;
   min?: number;
   max?: number;
@@ -32,8 +32,8 @@ export interface ShaderProgram {
 
 export interface ShaderEffect {
   name: string;
-  vertexShader: string;
-  fragmentShader: string;
+  vertex: string;
+  fragment: string;
   uniforms: Record<string, ShaderUniform>;
 }
 
@@ -428,8 +428,8 @@ export const processImageWithShader = async (
     // Create shader program
     const program = createShaderProgram(
       gl, 
-      effect.vertexShader || DEFAULT_VERTEX_SHADER, 
-      effect.fragmentShader
+      effect.vertex || DEFAULT_VERTEX_SHADER, 
+      effect.fragment
     );
     
     if (!program) {
@@ -472,14 +472,6 @@ export const processImageWithShader = async (
     console.error('Error processing image with shader:', e);
     throw e;
   }
-};
-
-// Update the ShaderEffect type if needed
-export type ShaderEffect = {
-  name: string;
-  vertex: string;
-  fragment: string;
-  uniforms: Record<string, any>;
 };
 
 // Basic vertex shader that just passes through positions and texture coordinates
@@ -528,7 +520,7 @@ export const SHADER_EFFECTS: Record<string, ShaderEffect> = {
       }
     `,
     uniforms: {
-      uIntensity: { value: 1.0, min: 0.0, max: 1.0, step: 0.1 }
+      uIntensity: { type: 'float', value: 1.0, min: 0.0, max: 1.0, step: 0.1 }
     }
   },
   sepia: {
@@ -551,7 +543,7 @@ export const SHADER_EFFECTS: Record<string, ShaderEffect> = {
       }
     `,
     uniforms: {
-      uIntensity: { value: 1.0, min: 0.0, max: 1.0, step: 0.1 }
+      uIntensity: { type: 'float', value: 1.0, min: 0.0, max: 1.0, step: 0.1 }
     }
   },
   halftone: {
@@ -598,9 +590,9 @@ export const SHADER_EFFECTS: Record<string, ShaderEffect> = {
       }
     `,
     uniforms: {
-      uDotSize: { value: 0.5, min: 0.1, max: 0.9, step: 0.1 },
-      uSpacing: { value: 20.0, min: 5.0, max: 50.0, step: 1.0 },
-      uAngle: { value: 0.0, min: 0.0, max: 6.28, step: 0.1 }
+      uDotSize: { type: 'float', value: 0.5, min: 0.1, max: 0.9, step: 0.1 },
+      uSpacing: { type: 'float', value: 20.0, min: 5.0, max: 50.0, step: 1.0 },
+      uAngle: { type: 'float', value: 0.0, min: 0.0, max: 6.28, step: 0.1 }
     }
   },
   duotone: {
@@ -625,7 +617,7 @@ export const SHADER_EFFECTS: Record<string, ShaderEffect> = {
     uniforms: {
       uColor1: { value: [0.0, 0.0, 0.4], type: 'color' },
       uColor2: { value: [1.0, 0.0, 0.0], type: 'color' },
-      uIntensity: { value: 1.0, min: 0.0, max: 1.0, step: 0.1 }
+      uIntensity: { type: 'float', value: 1.0, min: 0.0, max: 1.0, step: 0.1 }
     }
   },
   noise: {
@@ -650,7 +642,7 @@ export const SHADER_EFFECTS: Record<string, ShaderEffect> = {
       }
     `,
     uniforms: {
-      uAmount: { value: 0.2, min: 0.0, max: 1.0, step: 0.05 }
+      uAmount: { type: 'float', value: 0.2, min: 0.0, max: 1.0, step: 0.05 }
     }
   },
   dither: {
@@ -700,8 +692,8 @@ export const SHADER_EFFECTS: Record<string, ShaderEffect> = {
       }
     `,
     uniforms: {
-      uThreshold: { value: 0.5, min: 0.0, max: 1.0, step: 0.05 },
-      uStrength: { value: 1.0, min: 0.0, max: 1.0, step: 0.05 }
+      uThreshold: { type: 'float', value: 0.5, min: 0.0, max: 1.0, step: 0.05 },
+      uStrength: { type: 'float', value: 1.0, min: 0.0, max: 1.0, step: 0.05 }
     }
   }
   // ripple effect removed

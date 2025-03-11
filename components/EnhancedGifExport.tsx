@@ -18,14 +18,25 @@ import {
 import { createImage, createCanvas, isBrowser, safelyImportBrowserModule } from '@/lib/browser-utils';
 
 interface EnhancedGifExportProps {
-  imageUrl: string;
+  imageUrl?: string;
+  imageElement?: HTMLImageElement | null;
+  canvasRef?: React.RefObject<HTMLCanvasElement>;
+  effectName?: string;
+  effectParams?: Record<string, any>;
   onExportComplete?: (blob: Blob, url: string) => void;
 }
 
-export default function EnhancedGifExport({ imageUrl, onExportComplete }: EnhancedGifExportProps) {
+export default function EnhancedGifExport({ 
+  imageUrl, 
+  imageElement,
+  canvasRef: externalCanvasRef,
+  effectName,
+  effectParams,
+  onExportComplete 
+}: EnhancedGifExportProps) {
   // State for selected effect and parameters
-  const [selectedEffectKey, setSelectedEffectKey] = useState<string>('none');
-  const [uniformValues, setUniformValues] = useState<Record<string, any>>({});
+  const [selectedEffectKey, setSelectedEffectKey] = useState<string>(effectName || 'none');
+  const [uniformValues, setUniformValues] = useState<Record<string, any>>(effectParams || {});
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [isGifLibraryAvailable, setIsGifLibraryAvailable] = useState<boolean | null>(null);
@@ -34,9 +45,10 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
   const [gifDuration, setGifDuration] = useState<number>(1.0);
   const [gifQuality, setGifQuality] = useState<number>(10);
   
-  // Preview canvas ref
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const imageRef = useRef<HTMLImageElement | null>(null);
+  // Preview canvas ref - use either external or internal
+  const internalCanvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRef = externalCanvasRef || internalCanvasRef;
+  const imageRef = useRef<HTMLImageElement | null>(imageElement || null);
   
   // Check if GIF library is available
   useEffect(() => {
@@ -64,43 +76,68 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
   
   // Load and initialize the image
   useEffect(() => {
-    if (!imageUrl) return;
+    if (!imageUrl && !imageElement) return;
     
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    
-    img.onload = () => {
-      imageRef.current = img;
+    if (imageElement) {
+      imageRef.current = imageElement;
       
-      // Draw the original image on the preview canvas
-      if (canvasRef.current) {
+      // Draw the image on canvas if provided
+      if (canvasRef.current && !externalCanvasRef) {
         const ctx = canvasRef.current.getContext('2d');
         if (ctx) {
           // Set canvas size to match image
-          canvasRef.current.width = img.width;
-          canvasRef.current.height = img.height;
+          canvasRef.current.width = imageElement.width;
+          canvasRef.current.height = imageElement.height;
           
           // Draw the image
           ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-          ctx.drawImage(img, 0, 0);
+          ctx.drawImage(imageElement, 0, 0);
         }
       }
-    };
-    
-    img.onerror = (err) => {
-      console.error('Error loading image:', err);
-    };
-    
-    img.src = imageUrl;
-    
-    return () => {
-      img.onload = null;
-      img.onerror = null;
-    };
-  }, [imageUrl]);
+    } else if (imageUrl) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      
+      img.onload = () => {
+        imageRef.current = img;
+        
+        // Draw the original image on the preview canvas
+        if (canvasRef.current && !externalCanvasRef) {
+          const ctx = canvasRef.current.getContext('2d');
+          if (ctx) {
+            // Set canvas size to match image
+            canvasRef.current.width = img.width;
+            canvasRef.current.height = img.height;
+            
+            // Draw the image
+            ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+            ctx.drawImage(img, 0, 0);
+          }
+        }
+      };
+      
+      img.onerror = (err) => {
+        console.error('Error loading image:', err);
+      };
+      
+      img.src = imageUrl;
+      
+      return () => {
+        img.onload = null;
+        img.onerror = null;
+      };
+    }
+  }, [imageUrl, imageElement, externalCanvasRef, canvasRef]);
   
   // Initialize uniform values when effect changes
   useEffect(() => {
+    // If effect params are provided directly, use those instead
+    if (effectParams && effectName && effectName !== 'none') {
+      setUniformValues(effectParams);
+      setSelectedEffectKey(effectName);
+      return;
+    }
+
     if (selectedEffectKey === 'none') {
       setUniformValues({});
       return;
@@ -120,7 +157,7 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
     });
     
     setUniformValues(initialValues);
-  }, [selectedEffectKey]);
+  }, [selectedEffectKey, effectName, effectParams]);
   
   // Apply the selected shader to the image
   const applyShader = useCallback(async () => {
@@ -174,6 +211,7 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
   // Export the processed image as a GIF
   const exportAsGif = useCallback(async () => {
     if (!imageRef.current || selectedEffectKey === 'none' || isGifLibraryAvailable !== true) {
+      alert('Please ensure an image is loaded and an effect is selected.');
       return;
     }
     
@@ -200,14 +238,14 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
             Math.sin(time * Math.PI * 2) * 0.5;
         } else if (selectedEffectKey === 'halftone' && typeof uniformValues.u_angle === 'number') {
           animatedUniforms.u_angle = (uniformValues.u_angle + time) % 6.28;
-        } else if (selectedEffectKey === 'ripple') {
-          // For ripple effect, time is the most important parameter
-          animatedUniforms.u_time = time * 10.0; // Scale time for more noticeable animation
-          
-          // Optional: We can also vary other parameters for more dynamic effects
-          if (typeof uniformValues.u_amplitude === 'number' && uniformValues.u_amplitude > 0) {
-            animatedUniforms.u_amplitude = uniformValues.u_amplitude * (0.8 + 0.4 * Math.sin(time * Math.PI));
-          }
+        } else if (selectedEffectKey === 'bw' && typeof uniformValues.u_threshold === 'number') {
+          // For black and white, animate the threshold
+          animatedUniforms.u_threshold = uniformValues.u_threshold + 
+            Math.sin(time * Math.PI * 2) * 0.15;
+        } else if (selectedEffectKey === 'sepia' && typeof uniformValues.u_intensity === 'number') {
+          // For sepia, animate the intensity
+          animatedUniforms.u_intensity = uniformValues.u_intensity + 
+            Math.sin(time * Math.PI * 2) * 0.2;
         }
         
         // Process the image with the current time's parameters
@@ -245,9 +283,19 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
         onExportComplete(result as Blob, url);
       }
       
+      // Open in a new window for preview
+      window.open(url, '_blank');
+      
       return url;
     } catch (err) {
       console.error('Error exporting GIF:', err);
+      let errorMessage = 'Unknown error';
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+      alert(`Error creating GIF: ${errorMessage}`);
     } finally {
       setIsExporting(false);
     }
@@ -267,189 +315,193 @@ export default function EnhancedGifExport({ imageUrl, onExportComplete }: Enhanc
   // Get the current effect for controls
   const currentEffect = selectedEffectKey !== 'none' ? SHADER_EFFECTS[selectedEffectKey] : null;
   
+  // Main render for the component
   return (
-    <div className="w-full space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Left column - Effect selection and parameters */}
-        <div className="space-y-4">
-          <div className="p-4 border rounded-md bg-white">
-            <h2 className="text-lg font-semibold mb-4">Shader Effect</h2>
-            
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">Select Effect</label>
-              <Select
-                value={selectedEffectKey}
-                onValueChange={setSelectedEffectKey}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select an effect" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None (Original)</SelectItem>
-                  {Object.entries(SHADER_EFFECTS).map(([key, effect]) => (
-                    <SelectItem key={key} value={key}>
-                      {effect.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {showControls && currentEffect && (
-              <div className="space-y-4">
-                {Object.entries(currentEffect.uniforms).map(([key, uniform]) => (
-                  <div key={key} className="space-y-1">
+    <div className="gif-export">
+      {/* If we're used with explicit parameters, show a simple export button */}
+      {effectName && effectParams ? (
+        <Button 
+          variant="outline" 
+          onClick={exportAsGif} 
+          disabled={isExporting || isGifLibraryAvailable === false}
+          className="flex items-center space-x-2"
+        >
+          {isExporting ? (
+            <>
+              <svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>Creating GIF...</span>
+            </>
+          ) : (
+            <>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="M20.4 14.5L16 10 4 20" />
+              </svg>
+              <span>Export as GIF</span>
+            </>
+          )}
+        </Button>
+      ) : (
+        /* Full UI for standalone usage */
+        <div className="p-4 space-y-6">
+          <h3 className="text-lg font-medium">Export Animated GIF</h3>
+          
+          {/* Effect selection */}
+          <div className="space-y-2">
+            <Label htmlFor="effect-select">Effect</Label>
+            <Select
+              value={selectedEffectKey}
+              onValueChange={setSelectedEffectKey}
+            >
+              <SelectTrigger id="effect-select">
+                <SelectValue placeholder="Select an effect" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {Object.entries(SHADER_EFFECTS).map(([key, effect]) => (
+                  <SelectItem key={key} value={key}>
+                    {effect.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {/* Effect parameters - only show if an effect is selected */}
+          {selectedEffectKey !== 'none' && SHADER_EFFECTS[selectedEffectKey] && (
+            <div className="space-y-4">
+              <h4 className="font-medium">Effect Parameters</h4>
+              
+              {Object.entries(SHADER_EFFECTS[selectedEffectKey].uniforms).map(([key, uniform]) => {
+                // Skip non-adjustable parameters
+                if (uniform.type !== 'float' || key === 'u_time') return null;
+                
+                return (
+                  <div key={key} className="space-y-2">
                     <div className="flex justify-between">
-                      <label className="text-sm font-medium">
-                        {key.replace(/^[u_]/, '')}
-                      </label>
-                      <span className="text-xs">
-                        {typeof uniformValues[key] === 'number' 
-                          ? uniformValues[key].toFixed(2) 
-                          : typeof uniform.value === 'number' 
-                            ? uniform.value.toFixed(2)
-                            : String(uniform.value)}
+                      <Label htmlFor={`param-${key}`}>{uniform.name || key}</Label>
+                      <span className="text-sm text-gray-500">
+                        {uniformValues[key]?.toFixed(2) || '0.00'}
                       </span>
                     </div>
-                    <Slider
-                      value={[
-                        typeof uniformValues[key] === 'number'
-                          ? uniformValues[key]
-                          : typeof uniform.value === 'number'
-                            ? uniform.value
-                            : 0
-                      ]}
+                    
+                    <Slider 
+                      id={`param-${key}`}
                       min={uniform.min || 0}
                       max={uniform.max || 1}
                       step={uniform.step || 0.01}
-                      onValueChange={values => handleUniformChange(key, values[0])}
-                      disabled={isProcessing || isExporting}
+                      value={[uniformValues[key] || uniform.value || 0]}
+                      onValueChange={(values) => {
+                        setUniformValues({
+                          ...uniformValues,
+                          [key]: values[0],
+                        });
+                      }}
                     />
                   </div>
-                ))}
-                
-                <Button
-                  onClick={applyShader}
-                  disabled={isProcessing || isExporting}
-                  className="w-full"
-                >
-                  {isProcessing ? 'Processing...' : 'Apply Effect'}
-                </Button>
-              </div>
-            )}
-          </div>
-          
-          {selectedEffectKey !== 'none' && isGifLibraryAvailable === true && (
-            <div className="p-4 border rounded-md bg-gray-50">
-              <h3 className="text-sm font-medium mb-3">GIF Export Options</h3>
+                );
+              })}
               
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <div className="flex justify-between">
-                    <label className="text-sm">Frame Count</label>
-                    <span className="text-xs">{gifFrameCount}</span>
-                  </div>
-                  <Slider
-                    value={[gifFrameCount]}
-                    min={5}
-                    max={30}
-                    step={1}
-                    onValueChange={values => setGifFrameCount(values[0])}
-                    disabled={isExporting}
-                  />
-                </div>
-                
-                <div className="space-y-1">
-                  <div className="flex justify-between">
-                    <label className="text-sm">Duration (seconds)</label>
-                    <span className="text-xs">{gifDuration.toFixed(1)}</span>
-                  </div>
-                  <Slider
-                    value={[gifDuration]}
-                    min={0.5}
-                    max={5.0}
-                    step={0.1}
-                    onValueChange={values => setGifDuration(values[0])}
-                    disabled={isExporting}
-                  />
-                </div>
-                
-                <div className="space-y-1">
-                  <div className="flex justify-between">
-                    <label className="text-sm">Quality (lower is better)</label>
-                    <span className="text-xs">{gifQuality}</span>
-                  </div>
-                  <Slider
-                    value={[gifQuality]}
-                    min={1}
-                    max={20}
-                    step={1}
-                    onValueChange={values => setGifQuality(values[0])}
-                    disabled={isExporting}
-                  />
-                </div>
-                
-                <Button
-                  onClick={exportAsGif}
-                  disabled={isExporting || isGifLibraryAvailable !== true}
-                  className="w-full"
-                  variant="secondary"
-                >
-                  {isExporting ? 'Creating GIF...' : 'Export as GIF'}
-                </Button>
-              </div>
+              <Button 
+                onClick={applyShader}
+                disabled={isProcessing}
+                className="w-full"
+              >
+                {isProcessing ? 'Processing...' : 'Apply Effect'}
+              </Button>
             </div>
           )}
-        </div>
-        
-        {/* Right column - Preview */}
-        <div className="space-y-4">
-          <div className="p-4 border rounded-md bg-white">
-            <h2 className="text-lg font-semibold mb-4">Preview</h2>
+          
+          {/* GIF export configuration */}
+          <div className="space-y-4">
+            <h4 className="font-medium">GIF Options</h4>
             
-            <div className="relative w-full">
-              <canvas
-                ref={canvasRef}
-                className="w-full h-auto bg-gray-100 rounded overflow-hidden"
-                style={{ aspectRatio: '16/9', objectFit: 'contain' }}
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <Label htmlFor="gif-frames">Frames</Label>
+                <span className="text-sm text-gray-500">{gifFrameCount}</span>
+              </div>
+              <Slider 
+                id="gif-frames"
+                min={5}
+                max={30}
+                step={1}
+                value={[gifFrameCount]}
+                onValueChange={(values) => setGifFrameCount(values[0])}
               />
-              
-              {(isProcessing || isExporting) && (
-                <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center rounded">
-                  <div className="text-white text-center">
-                    <div className="animate-spin h-8 w-8 border-4 border-white border-t-transparent rounded-full mx-auto mb-2"></div>
-                    <p>{isExporting ? 'Creating GIF...' : 'Processing effect...'}</p>
-                  </div>
-                </div>
-              )}
+              <p className="text-xs text-gray-500">More frames = smoother animation but larger file</p>
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <Label htmlFor="gif-duration">Duration (seconds)</Label>
+                <span className="text-sm text-gray-500">{gifDuration.toFixed(1)}</span>
+              </div>
+              <Slider 
+                id="gif-duration"
+                min={0.5}
+                max={5.0}
+                step={0.1}
+                value={[gifDuration]}
+                onValueChange={(values) => setGifDuration(values[0])}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <Label htmlFor="gif-quality">Quality</Label>
+                <span className="text-sm text-gray-500">{gifQuality}</span>
+              </div>
+              <Slider 
+                id="gif-quality"
+                min={1}
+                max={20}
+                step={1}
+                value={[gifQuality]}
+                onValueChange={(values) => setGifQuality(values[0])}
+              />
+              <p className="text-xs text-gray-500">Lower quality = smaller file size</p>
             </div>
             
             {processedImageUrl && (
-              <div className="mt-4">
-                <a
-                  href={processedImageUrl}
-                  download="processed-image.png"
-                  className="text-sm text-blue-600 hover:underline"
-                >
-                  Download Processed Image
-                </a>
+              <div className="space-y-2">
+                <Label>Preview</Label>
+                <div className="border rounded overflow-hidden">
+                  <canvas ref={canvasRef} className="w-full h-auto" />
+                </div>
               </div>
             )}
-          </div>
-          
-          {isGifLibraryAvailable === false && (
-            <div className="p-4 border border-yellow-200 rounded-md bg-yellow-50">
-              <h3 className="text-sm font-medium text-yellow-800 mb-2">GIF Export Not Available</h3>
-              <p className="text-xs text-yellow-700">
-                The GIF export library is not available in your environment. Please install the required dependencies:
+            
+            <Button 
+              onClick={exportAsGif} 
+              disabled={isExporting || !imageRef.current || selectedEffectKey === 'none' || isGifLibraryAvailable === false}
+              className="w-full"
+            >
+              {isExporting ? (
+                <span className="flex items-center">
+                  <svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Creating GIF...
+                </span>
+              ) : (
+                'Export as GIF'
+              )}
+            </Button>
+            
+            {isGifLibraryAvailable === false && (
+              <p className="text-sm text-red-500">
+                GIF export is not available. Please check the browser console for details.
               </p>
-              <pre className="mt-2 text-xs bg-yellow-100 p-2 rounded">
-                npm install gif.js
-              </pre>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 } 
