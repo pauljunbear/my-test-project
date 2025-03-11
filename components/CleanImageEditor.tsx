@@ -1098,13 +1098,22 @@ export default function CleanImageEditor() {
     setIsCropping(true);
     setIsResizing(false);
     
-    // Reset crop state
+    // Set initial crop state to a default selection in the center (1/3 of the image)
+    const width = canvasRef.current.width;
+    const height = canvasRef.current.height;
+    
+    const cropWidth = Math.floor(width / 3);
+    const cropHeight = Math.floor(height / 3);
+    
+    const startX = Math.floor((width - cropWidth) / 2);
+    const startY = Math.floor((height - cropHeight) / 2);
+    
     setCropState({
       active: false,
-      startX: 0,
-      startY: 0,
-      endX: 0,
-      endY: 0
+      startX: startX,
+      startY: startY,
+      endX: startX + cropWidth,
+      endY: startY + cropHeight
     });
     
     // Setup crop canvas
@@ -1114,6 +1123,9 @@ export default function CleanImageEditor() {
       const ctx = cropCanvasRef.current.getContext('2d');
       if (ctx) {
         ctx.drawImage(canvasRef.current, 0, 0);
+        
+        // Draw initial crop overlay
+        setTimeout(() => drawCropOverlay(), 50);
       }
     }
   };
@@ -1187,7 +1199,7 @@ export default function CleanImageEditor() {
     const height = Math.abs(cropState.endY - cropState.startY);
     
     // Draw semi-transparent overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
     ctx.fillRect(0, 0, cropCanvasRef.current.width, cropCanvasRef.current.height);
     
     // Clear the crop area
@@ -1195,8 +1207,34 @@ export default function CleanImageEditor() {
     
     // Draw border around crop area
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.strokeRect(startX, startY, width, height);
+    
+    // Draw corner handles
+    const handleSize = 10;
+    ctx.fillStyle = '#ffffff';
+    
+    // Top-left handle
+    ctx.fillRect(startX - handleSize/2, startY - handleSize/2, handleSize, handleSize);
+    
+    // Top-right handle
+    ctx.fillRect(startX + width - handleSize/2, startY - handleSize/2, handleSize, handleSize);
+    
+    // Bottom-left handle
+    ctx.fillRect(startX - handleSize/2, startY + height - handleSize/2, handleSize, handleSize);
+    
+    // Bottom-right handle
+    ctx.fillRect(startX + width - handleSize/2, startY + height - handleSize/2, handleSize, handleSize);
+    
+    // Draw dimensions text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Draw width x height text in the center of the selection
+    const dimensionText = `${Math.round(width)} × ${Math.round(height)}`;
+    ctx.fillText(dimensionText, startX + width/2, startY + height/2);
   };
   
   // Apply crop
@@ -1370,7 +1408,7 @@ export default function CleanImageEditor() {
 
   // Component implementation will continue...
   return (
-    <div className="w-full h-full flex flex-col space-y-6 p-4 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950">
+    <div className="w-full h-full flex flex-col space-y-6 p-4 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950 overflow-hidden">
       {/* Hidden canvas for processing */}
       <canvas ref={hiddenCanvasRef} style={{ display: 'none' }} />
       
@@ -1532,7 +1570,7 @@ export default function CleanImageEditor() {
         </div>
       </div>
       
-      <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 overflow-auto">
         {/* Main image display area */}
         <div className="flex-1 flex flex-col bg-white dark:bg-gray-800 border rounded-xl shadow-sm overflow-hidden">
           {!image ? (
@@ -1549,7 +1587,7 @@ export default function CleanImageEditor() {
                   {canvasRef.current?.width || 0} × {canvasRef.current?.height || 0}
                 </span>
               </div>
-              <div className="flex-1 flex items-center justify-center p-8 bg-[#f0f0f0] dark:bg-gray-900 bg-grid-pattern">
+              <div className="flex-1 flex items-center justify-center p-8 bg-[#f0f0f0] dark:bg-gray-900 bg-grid-pattern overflow-auto">
                 <div className="relative rounded-lg overflow-hidden shadow-xl transition-all duration-300 hover:shadow-2xl">
                   {isCropping ? (
                     <canvas
@@ -1584,7 +1622,85 @@ export default function CleanImageEditor() {
         </div>
         
         {/* Side Panel */}
-        <div className="w-full lg:w-80 flex-shrink-0 flex flex-col gap-4">
+        <div className="w-full lg:w-80 flex-shrink-0 flex flex-col gap-4 overflow-y-auto">
+          {/* Crop Controls */}
+          {isCropping && image && (
+            <Card className="rounded-xl shadow-sm overflow-hidden border-0">
+              <CardHeader className="bg-white dark:bg-gray-800 border-b pb-3">
+                <CardTitle className="text-lg font-semibold">Crop Image</CardTitle>
+              </CardHeader>
+              <CardContent className="bg-white dark:bg-gray-800 p-4 space-y-5">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label htmlFor="crop-width" className="text-sm font-medium">Width</Label>
+                      <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">
+                        {Math.abs(cropState.endX - cropState.startX).toFixed(0)}px
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        id="crop-width"
+                        type="number"
+                        min="10"
+                        max={canvasRef.current?.width || 1000}
+                        value={Math.abs(cropState.endX - cropState.startX).toFixed(0)}
+                        onChange={(e) => {
+                          const width = parseInt(e.target.value);
+                          if (isNaN(width)) return;
+                          
+                          setCropState(prev => ({
+                            ...prev,
+                            endX: prev.startX + width
+                          }));
+                          
+                          // Redraw crop overlay
+                          drawCropOverlay();
+                        }}
+                        className="w-full p-2 border rounded-md"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label htmlFor="crop-height" className="text-sm font-medium">Height</Label>
+                      <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">
+                        {Math.abs(cropState.endY - cropState.startY).toFixed(0)}px
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        id="crop-height"
+                        type="number"
+                        min="10"
+                        max={canvasRef.current?.height || 1000}
+                        value={Math.abs(cropState.endY - cropState.startY).toFixed(0)}
+                        onChange={(e) => {
+                          const height = parseInt(e.target.value);
+                          if (isNaN(height)) return;
+                          
+                          setCropState(prev => ({
+                            ...prev,
+                            endY: prev.startY + height
+                          }));
+                          
+                          // Redraw crop overlay
+                          drawCropOverlay();
+                        }}
+                        className="w-full p-2 border rounded-md"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="pt-2 text-sm text-muted-foreground">
+                    <p>Click and drag on the image to select crop area, or enter dimensions manually.</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
           {/* Resize Controls */}
           {isResizing && image && (
             <Card className="rounded-xl shadow-sm overflow-hidden border-0">
@@ -1598,15 +1714,28 @@ export default function CleanImageEditor() {
                       <Label htmlFor="resize-width" className="text-sm font-medium">Width</Label>
                       <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">{resizeWidth}px</span>
                     </div>
-                    <Slider 
-                      id="resize-width"
-                      min={50} 
-                      max={Math.max(2000, canvasRef.current?.width || 0)} 
-                      step={1} 
-                      value={[resizeWidth]} 
-                      onValueChange={([value]) => handleResizeWidthChange(value)}
-                      className="mt-1"
-                    />
+                    <div className="flex items-center space-x-2">
+                      <Slider 
+                        id="resize-width"
+                        min={50} 
+                        max={Math.max(2000, canvasRef.current?.width || 0)} 
+                        step={1} 
+                        value={[resizeWidth]} 
+                        onValueChange={([value]) => handleResizeWidthChange(value)}
+                        className="flex-1"
+                      />
+                      <input
+                        type="number"
+                        min="50"
+                        max={Math.max(2000, canvasRef.current?.width || 0)}
+                        value={resizeWidth}
+                        onChange={(e) => {
+                          const width = parseInt(e.target.value);
+                          if (!isNaN(width)) handleResizeWidthChange(width);
+                        }}
+                        className="w-20 p-1 text-sm border rounded-md"
+                      />
+                    </div>
                   </div>
                   
                   <div className="space-y-2">
@@ -1614,15 +1743,28 @@ export default function CleanImageEditor() {
                       <Label htmlFor="resize-height" className="text-sm font-medium">Height</Label>
                       <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">{resizeHeight}px</span>
                     </div>
-                    <Slider 
-                      id="resize-height"
-                      min={50} 
-                      max={Math.max(2000, canvasRef.current?.height || 0)} 
-                      step={1} 
-                      value={[resizeHeight]} 
-                      onValueChange={([value]) => handleResizeHeightChange(value)}
-                      className="mt-1"
-                    />
+                    <div className="flex items-center space-x-2">
+                      <Slider 
+                        id="resize-height"
+                        min={50} 
+                        max={Math.max(2000, canvasRef.current?.height || 0)} 
+                        step={1} 
+                        value={[resizeHeight]} 
+                        onValueChange={([value]) => handleResizeHeightChange(value)}
+                        className="flex-1"
+                      />
+                      <input
+                        type="number"
+                        min="50"
+                        max={Math.max(2000, canvasRef.current?.height || 0)}
+                        value={resizeHeight}
+                        onChange={(e) => {
+                          const height = parseInt(e.target.value);
+                          if (!isNaN(height)) handleResizeHeightChange(height);
+                        }}
+                        className="w-20 p-1 text-sm border rounded-md"
+                      />
+                    </div>
                   </div>
                   
                   <div className="flex items-center space-x-2 pt-2">
