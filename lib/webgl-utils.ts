@@ -474,213 +474,237 @@ export const processImageWithShader = async (
   }
 };
 
-// Export a collection of predefined shader effects
+// Update the ShaderEffect type if needed
+export type ShaderEffect = {
+  name: string;
+  vertex: string;
+  fragment: string;
+  uniforms: Record<string, any>;
+};
+
+// Basic vertex shader that just passes through positions and texture coordinates
+export const basicVertexShader = `
+  attribute vec4 aVertexPosition;
+  attribute vec2 aTextureCoord;
+  varying vec2 vTextureCoord;
+  void main() {
+    gl_Position = aVertexPosition;
+    vTextureCoord = aTextureCoord;
+  }
+`;
+
+// Basic fragment shader that just outputs the texture color
+export const basicFragmentShader = `
+  precision mediump float;
+  varying vec2 vTextureCoord;
+  uniform sampler2D uSampler;
+  void main() {
+    gl_FragColor = texture2D(uSampler, vTextureCoord);
+  }
+`;
+
+// Update SHADER_EFFECTS to include BW and Sepia and remove Ripple
 export const SHADER_EFFECTS: Record<string, ShaderEffect> = {
-  pixelate: {
-    name: 'Pixelate',
-    vertexShader: DEFAULT_VERTEX_SHADER,
-    fragmentShader: `
-      precision mediump float;
-      
-      uniform sampler2D u_texture;
-      uniform vec2 u_resolution;
-      uniform float u_pixel_size;
-      
-      varying vec2 v_texCoord;
-      
-      void main() {
-        vec2 uv = v_texCoord;
-        
-        // Pixelation effect
-        float dx = u_pixel_size / u_resolution.x;
-        float dy = u_pixel_size / u_resolution.y;
-        
-        // Calculate the nearest pixel center
-        vec2 pixelated = vec2(
-          dx * floor(uv.x / dx) + dx * 0.5,
-          dy * floor(uv.y / dy) + dy * 0.5
-        );
-        
-        gl_FragColor = texture2D(u_texture, pixelated);
-      }
-    `,
-    uniforms: {
-      u_pixel_size: { type: 'float', value: 10.0, min: 1.0, max: 100.0, step: 1.0 }
-    }
+  none: {
+    name: 'Original',
+    vertex: basicVertexShader,
+    fragment: basicFragmentShader,
+    uniforms: {}
   },
-  
-  dither: {
-    name: 'Dither',
-    vertexShader: DEFAULT_VERTEX_SHADER,
-    fragmentShader: `
+  blackwhite: {
+    name: 'B&W',
+    vertex: basicVertexShader,
+    fragment: `
       precision mediump float;
-      
-      uniform sampler2D u_texture;
-      uniform vec2 u_resolution;
-      uniform float u_dither_strength;
-      uniform float u_dither_scale;
-      
-      varying vec2 v_texCoord;
-      
-      // Pseudo-random function
-      float rand(vec2 co) {
-        return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
-      }
+      varying vec2 vTextureCoord;
+      uniform sampler2D uSampler;
+      uniform float uIntensity;
       
       void main() {
-        vec2 uv = v_texCoord;
-        vec4 color = texture2D(u_texture, uv);
-        
-        // Convert to grayscale
+        vec4 color = texture2D(uSampler, vTextureCoord);
         float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-        
-        // Apply dithering
-        float dither = rand(floor(uv * u_resolution / u_dither_scale) / (u_resolution / u_dither_scale));
-        
-        // Mix original and dithered effect
-        float dithered = step(dither, gray);
-        vec3 finalColor = mix(color.rgb, vec3(dithered), u_dither_strength);
-        
-        gl_FragColor = vec4(finalColor, color.a);
+        vec4 finalColor = vec4(gray, gray, gray, color.a);
+        gl_FragColor = finalColor;
       }
     `,
     uniforms: {
-      u_dither_strength: { type: 'float', value: 1.0, min: 0.0, max: 1.0, step: 0.01 },
-      u_dither_scale: { type: 'float', value: 1.0, min: 0.1, max: 10.0, step: 0.1 }
+      uIntensity: { value: 1.0, min: 0.0, max: 1.0, step: 0.1 }
     }
   },
-  
-  edgeDetect: {
-    name: 'Edge Detect',
-    vertexShader: DEFAULT_VERTEX_SHADER,
-    fragmentShader: `
+  sepia: {
+    name: 'Sepia',
+    vertex: basicVertexShader,
+    fragment: `
       precision mediump float;
-      
-      uniform sampler2D u_texture;
-      uniform vec2 u_resolution;
-      uniform float u_intensity;
-      
-      varying vec2 v_texCoord;
+      varying vec2 vTextureCoord;
+      uniform sampler2D uSampler;
+      uniform float uIntensity;
       
       void main() {
-        vec2 uv = v_texCoord;
-        vec2 texel = 1.0 / u_resolution;
-        
-        // Sample neighboring pixels
-        vec4 top = texture2D(u_texture, vec2(uv.x, uv.y - texel.y));
-        vec4 bottom = texture2D(u_texture, vec2(uv.x, uv.y + texel.y));
-        vec4 left = texture2D(u_texture, vec2(uv.x - texel.x, uv.y));
-        vec4 right = texture2D(u_texture, vec2(uv.x + texel.x, uv.y));
-        vec4 current = texture2D(u_texture, uv);
-        
-        // Calculate edges using Sobel filter
-        vec4 horizEdge = abs(right - left);
-        vec4 vertEdge = abs(top - bottom);
-        vec4 edge = sqrt(horizEdge * horizEdge + vertEdge * vertEdge);
-        
-        // Adjust intensity and output
-        edge *= u_intensity;
-        
-        gl_FragColor = vec4(edge.rgb, current.a);
+        vec4 color = texture2D(uSampler, vTextureCoord);
+        float r = color.r * 0.393 + color.g * 0.769 + color.b * 0.189;
+        float g = color.r * 0.349 + color.g * 0.686 + color.b * 0.168;
+        float b = color.r * 0.272 + color.g * 0.534 + color.b * 0.131;
+        vec4 sepia = vec4(r, g, b, color.a);
+        vec4 finalColor = mix(color, sepia, uIntensity);
+        gl_FragColor = finalColor;
       }
     `,
     uniforms: {
-      u_intensity: { type: 'float', value: 1.0, min: 0.0, max: 5.0, step: 0.1 }
+      uIntensity: { value: 1.0, min: 0.0, max: 1.0, step: 0.1 }
     }
   },
-  
   halftone: {
     name: 'Halftone',
-    vertexShader: DEFAULT_VERTEX_SHADER,
-    fragmentShader: `
+    vertex: basicVertexShader,
+    fragment: `
       precision mediump float;
-      
-      uniform sampler2D u_texture;
-      uniform vec2 u_resolution;
-      uniform float u_dot_size;
-      uniform float u_angle;
-      
-      varying vec2 v_texCoord;
+      varying vec2 vTextureCoord;
+      uniform sampler2D uSampler;
+      uniform float uDotSize;
+      uniform float uSpacing;
+      uniform float uAngle;
       
       void main() {
-        vec2 uv = v_texCoord;
-        vec4 color = texture2D(u_texture, uv);
+        float s = sin(uAngle), c = cos(uAngle);
+        vec2 tex = vTextureCoord;
+        vec2 tex2 = tex * mat2(c, -s, s, c); // Rotate the texture coordinates
+        
+        vec2 p = tex2 * uSpacing;
+        vec2 pf = fract(p);
+        vec2 pi = floor(p);
+        
+        // Center of the dot
+        vec2 center = pi + vec2(0.5);
+        vec2 centerPos = center / uSpacing;
+        vec2 unrotatedCenter = centerPos * mat2(c, s, -s, c); // Unrotate
+        
+        // Sample original texture at the center
+        vec4 color = texture2D(uSampler, unrotatedCenter);
         
         // Convert to grayscale
-        float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+        float gray = (color.r + color.g + color.b) / 3.0;
         
-        // Calculate grid based on resolution and dot size
-        float scale = u_dot_size;
-        float s = sin(u_angle);
-        float c = cos(u_angle);
+        // Calculate dot size based on brightness
+        float radius = gray * uDotSize;
         
-        // Transform coordinates
-        vec2 tex = uv * u_resolution;
-        vec2 rotated = vec2(
-          c * tex.x - s * tex.y,
-          s * tex.x + c * tex.y
+        // Calculate distance from current pixel to center
+        float dist = distance(pf, vec2(0.5));
+        
+        // Output 1 (white) or 0 (black) based on distance comparison
+        float finalValue = 1.0 - step(radius, dist);
+        
+        gl_FragColor = vec4(vec3(finalValue), 1.0);
+      }
+    `,
+    uniforms: {
+      uDotSize: { value: 0.5, min: 0.1, max: 0.9, step: 0.1 },
+      uSpacing: { value: 20.0, min: 5.0, max: 50.0, step: 1.0 },
+      uAngle: { value: 0.0, min: 0.0, max: 6.28, step: 0.1 }
+    }
+  },
+  duotone: {
+    name: 'Duotone',
+    vertex: basicVertexShader,
+    fragment: `
+      precision mediump float;
+      varying vec2 vTextureCoord;
+      uniform sampler2D uSampler;
+      uniform vec3 uColor1;
+      uniform vec3 uColor2;
+      uniform float uIntensity;
+      
+      void main() {
+        vec4 texColor = texture2D(uSampler, vTextureCoord);
+        float gray = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
+        vec3 duotone = mix(uColor1, uColor2, gray);
+        vec3 final = mix(texColor.rgb, duotone, uIntensity);
+        gl_FragColor = vec4(final, texColor.a);
+      }
+    `,
+    uniforms: {
+      uColor1: { value: [0.0, 0.0, 0.4], type: 'color' },
+      uColor2: { value: [1.0, 0.0, 0.0], type: 'color' },
+      uIntensity: { value: 1.0, min: 0.0, max: 1.0, step: 0.1 }
+    }
+  },
+  noise: {
+    name: 'Noise',
+    vertex: basicVertexShader,
+    fragment: `
+      precision mediump float;
+      varying vec2 vTextureCoord;
+      uniform sampler2D uSampler;
+      uniform float uAmount;
+      
+      // Simple pseudo-random function
+      float random(vec2 st) {
+        return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+      }
+      
+      void main() {
+        vec4 color = texture2D(uSampler, vTextureCoord);
+        float noise = random(vTextureCoord) * uAmount;
+        vec3 noisy = color.rgb + vec3(noise) - uAmount/2.0;
+        gl_FragColor = vec4(noisy, color.a);
+      }
+    `,
+    uniforms: {
+      uAmount: { value: 0.2, min: 0.0, max: 1.0, step: 0.05 }
+    }
+  },
+  dither: {
+    name: 'Dither',
+    vertex: basicVertexShader,
+    fragment: `
+      precision mediump float;
+      varying vec2 vTextureCoord;
+      uniform sampler2D uSampler;
+      uniform float uThreshold;
+      uniform float uStrength;
+      
+      // Simple dithering function using a Bayer matrix
+      float dither8x8(vec2 position, float brightness) {
+        int x = int(mod(position.x, 8.0));
+        int y = int(mod(position.y, 8.0));
+        
+        // Bayer matrix for 8x8 ordered dithering
+        int[64] bayer = int[](
+          0, 32, 8, 40, 2, 34, 10, 42,
+          48, 16, 56, 24, 50, 18, 58, 26,
+          12, 44, 4, 36, 14, 46, 6, 38,
+          60, 28, 52, 20, 62, 30, 54, 22,
+          3, 35, 11, 43, 1, 33, 9, 41,
+          51, 19, 59, 27, 49, 17, 57, 25,
+          15, 47, 7, 39, 13, 45, 5, 37,
+          63, 31, 55, 23, 61, 29, 53, 21
         );
         
-        // Create halftone pattern
-        vec2 nearest = 2.0 * fract(rotated / (2.0 * scale)) - 1.0;
-        float dist = length(nearest);
-        float radius = 0.5 * sqrt(gray);
+        int index = x + y * 8;
+        float limit = float(bayer[index]) / 64.0;
         
-        // Final color
-        float halftone = 1.0 - step(radius, dist);
-        vec3 finalColor = vec3(halftone);
+        return step(limit, brightness);
+      }
+      
+      void main() {
+        vec4 color = texture2D(uSampler, vTextureCoord);
+        float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+        
+        // Apply dithering based on threshold and position
+        float dithered = dither8x8(gl_FragCoord.xy, gray);
+        
+        // Mix between original and dithered based on strength
+        vec3 finalColor = mix(color.rgb, vec3(dithered), uStrength);
         
         gl_FragColor = vec4(finalColor, color.a);
       }
     `,
     uniforms: {
-      u_dot_size: { type: 'float', value: 6.0, min: 1.0, max: 20.0, step: 0.5 },
-      u_angle: { type: 'float', value: 0.785, min: 0.0, max: 3.14159, step: 0.01 } // default is 45 degrees
-    }
-  },
-  
-  ripple: {
-    name: 'Animated Ripple',
-    vertexShader: DEFAULT_VERTEX_SHADER,
-    fragmentShader: `
-      precision mediump float;
-      
-      uniform sampler2D u_texture;
-      uniform vec2 u_resolution;
-      uniform float u_time;
-      uniform float u_amplitude;
-      uniform float u_frequency;
-      uniform float u_speed;
-      
-      varying vec2 v_texCoord;
-      
-      void main() {
-        vec2 uv = v_texCoord;
-        
-        // Get center distance
-        vec2 center = vec2(0.5, 0.5);
-        float dist = distance(uv, center);
-        
-        // Calculate ripple effect
-        float angle = u_time * u_speed;
-        float waveFactor = sin(dist * u_frequency - angle) * u_amplitude;
-        
-        // Apply distortion to coordinates
-        vec2 distortedUV = uv + normalize(uv - center) * waveFactor / u_resolution;
-        
-        // Sample the texture with distorted coordinates
-        vec4 color = texture2D(u_texture, distortedUV);
-        
-        gl_FragColor = color;
-      }
-    `,
-    uniforms: {
-      u_time: { type: 'float', value: 0.0, min: 0.0, max: 10.0, step: 0.01 },
-      u_amplitude: { type: 'float', value: 5.0, min: 0.0, max: 50.0, step: 0.1 },
-      u_frequency: { type: 'float', value: 20.0, min: 1.0, max: 50.0, step: 0.5 },
-      u_speed: { type: 'float', value: 1.0, min: 0.1, max: 5.0, step: 0.1 }
+      uThreshold: { value: 0.5, min: 0.0, max: 1.0, step: 0.05 },
+      uStrength: { value: 1.0, min: 0.0, max: 1.0, step: 0.05 }
     }
   }
+  // ripple effect removed
 };
 
 // Utility for sampling frames for GIF export
