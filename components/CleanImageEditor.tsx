@@ -1093,14 +1093,20 @@ export default function CleanImageEditor() {
 
   // Start cropping mode
   const startCropping = () => {
-    if (!image || !canvasRef.current) return;
+    if (!image || !canvasRef.current) {
+      console.error("Cannot start cropping: image or canvas not available");
+      return;
+    }
     
+    console.log("Starting crop mode");
     setIsCropping(true);
     setIsResizing(false);
     
     // Set initial crop state to a default selection in the center (1/3 of the image)
     const width = canvasRef.current.width;
     const height = canvasRef.current.height;
+    
+    console.log(`Canvas dimensions: ${width}x${height}`);
     
     const cropWidth = Math.floor(width / 3);
     const cropHeight = Math.floor(height / 3);
@@ -1116,23 +1122,38 @@ export default function CleanImageEditor() {
       endY: startY + cropHeight
     });
     
+    console.log(`Initial crop selection: (${startX},${startY}) to (${startX + cropWidth},${startY + cropHeight})`);
+    
     // Setup crop canvas
     if (cropCanvasRef.current) {
       cropCanvasRef.current.width = canvasRef.current.width;
       cropCanvasRef.current.height = canvasRef.current.height;
+      console.log(`Crop canvas dimensions set to: ${cropCanvasRef.current.width}x${cropCanvasRef.current.height}`);
+      
       const ctx = cropCanvasRef.current.getContext('2d');
       if (ctx) {
         ctx.drawImage(canvasRef.current, 0, 0);
+        console.log("Image drawn to crop canvas");
         
         // Draw initial crop overlay
-        setTimeout(() => drawCropOverlay(), 50);
+        setTimeout(() => {
+          console.log("Drawing initial crop overlay");
+          drawCropOverlay();
+        }, 50);
+      } else {
+        console.error("Failed to get crop canvas context");
       }
+    } else {
+      console.error("Crop canvas ref is not available");
     }
   };
   
   // Handle mouse down for crop selection
   const handleCropMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isCropping || !cropCanvasRef.current) return;
+    if (!isCropping || !cropCanvasRef.current) {
+      console.log("Mouse down ignored: not in crop mode or canvas not available");
+      return;
+    }
     
     const rect = cropCanvasRef.current.getBoundingClientRect();
     const scaleX = cropCanvasRef.current.width / rect.width;
@@ -1140,6 +1161,8 @@ export default function CleanImageEditor() {
     
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
+    
+    console.log(`Crop selection started at (${x}, ${y})`);
     
     setCropState({
       active: true,
@@ -1152,7 +1175,9 @@ export default function CleanImageEditor() {
   
   // Handle mouse move for crop selection
   const handleCropMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isCropping || !cropState.active || !cropCanvasRef.current) return;
+    if (!isCropping || !cropState.active || !cropCanvasRef.current) {
+      return;
+    }
     
     const rect = cropCanvasRef.current.getBoundingClientRect();
     const scaleX = cropCanvasRef.current.width / rect.width;
@@ -1174,6 +1199,8 @@ export default function CleanImageEditor() {
   // Handle mouse up for crop selection
   const handleCropMouseUp = () => {
     if (!isCropping) return;
+    
+    console.log(`Crop selection completed: (${Math.min(cropState.startX, cropState.endX)}, ${Math.min(cropState.startY, cropState.endY)}) to (${Math.max(cropState.startX, cropState.endX)}, ${Math.max(cropState.startY, cropState.endY)})`);
     
     setCropState(prev => ({
       ...prev,
@@ -1198,48 +1225,77 @@ export default function CleanImageEditor() {
     const width = Math.abs(cropState.endX - cropState.startX);
     const height = Math.abs(cropState.endY - cropState.startY);
     
-    // Draw semi-transparent overlay
+    // Draw semi-transparent overlay with higher opacity (60% instead of default)
     ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
     ctx.fillRect(0, 0, cropCanvasRef.current.width, cropCanvasRef.current.height);
     
     // Clear the crop area
     ctx.clearRect(startX, startY, width, height);
     
-    // Draw border around crop area
+    // Draw border around crop area with increased width and more visible color
+    // First draw a slightly larger black border
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 5;
+    ctx.strokeRect(startX, startY, width, height);
+    
+    // Then draw a white border on top for contrast
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 3;
     ctx.strokeRect(startX, startY, width, height);
     
-    // Draw corner handles
-    const handleSize = 10;
-    ctx.fillStyle = '#ffffff';
+    // Draw corner handles with larger size
+    const handleSize = 12;
     
+    // Draw black outline for handles
+    ctx.fillStyle = '#000000';
+    // Top-left handle outline
+    ctx.fillRect(startX - handleSize/2 - 1, startY - handleSize/2 - 1, handleSize + 2, handleSize + 2);
+    // Top-right handle outline
+    ctx.fillRect(startX + width - handleSize/2 - 1, startY - handleSize/2 - 1, handleSize + 2, handleSize + 2);
+    // Bottom-left handle outline
+    ctx.fillRect(startX - handleSize/2 - 1, startY + height - handleSize/2 - 1, handleSize + 2, handleSize + 2);
+    // Bottom-right handle outline
+    ctx.fillRect(startX + width - handleSize/2 - 1, startY + height - handleSize/2 - 1, handleSize + 2, handleSize + 2);
+    
+    // Draw white handles
+    ctx.fillStyle = '#ffffff';
     // Top-left handle
     ctx.fillRect(startX - handleSize/2, startY - handleSize/2, handleSize, handleSize);
-    
     // Top-right handle
     ctx.fillRect(startX + width - handleSize/2, startY - handleSize/2, handleSize, handleSize);
-    
     // Bottom-left handle
     ctx.fillRect(startX - handleSize/2, startY + height - handleSize/2, handleSize, handleSize);
-    
     // Bottom-right handle
     ctx.fillRect(startX + width - handleSize/2, startY + height - handleSize/2, handleSize, handleSize);
     
-    // Draw dimensions text
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 14px sans-serif';
+    // Draw dimensions text with improved visibility
+    // First draw text shadow/outline
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 16px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
-    // Draw width x height text in the center of the selection
+    // Draw width x height text in the center of the selection with shadow
     const dimensionText = `${Math.round(width)} × ${Math.round(height)}`;
+    // Draw text outline
+    ctx.fillText(dimensionText, startX + width/2 - 1, startY + height/2 - 1);
+    ctx.fillText(dimensionText, startX + width/2 + 1, startY + height/2 - 1);
+    ctx.fillText(dimensionText, startX + width/2 - 1, startY + height/2 + 1);
+    ctx.fillText(dimensionText, startX + width/2 + 1, startY + height/2 + 1);
+    
+    // Draw the actual text in white
+    ctx.fillStyle = '#ffffff';
     ctx.fillText(dimensionText, startX + width/2, startY + height/2);
   };
   
   // Apply crop
   const applyCrop = () => {
-    if (!isCropping || !canvasRef.current || !hiddenCanvasRef.current || !image) return;
+    if (!isCropping || !canvasRef.current || !hiddenCanvasRef.current || !image) {
+      console.error("Cannot apply crop: missing required elements");
+      return;
+    }
+    
+    console.log("Applying crop...");
     
     // Calculate crop rectangle
     const startX = Math.min(cropState.startX, cropState.endX);
@@ -1247,67 +1303,93 @@ export default function CleanImageEditor() {
     const width = Math.abs(cropState.endX - cropState.startX);
     const height = Math.abs(cropState.endY - cropState.startY);
     
+    console.log(`Crop dimensions: ${width}x${height} at (${startX},${startY})`);
+    
     // Ensure we have a valid crop area
     if (width < 10 || height < 10) {
       alert('Please select a larger area to crop');
       return;
     }
     
-    // Create temporary canvas for cropped image
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    const tempCtx = tempCanvas.getContext('2d');
-    
-    if (!tempCtx) return;
-    
-    // Draw cropped portion
-    tempCtx.drawImage(
-      canvasRef.current,
-      startX, startY, width, height,
-      0, 0, width, height
-    );
-    
-    // Create new image from cropped canvas
-    const croppedImage = new Image();
-    croppedImage.onload = () => {
-      // Reset canvas dimensions
-      canvasRef.current!.width = width;
-      canvasRef.current!.height = height;
-      hiddenCanvasRef.current!.width = width;
-      hiddenCanvasRef.current!.height = height;
+    try {
+      // Create temporary canvas for cropped image
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
       
-      // Draw cropped image to both canvases
-      const ctx = canvasRef.current!.getContext('2d');
-      const hiddenCtx = hiddenCanvasRef.current!.getContext('2d');
-      
-      if (ctx && hiddenCtx) {
-        ctx.drawImage(croppedImage, 0, 0);
-        hiddenCtx.drawImage(croppedImage, 0, 0);
-        
-        // Update original image data
-        const newImageData = hiddenCtx.getImageData(0, 0, width, height);
-        setOriginalImageData(newImageData);
-        
-        // Update current image data URL
-        setCurrentImageDataUrl(canvasRef.current!.toDataURL('image/png'));
-        
-        // Update image dimensions
-        const newImg = new Image();
-        newImg.src = tempCanvas.toDataURL('image/png');
-        setImage(newImg);
-        
-        // Reset applied effects since we're working with a new image
-        setAppliedEffects([]);
-        setHistory([]);
-        setHistoryIndex(-1);
+      if (!tempCtx) {
+        console.error("Failed to get temporary canvas context");
+        return;
       }
       
-      // Exit crop mode
-      setIsCropping(false);
-    };
-    
-    croppedImage.src = tempCanvas.toDataURL('image/png');
+      // Draw cropped portion
+      tempCtx.drawImage(
+        canvasRef.current,
+        startX, startY, width, height,
+        0, 0, width, height
+      );
+      
+      // Create new image from cropped canvas
+      const croppedImage = new Image();
+      
+      // Set up onload handler before setting src
+      croppedImage.onload = () => {
+        console.log("Cropped image loaded successfully");
+        
+        // Reset canvas dimensions
+        canvasRef.current!.width = width;
+        canvasRef.current!.height = height;
+        hiddenCanvasRef.current!.width = width;
+        hiddenCanvasRef.current!.height = height;
+        
+        // Draw cropped image to both canvases
+        const ctx = canvasRef.current!.getContext('2d', { willReadFrequently: true });
+        const hiddenCtx = hiddenCanvasRef.current!.getContext('2d', { willReadFrequently: true });
+        
+        if (ctx && hiddenCtx) {
+          ctx.drawImage(croppedImage, 0, 0);
+          hiddenCtx.drawImage(croppedImage, 0, 0);
+          
+          // Update original image data
+          const newImageData = hiddenCtx.getImageData(0, 0, width, height);
+          setOriginalImageData(newImageData);
+          
+          // Update current image data URL
+          setCurrentImageDataUrl(canvasRef.current!.toDataURL('image/png'));
+          
+          // Update image dimensions
+          const newImg = new Image();
+          newImg.src = tempCanvas.toDataURL('image/png');
+          newImg.onload = () => {
+            setImage(newImg);
+            console.log("New image set with dimensions:", newImg.width, "x", newImg.height);
+          };
+          
+          // Reset applied effects since we're working with a new image
+          setAppliedEffects([]);
+          setHistory([]);
+          setHistoryIndex(-1);
+        } else {
+          console.error("Failed to get canvas contexts after crop");
+        }
+        
+        // Exit crop mode
+        setIsCropping(false);
+      };
+      
+      croppedImage.onerror = (err) => {
+        console.error("Error loading cropped image:", err);
+      };
+      
+      // Set the source to trigger the onload event
+      const dataUrl = tempCanvas.toDataURL('image/png');
+      console.log("Generated data URL length:", dataUrl.length);
+      croppedImage.src = dataUrl;
+      
+    } catch (error) {
+      console.error("Error during crop operation:", error);
+    }
   };
   
   // Cancel crop
@@ -1532,8 +1614,11 @@ export default function CleanImageEditor() {
             <>
               <Button
                 variant="default"
-                onClick={applyCrop}
-                className="rounded-lg"
+                onClick={() => {
+                  console.log("Apply Crop button clicked");
+                  applyCrop();
+                }}
+                className="rounded-lg bg-primary hover:bg-primary/90 text-white font-medium"
               >
                 Apply Crop
               </Button>
@@ -1649,15 +1734,18 @@ export default function CleanImageEditor() {
                           const width = parseInt(e.target.value);
                           if (isNaN(width)) return;
                           
-                          setCropState(prev => ({
-                            ...prev,
-                            endX: prev.startX + width
-                          }));
+                          setCropState(prev => {
+                            const startX = Math.min(prev.startX, prev.endX);
+                            return {
+                              ...prev,
+                              endX: startX + width
+                            };
+                          });
                           
-                          // Redraw crop overlay
-                          drawCropOverlay();
+                          // Redraw crop overlay after state update
+                          setTimeout(drawCropOverlay, 0);
                         }}
-                        className="w-full p-2 border rounded-md"
+                        className="w-full p-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary"
                       />
                     </div>
                   </div>
@@ -1680,15 +1768,18 @@ export default function CleanImageEditor() {
                           const height = parseInt(e.target.value);
                           if (isNaN(height)) return;
                           
-                          setCropState(prev => ({
-                            ...prev,
-                            endY: prev.startY + height
-                          }));
+                          setCropState(prev => {
+                            const startY = Math.min(prev.startY, prev.endY);
+                            return {
+                              ...prev,
+                              endY: startY + height
+                            };
+                          });
                           
-                          // Redraw crop overlay
-                          drawCropOverlay();
+                          // Redraw crop overlay after state update
+                          setTimeout(drawCropOverlay, 0);
                         }}
-                        className="w-full p-2 border rounded-md"
+                        className="w-full p-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary"
                       />
                     </div>
                   </div>
