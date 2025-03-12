@@ -1,5 +1,6 @@
 import React from 'react';
 import { Effect, EffectParameter } from '../effects/types';
+import { Button } from '../ui/button';
 import { Slider } from '../ui/slider';
 import { 
   Select, 
