@@ -1,8 +1,12 @@
 import React from 'react';
-import { EffectCategory } from '../effects';
+import { EffectCategory, EffectCategoryInfo } from '../effects';
 
 interface EffectCategoriesProps {
-  categories: EffectCategory[];
+  categories: {
+    id: EffectCategory; 
+    name: string;
+    effects: Array<{ id: string; name: string }>;
+  }[];
   activeCategory: string;
   selectedEffect: string | null;
   onSelectCategory: (categoryId: string) => void;
