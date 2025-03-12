@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 // import EffectsPanel from './EffectsPanel';
 
 // Type definitions
-type EffectType = 'none' | 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'dither';
+type EffectType = 'none' | 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'dither' | 'exposure' | 'contrast';
 
 interface HalftoneSettings {
   dotSize: number;
@@ -30,9 +30,17 @@ interface NoiseSettings {
   level: number;
 }
 
+interface ExposureSettings {
+  level: number; // -100 to 100
+}
+
+interface ContrastSettings {
+  level: number; // -100 to 100
+}
+
 interface EmptySettings {}
 
-type EffectSettings = HalftoneSettings | DuotoneSettings | NoiseSettings | EmptySettings;
+type EffectSettings = HalftoneSettings | DuotoneSettings | NoiseSettings | EmptySettings | ExposureSettings | ContrastSettings;
 
 interface ImageHistory {
   dataUrl: string;
@@ -308,6 +316,10 @@ export default function CleanImageEditor() {
   
   const [noiseLevel, setNoiseLevel] = useState<number>(20);
   
+  // After the noise level state
+  const [exposureLevel, setExposureLevel] = useState(0);
+  const [contrastLevel, setContrastLevel] = useState(0);
+  
   // Use debounce for better performance
   const debouncedHalftoneSettings = useDebounce(halftoneSettings, 200);
   const debouncedDuotoneSettings = useDebounce(duotoneSettings, 200);
@@ -511,6 +523,10 @@ export default function CleanImageEditor() {
         return applyNoiseEffect(ctx, imageData, (settings as NoiseSettings).level);
       case 'dither':
         return applyDitheringEffect(ctx, imageData);
+      case 'exposure':
+        return applyExposureEffect(ctx, imageData, (settings as ExposureSettings).level);
+      case 'contrast':
+        return applyContrastEffect(ctx, imageData, (settings as ContrastSettings).level);
       default:
         return imageData;
     }
@@ -569,6 +585,12 @@ export default function CleanImageEditor() {
       case 'dither':
         currentEffectObj = { type: 'dither', settings: {} };
         break;
+      case 'exposure':
+        currentEffectObj = { type: 'exposure', settings: { level: exposureLevel } };
+        break;
+      case 'contrast':
+        currentEffectObj = { type: 'contrast', settings: { level: contrastLevel } };
+        break;
       default:
         return;
     }
@@ -584,7 +606,9 @@ export default function CleanImageEditor() {
     debouncedDuotoneSettings, 
     debouncedNoiseLevel,
     resetToOriginal,
-    applyEffect
+    applyEffect,
+    exposureLevel,
+    contrastLevel
   ]);
   
   // Effect to update canvas when effects or settings change
@@ -603,7 +627,9 @@ export default function CleanImageEditor() {
     debouncedNoiseLevel,
     resetToOriginal,
     applyEffectWithReset,
-    image
+    image,
+    exposureLevel,
+    contrastLevel
   ]);
 
   // Function to render all effects to the canvas
@@ -727,6 +753,12 @@ export default function CleanImageEditor() {
       case 'dither':
         effectSettings = {};
         break;
+      case 'exposure':
+        effectSettings = { level: exposureLevel };
+        break;
+      case 'contrast':
+        effectSettings = { level: contrastLevel };
+        break;
       default:
         effectSettings = {};
     }
@@ -748,7 +780,7 @@ export default function CleanImageEditor() {
     }
     
     console.log(`Applied ${currentEffect} effect`, newEffect);
-  }, [currentEffect, halftoneSettings, duotoneSettings, noiseLevel, addToHistory, currentImageDataUrl]);
+  }, [currentEffect, halftoneSettings, duotoneSettings, noiseLevel, exposureLevel, contrastLevel, addToHistory, currentImageDataUrl]);
 
   // Handle undo action
   const handleUndo = () => {
@@ -1187,6 +1219,41 @@ export default function CleanImageEditor() {
     return imageData;
   };
 
+  const applyExposureEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, level: number): ImageData => {
+    console.log('Applying exposure effect with level:', level);
+    const data = imageData.data;
+    const factor = 1 + level / 100; // Convert from -100/100 to appropriate multiplier
+    
+    for (let i = 0; i < data.length; i += 4) {
+      // Apply exposure adjustment to RGB channels
+      data[i] = Math.min(255, Math.max(0, Math.round(data[i] * factor)));
+      data[i + 1] = Math.min(255, Math.max(0, Math.round(data[i + 1] * factor)));
+      data[i + 2] = Math.min(255, Math.max(0, Math.round(data[i + 2] * factor)));
+      // Alpha channel remains unchanged
+    }
+    
+    return imageData;
+  };
+
+  const applyContrastEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, level: number): ImageData => {
+    console.log('Applying contrast effect with level:', level);
+    const data = imageData.data;
+    
+    // Normalize level from -100/100 to a reasonable contrast factor
+    // This formula gives a good range of contrast adjustment
+    const factor = (259 * (level + 255)) / (255 * (259 - level));
+    
+    for (let i = 0; i < data.length; i += 4) {
+      // Apply contrast adjustment to RGB channels
+      data[i] = Math.min(255, Math.max(0, Math.round(factor * (data[i] - 128) + 128)));
+      data[i + 1] = Math.min(255, Math.max(0, Math.round(factor * (data[i + 1] - 128) + 128)));
+      data[i + 2] = Math.min(255, Math.max(0, Math.round(factor * (data[i + 2] - 128) + 128)));
+      // Alpha channel remains unchanged
+    }
+    
+    return imageData;
+  };
+  
   // Now use handleResizeWidthChange and handleResizeHeightChange in the component
   // In appropriate UI element handlers
   
@@ -1259,8 +1326,26 @@ export default function CleanImageEditor() {
             className="rounded-lg"
             disabled={isCropping || isResizing}
           >
-            <Droplet className="h-4 w-4 mr-2" />
-            Dither
+            <Wind className="h-4 w-4 mr-2" />
+            Dithering
+          </Button>
+          <Button
+            variant={currentEffect === 'exposure' ? 'default' : 'outline'}
+            onClick={() => setCurrentEffect('exposure')}
+            className="rounded-lg"
+            disabled={isCropping || isResizing}
+          >
+            <Contrast className="h-4 w-4 mr-2" />
+            Exposure
+          </Button>
+          <Button
+            variant={currentEffect === 'contrast' ? 'default' : 'outline'}
+            onClick={() => setCurrentEffect('contrast')}
+            className="rounded-lg"
+            disabled={isCropping || isResizing}
+          >
+            <Contrast className="h-4 w-4 mr-2" />
+            Contrast
           </Button>
         </div>
         
@@ -1542,6 +1627,42 @@ export default function CleanImageEditor() {
                       step={1} 
                       value={[noiseLevel]} 
                       onValueChange={([value]) => setNoiseLevel(value)}
+                      className="mt-1"
+                    />
+                  </div>
+                )}
+                
+                {currentEffect === 'exposure' && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label htmlFor="exposure-level" className="text-sm font-medium">Exposure Level</Label>
+                      <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">{exposureLevel}%</span>
+                    </div>
+                    <Slider 
+                      id="exposure-level"
+                      min={-100} 
+                      max={100} 
+                      step={1} 
+                      value={[exposureLevel]} 
+                      onValueChange={([value]) => setExposureLevel(value)}
+                      className="mt-1"
+                    />
+                  </div>
+                )}
+                
+                {currentEffect === 'contrast' && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label htmlFor="contrast-level" className="text-sm font-medium">Contrast Level</Label>
+                      <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">{contrastLevel}%</span>
+                    </div>
+                    <Slider 
+                      id="contrast-level"
+                      min={-100} 
+                      max={100} 
+                      step={1} 
+                      value={[contrastLevel]} 
+                      onValueChange={([value]) => setContrastLevel(value)}
                       className="mt-1"
                     />
                   </div>
