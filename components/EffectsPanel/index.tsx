@@ -21,7 +21,7 @@ export interface EffectsPanelProps {
  */
 export default function EffectsPanel({ imageData, onProcessedImageChange, className }: EffectsPanelProps) {
   // State for active category and selected effect
-  const [activeCategory, setActiveCategory] = useState<EffectCategory>('basic');
+  const [activeCategory, setActiveCategory] = useState<'basic' | 'artistic' | 'creative' | 'technical'>('basic');
   const [selectedEffectId, setSelectedEffectId] = useState<string | null>(null);
   const [effectParams, setEffectParams] = useState<Record<string, any>>({});
   const [isProcessing, setIsProcessing] = useState(false);
@@ -56,7 +56,7 @@ export default function EffectsPanel({ imageData, onProcessedImageChange, classN
   
   // Handle category change
   const handleCategoryChange = useCallback((category: string) => {
-    setActiveCategory(category as EffectCategory);
+    setActiveCategory(category as 'basic' | 'artistic' | 'creative' | 'technical');
   }, []);
   
   // Handle effect selection
