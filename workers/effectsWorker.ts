@@ -1,5 +1,8 @@
 // This file defines a Web Worker for processing effects in a separate thread
 
+// Declare 'self' as WorkerGlobalScope to get the correct type for postMessage
+declare const self: Worker;
+
 interface ProcessingMessage {
   imageData: ImageDataTransfer;
   effectType: string;
@@ -198,15 +201,16 @@ self.onmessage = (e: MessageEvent<ProcessingMessage>) => {
     // Process the effect
     const result = processEffect(img, effectType, params);
     
-    // Send back the result
+    // Send back the result with explicit type for transferables
+    const buffer = result.data.buffer as ArrayBuffer;
     self.postMessage({
       success: true,
       imageData: {
         width: result.width,
         height: result.height,
-        data: result.data.buffer
+        data: buffer
       }
-    }, [result.data.buffer]);
+    }, [buffer]);
     
   } catch (error) {
     self.postMessage({
