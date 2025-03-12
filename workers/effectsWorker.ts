@@ -154,6 +154,31 @@ function applyGlitchEffect(
   return imageData;
 }
 
+// Apply brightness & contrast effect
+function applyBrightnessContrast(
+  imageData: ImageData,
+  brightness: number,
+  contrast: number
+): ImageData {
+  const data = imageData.data;
+  const brightnessFactor = brightness / 100 * 255;
+  const contrastFactor = contrast / 100 + 1;
+
+  for (let i = 0; i < data.length; i += 4) {
+    // Apply brightness
+    data[i] = Math.max(0, Math.min(255, data[i] + brightnessFactor));
+    data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + brightnessFactor));
+    data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + brightnessFactor));
+    
+    // Apply contrast (adjust relative to 128 gray)
+    data[i] = Math.max(0, Math.min(255, 128 + contrastFactor * (data[i] - 128)));
+    data[i + 1] = Math.max(0, Math.min(255, 128 + contrastFactor * (data[i + 1] - 128)));
+    data[i + 2] = Math.max(0, Math.min(255, 128 + contrastFactor * (data[i + 2] - 128)));
+  }
+
+  return imageData;
+}
+
 // Process the effect based on type and parameters
 function processEffect(
   imageData: ImageData,
@@ -161,6 +186,13 @@ function processEffect(
   params: Record<string, any>
 ): ImageData {
   switch (effectType) {
+    case 'brightnessContrast':
+      return applyBrightnessContrast(
+        imageData,
+        params.brightness,
+        params.contrast
+      );
+
     case 'duotone':
       return applyDuotone(
         imageData,

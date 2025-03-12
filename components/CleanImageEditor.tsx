@@ -2,10 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Download, Undo, Crop, RefreshCw, Trash2 } from "lucide-react";
 // Import the EffectsPanel component
 import EffectsPanel from './EffectsPanel';
@@ -134,130 +131,6 @@ const UploadDropzone = ({ onUpload }: { onUpload: (file: File) => void }) => {
         accept="image/*"
         className="hidden"
       />
-    </div>
-  );
-};
-
-// ColorSetSelector Component
-const ColorSetSelector = ({ 
-  onSelectColor, 
-  onSelectPair,
-  selectedColor 
-}: { 
-  onSelectColor: (color: string, index: 1 | 2) => void;
-  onSelectPair: (color1: string, color2: string) => void;
-  selectedColor?: string;
-}) => {
-  // Predefined color pairs for duotone effect
-  const colorPairs = [
-    { name: 'Blue/Yellow', color1: '#0062ff', color2: '#ffe100' },
-    { name: 'Purple/Pink', color1: '#6b0096', color2: '#ff88ce' },
-    { name: 'Green/Blue', color1: '#00b36b', color2: '#0097b3' },
-    { name: 'Orange/Blue', color1: '#ff6b00', color2: '#0088ff' },
-    { name: 'Red/Teal', color1: '#ff0062', color2: '#00ffe1' },
-  ];
-
-  // Individual colors for custom selection
-  const colors = [
-    '#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff',
-    '#ffff00', '#00ffff', '#ff00ff', '#ff6b00', '#6b00ff',
-  ];
-
-  return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Preset Color Pairs</Label>
-        <div className="grid grid-cols-2 gap-2">
-          {colorPairs.map((pair, index) => (
-            <Button
-              key={index}
-              variant="outline"
-              className="h-auto py-2 px-3 flex items-center justify-between"
-              onClick={() => onSelectPair(pair.color1, pair.color2)}
-            >
-              <span className="text-xs truncate mr-2">{pair.name}</span>
-              <div className="flex">
-                <div 
-                  className="w-4 h-4 rounded-sm border border-gray-300 dark:border-gray-600" 
-                  style={{ backgroundColor: pair.color1 }}
-                />
-                <div 
-                  className="w-4 h-4 rounded-sm border border-gray-300 dark:border-gray-600 ml-1" 
-                  style={{ backgroundColor: pair.color2 }}
-                />
-              </div>
-            </Button>
-          ))}
-        </div>
-      </div>
-      
-      <div className="space-y-2">
-        <div className="flex justify-between">
-          <Label className="text-xs text-muted-foreground">Custom Colors</Label>
-          <div className="flex space-x-1">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-5 px-2 text-xs"
-              onClick={() => onSelectColor('#000000', 1)}
-            >
-              Color 1
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-5 px-2 text-xs"
-              onClick={() => onSelectColor('#ffffff', 2)}
-            >
-              Color 2
-            </Button>
-          </div>
-        </div>
-        <div className="grid grid-cols-5 gap-2">
-          {colors.map((color, index) => (
-            <button
-              key={index}
-              className={`w-full aspect-square rounded-md border ${
-                selectedColor === color 
-                  ? 'ring-2 ring-primary ring-offset-2' 
-                  : 'border-gray-300 dark:border-gray-600'
-              }`}
-              style={{ backgroundColor: color }}
-              onClick={() => onSelectColor(color, 1)}
-            />
-          ))}
-        </div>
-      </div>
-      
-      <div className="pt-2">
-        <div className="flex space-x-2">
-          <input
-            type="color"
-            id="color-picker-1"
-            className="sr-only"
-            onChange={(e) => onSelectColor(e.target.value, 1)}
-          />
-          <label 
-            htmlFor="color-picker-1"
-            className="flex-1 h-8 flex items-center justify-center text-xs font-medium bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md cursor-pointer"
-          >
-            Custom Color 1
-          </label>
-          
-          <input
-            type="color"
-            id="color-picker-2"
-            className="sr-only"
-            onChange={(e) => onSelectColor(e.target.value, 2)}
-          />
-          <label 
-            htmlFor="color-picker-2"
-            className="flex-1 h-8 flex items-center justify-center text-xs font-medium bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md cursor-pointer"
-          >
-            Custom Color 2
-          </label>
-        </div>
-      </div>
     </div>
   );
 };
@@ -733,22 +606,6 @@ export default function CleanImageEditor() {
     // Update the history and applied effects
     setHistory(newHistory);
     setAppliedEffects(newHistory[newHistory.length - 1].effects);
-  };
-  
-  // Color selection handlers for duotone effect
-  const handleColorSelect = (color: string) => {
-    setDuotoneSettings({
-      ...duotoneSettings,
-      color1: color
-    });
-  };
-  
-  const handleDuotonePairSelect = (color1: string, color2: string) => {
-    setDuotoneSettings({
-      ...duotoneSettings,
-      color1,
-      color2
-    });
   };
   
   // Download the edited image
@@ -1515,65 +1372,31 @@ export default function CleanImageEditor() {
       {/* Hidden canvas for processing */}
       <canvas ref={hiddenCanvasRef} style={{ display: 'none' }} />
       
-      {/* Effect Navigation Bar */}
+      {/* Effect Navigation Bar - Always visible regardless of if image is uploaded */}
       <div className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-xl shadow-sm">
-        <div className="flex space-x-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-gray-300">
-          <Button
-            variant={currentEffect === 'none' ? 'default' : 'outline'}
-            onClick={() => setCurrentEffect('none')}
-            className="rounded-lg"
-            disabled={isCropping || isResizing}
-          >
-            Original
-          </Button>
-          <Button
-            variant={currentEffect === 'halftone' ? 'default' : 'outline'}
-            onClick={() => setCurrentEffect('halftone')}
-            className="rounded-lg"
-            disabled={isCropping || isResizing}
-          >
-            Halftone
-          </Button>
-          <Button
-            variant={currentEffect === 'duotone' ? 'default' : 'outline'}
-            onClick={() => setCurrentEffect('duotone')}
-            className="rounded-lg"
-            disabled={isCropping || isResizing}
-          >
-            Duotone
-          </Button>
-          <Button
-            variant={currentEffect === 'blackwhite' ? 'default' : 'outline'}
-            onClick={() => setCurrentEffect('blackwhite')}
-            className="rounded-lg"
-            disabled={isCropping || isResizing}
-          >
-            B&W
-          </Button>
-          <Button
-            variant={currentEffect === 'sepia' ? 'default' : 'outline'}
-            onClick={() => setCurrentEffect('sepia')}
-            className="rounded-lg"
-            disabled={isCropping || isResizing}
-          >
-            Sepia
-          </Button>
-          <Button
-            variant={currentEffect === 'noise' ? 'default' : 'outline'}
-            onClick={() => setCurrentEffect('noise')}
-            className="rounded-lg"
-            disabled={isCropping || isResizing}
-          >
-            Noise
-          </Button>
-          <Button
-            variant={currentEffect === 'dither' ? 'default' : 'outline'}
-            onClick={() => setCurrentEffect('dither')}
-            className="rounded-lg"
-            disabled={isCropping || isResizing}
-          >
-            Dither
-          </Button>
+        <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-gray-300">
+          {/* Effect tabs from EffectsPanel - moved here */}
+          {!image ? (
+            <span className="text-sm text-muted-foreground px-3">Upload an image to apply effects</span>
+          ) : originalImageData && (
+            <EffectsPanel 
+              key={`effects-panel-${originalImageData.width}-${originalImageData.height}`} 
+              imageData={originalImageData}
+              onProcessedImageChange={(processedData) => {
+                if (processedData && canvasRef.current) {
+                  // Prevent re-renders during processing by checking if canvas exists
+                  const ctx = canvasRef.current.getContext('2d');
+                  if (ctx) {
+                    ctx.putImageData(processedData, 0, 0);
+                    // Only update image URL after processing is complete
+                    setCurrentImageDataUrl(canvasRef.current.toDataURL('image/png'));
+                  }
+                }
+              }}
+              // Use inline styles to fix the blinking issue by using a horizontal layout
+              className="flex-grow"
+            />
+          )}
         </div>
         
         <div className="flex space-x-2">
@@ -1729,35 +1552,20 @@ export default function CleanImageEditor() {
         
         {/* Side Panel */}
         <div className="w-full lg:w-80 flex-shrink-0 flex flex-col gap-4">
-          {/* Applied Effects List */}
-          {image && (
+          {/* Effect Controls - Will be shown when an effect is selected */}
+          {image && originalImageData && (
             <Card className="rounded-xl shadow-sm overflow-hidden border-0">
               <CardHeader className="bg-white dark:bg-gray-800 border-b pb-3">
-                <CardTitle className="text-lg font-semibold">Image Effects</CardTitle>
+                <CardTitle className="text-lg font-semibold">Effect Controls</CardTitle>
               </CardHeader>
               <CardContent className="bg-white dark:bg-gray-800 p-4">
-                {/* Add the EffectsPanel component */}
-                {originalImageData && (
-                  <EffectsPanel 
-                    imageData={originalImageData}
-                    onProcessedImageChange={(processedData) => {
-                      if (processedData && canvasRef.current) {
-                        const ctx = canvasRef.current.getContext('2d');
-                        if (ctx) {
-                          ctx.putImageData(processedData, 0, 0);
-                          setCurrentImageDataUrl(canvasRef.current.toDataURL('image/png'));
-                        }
-                      }
-                    }}
-                  />
-                )}
+                {/* Any additional controls that might be needed can go here */}
+                <div className="text-sm text-muted-foreground">
+                  Select an effect from the top bar to adjust its parameters
+                </div>
               </CardContent>
             </Card>
           )}
-                
-          {/* Original applied effects list and controls can remain below */}
-          {/* ... existing side panel content ... */}
-          {/* ... existing side panel content ... */}
         </div>
       </div>
     </div>
