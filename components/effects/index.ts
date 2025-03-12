@@ -24,7 +24,7 @@ export interface EffectDefinition {
   processFn: (canvas: HTMLCanvasElement, params: Record<string, any>) => Promise<ImageData | void>;
 }
 
-export interface EffectCategory {
+export interface EffectCategoryInfo {
   id: string;
   name: string;
   effects: Array<{ id: string; name: string }>;

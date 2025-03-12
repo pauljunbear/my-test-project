@@ -31,7 +31,7 @@ export interface EffectWithParams extends Effect {
 export type EffectParamValues = Record<string, any>;
 
 // Type for a group of effects
-export interface EffectCategory {
+export interface EffectCategoryInfo {
   id: EffectCategory;
   name: string;
   effects: Effect[];
