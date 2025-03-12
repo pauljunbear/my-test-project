@@ -197,6 +197,11 @@ export default function EffectsPanel({ imageData, onProcessedImageChange, classN
                 effect={selectedEffect}
                 params={effectParams}
                 onChange={handleParamChange}
+                isProcessing={isProcessing || processingEffect}
+                previewActive={true}
+                onTogglePreview={() => {}}
+                onApply={handleApplyEffect}
+                onCancel={handleResetEffect}
                 disabled={isProcessing || processingEffect}
               />
               
