@@ -321,12 +321,12 @@ export default function CleanImageEditor() {
   const [contrastLevel, setContrastLevel] = useState(0);
   
   // Use debounce for better performance
-  const debouncedHalftoneSettings = useDebounce(halftoneSettings, 200);
-  const debouncedDuotoneSettings = useDebounce(duotoneSettings, 200);
-  const debouncedNoiseLevel = useDebounce(noiseLevel, 200);
+  const debouncedHalftoneSettings = useDebounce(halftoneSettings, 50);
+  const debouncedDuotoneSettings = useDebounce(duotoneSettings, 50);
+  const debouncedNoiseLevel = useDebounce(noiseLevel, 50);
   
   // Debounce function for handling frequent updates
-  function useDebounce<T>(value: T, delay: number): T {
+  function useDebounce<T>(value: T, delay: number = 50): T {
     const [debouncedValue, setDebouncedValue] = useState<T>(value);
     
     useEffect(() => {
@@ -1165,14 +1165,149 @@ export default function CleanImageEditor() {
   // Add effect implementations
   const applyHalftoneEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, settings: HalftoneSettings): ImageData => {
     console.log('Applying halftone effect with settings:', settings);
-    // Simple implementation for now
-    return imageData;
+    const { dotSize, spacing, angle, shape } = settings;
+    
+    // Create a temporary canvas for processing
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = imageData.width;
+    tempCanvas.height = imageData.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    if (!tempCtx) {
+      console.error('Could not get temporary canvas context');
+      return imageData;
+    }
+    
+    // Draw the original image data to the temporary canvas
+    tempCtx.putImageData(imageData, 0, 0);
+    
+    // Create a new canvas for the halftone effect
+    const outputCanvas = document.createElement('canvas');
+    outputCanvas.width = imageData.width;
+    outputCanvas.height = imageData.height;
+    const outputCtx = outputCanvas.getContext('2d');
+    
+    if (!outputCtx) {
+      console.error('Could not get output canvas context');
+      return imageData;
+    }
+    
+    // Fill with white background
+    outputCtx.fillStyle = 'white';
+    outputCtx.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
+    
+    // Set drawing style
+    outputCtx.fillStyle = 'black';
+    outputCtx.strokeStyle = 'black';
+    
+    // Angle in radians
+    const radians = angle * Math.PI / 180;
+    
+    // Loop through the image with spacing intervals
+    for (let y = 0; y < imageData.height; y += spacing) {
+      for (let x = 0; x < imageData.width; x += spacing) {
+        // Get the pixel data at this position
+        const pixelData = tempCtx.getImageData(x, y, 1, 1).data;
+        
+        // Calculate grayscale value
+        const r = pixelData[0] / 255;
+        const g = pixelData[1] / 255;
+        const b = pixelData[2] / 255;
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        
+        // Calculate dot size based on gray value (invert for proper effect)
+        // Darker areas should have larger dots
+        const size = dotSize * (1 - gray);
+        
+        if (size > 0) {
+          outputCtx.save();
+          
+          // Translate to the dot position
+          outputCtx.translate(x, y);
+          
+          // Apply rotation if needed
+          if (angle !== 0) {
+            outputCtx.rotate(radians);
+          }
+          
+          // Draw the appropriate shape
+          switch (shape) {
+            case 'circle':
+              outputCtx.beginPath();
+              outputCtx.arc(0, 0, size, 0, Math.PI * 2);
+              outputCtx.fill();
+              break;
+            case 'square':
+              outputCtx.fillRect(-size, -size, size * 2, size * 2);
+              break;
+            case 'line':
+              outputCtx.lineWidth = size;
+              outputCtx.beginPath();
+              outputCtx.moveTo(-spacing / 2, 0);
+              outputCtx.lineTo(spacing / 2, 0);
+              outputCtx.stroke();
+              break;
+          }
+          
+          outputCtx.restore();
+        }
+      }
+    }
+    
+    // Get the final image data from the output canvas
+    return outputCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
   };
 
   const applyDuotoneEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, settings: DuotoneSettings): ImageData => {
     console.log('Applying duotone effect with settings:', settings);
-    // Simple implementation for now
-    return imageData;
+    const { color1, color2, intensity } = settings;
+    
+    // Parse colors to RGB components
+    const parseColor = (color: string) => {
+      const r = parseInt(color.slice(1, 3), 16);
+      const g = parseInt(color.slice(3, 5), 16);
+      const b = parseInt(color.slice(5, 7), 16);
+      return [r, g, b];
+    };
+    
+    const c1 = parseColor(color1); // Shadow color
+    const c2 = parseColor(color2); // Highlight color
+    
+    // Create a new array for the modified pixel data
+    const data = imageData.data;
+    const outputData = new Uint8ClampedArray(data.length);
+    
+    // Apply the duotone effect to each pixel
+    for (let i = 0; i < data.length; i += 4) {
+      // Get the RGB values for the current pixel
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      
+      // Convert to grayscale using the precise formula 
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      
+      // Normalize to 0-1 range
+      const normalizedGray = gray / 255;
+      
+      // Apply intensity adjustment
+      const intensityFactor = intensity / 100;
+      const adjustedGray = Math.pow(normalizedGray, 1 - intensityFactor * 0.5);
+      
+      // Map the grayscale value to the two colors
+      // p' = (1 - gray) × c1 + gray × c2
+      const r_out = Math.round((1 - adjustedGray) * c1[0] + adjustedGray * c2[0]);
+      const g_out = Math.round((1 - adjustedGray) * c1[1] + adjustedGray * c2[1]);
+      const b_out = Math.round((1 - adjustedGray) * c1[2] + adjustedGray * c2[2]);
+      
+      // Set the output pixel values
+      outputData[i] = r_out;
+      outputData[i + 1] = g_out;
+      outputData[i + 2] = b_out;
+      outputData[i + 3] = data[i + 3]; // Keep original alpha
+    }
+    
+    return new ImageData(outputData, imageData.width, imageData.height);
   };
 
   const applyBlackAndWhiteEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData): ImageData => {
@@ -1215,8 +1350,72 @@ export default function CleanImageEditor() {
 
   const applyDitheringEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData): ImageData => {
     console.log('Applying dithering effect');
-    // Simple implementation for now
-    return imageData;
+    
+    // Create a copy of the image data to work with
+    const outputData = new Uint8ClampedArray(imageData.data);
+    const width = imageData.width;
+    const height = imageData.height;
+    
+    // Convert to grayscale first
+    for (let i = 0; i < outputData.length; i += 4) {
+      const r = outputData[i];
+      const g = outputData[i + 1];
+      const b = outputData[i + 2];
+      
+      // Standard grayscale conversion
+      const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+      outputData[i] = outputData[i + 1] = outputData[i + 2] = gray;
+    }
+    
+    // Apply Floyd-Steinberg dithering algorithm
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const index = (y * width + x) * 4;
+        
+        // Get current pixel value
+        const oldPixel = outputData[index];
+        
+        // Determine new pixel value (0 or 255)
+        const newPixel = oldPixel < 128 ? 0 : 255;
+        
+        // Set the new pixel value
+        outputData[index] = outputData[index + 1] = outputData[index + 2] = newPixel;
+        
+        // Calculate quantization error
+        const error = oldPixel - newPixel;
+        
+        // Distribute error to neighboring pixels using Floyd-Steinberg algorithm
+        if (x + 1 < width) {
+          // Right pixel
+          outputData[(y * width + x + 1) * 4] += error * 7 / 16;
+          outputData[(y * width + x + 1) * 4 + 1] += error * 7 / 16;
+          outputData[(y * width + x + 1) * 4 + 2] += error * 7 / 16;
+        }
+        
+        if (y + 1 < height) {
+          if (x - 1 >= 0) {
+            // Bottom-left pixel
+            outputData[((y + 1) * width + x - 1) * 4] += error * 3 / 16;
+            outputData[((y + 1) * width + x - 1) * 4 + 1] += error * 3 / 16;
+            outputData[((y + 1) * width + x - 1) * 4 + 2] += error * 3 / 16;
+          }
+          
+          // Bottom pixel
+          outputData[((y + 1) * width + x) * 4] += error * 5 / 16;
+          outputData[((y + 1) * width + x) * 4 + 1] += error * 5 / 16;
+          outputData[((y + 1) * width + x) * 4 + 2] += error * 5 / 16;
+          
+          if (x + 1 < width) {
+            // Bottom-right pixel
+            outputData[((y + 1) * width + x + 1) * 4] += error * 1 / 16;
+            outputData[((y + 1) * width + x + 1) * 4 + 1] += error * 1 / 16;
+            outputData[((y + 1) * width + x + 1) * 4 + 2] += error * 1 / 16;
+          }
+        }
+      }
+    }
+    
+    return new ImageData(outputData, width, height);
   };
 
   const applyExposureEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, level: number): ImageData => {
