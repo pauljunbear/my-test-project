@@ -40,7 +40,11 @@ interface ContrastSettings {
 
 interface EmptySettings {}
 
-type EffectSettings = HalftoneSettings | DuotoneSettings | NoiseSettings | EmptySettings | ExposureSettings | ContrastSettings;
+interface DitheringSettings {
+  intensity: number;
+}
+
+type EffectSettings = HalftoneSettings | DuotoneSettings | NoiseSettings | EmptySettings | ExposureSettings | ContrastSettings | DitheringSettings;
 
 interface ImageHistory {
   dataUrl: string;
@@ -320,6 +324,9 @@ export default function CleanImageEditor() {
   const [exposureLevel, setExposureLevel] = useState(0);
   const [contrastLevel, setContrastLevel] = useState(0);
   
+  // First, add a state variable for dithering intensity
+  const [ditheringIntensity, setDitheringIntensity] = useState<number>(100);
+  
   // Use debounce for better performance
   const debouncedHalftoneSettings = useDebounce(halftoneSettings, 50);
   const debouncedDuotoneSettings = useDebounce(duotoneSettings, 50);
@@ -522,7 +529,7 @@ export default function CleanImageEditor() {
       case 'noise':
         return applyNoiseEffect(ctx, imageData, (settings as NoiseSettings).level);
       case 'dither':
-        return applyDitheringEffect(ctx, imageData);
+        return applyDitheringEffect(ctx, imageData, settings as DitheringSettings);
       case 'exposure':
         return applyExposureEffect(ctx, imageData, (settings as ExposureSettings).level);
       case 'contrast':
@@ -583,7 +590,10 @@ export default function CleanImageEditor() {
         };
         break;
       case 'dither':
-        currentEffectObj = { type: 'dither', settings: {} };
+        currentEffectObj = { 
+          type: 'dither', 
+          settings: { intensity: ditheringIntensity } 
+        };
         break;
       case 'exposure':
         currentEffectObj = { type: 'exposure', settings: { level: exposureLevel } };
@@ -608,7 +618,8 @@ export default function CleanImageEditor() {
     resetToOriginal,
     applyEffect,
     exposureLevel,
-    contrastLevel
+    contrastLevel,
+    ditheringIntensity
   ]);
   
   // Effect to update canvas when effects or settings change
@@ -629,7 +640,8 @@ export default function CleanImageEditor() {
     applyEffectWithReset,
     image,
     exposureLevel,
-    contrastLevel
+    contrastLevel,
+    ditheringIntensity
   ]);
 
   // Function to render all effects to the canvas
@@ -751,7 +763,7 @@ export default function CleanImageEditor() {
         effectSettings = { level: noiseLevel };
         break;
       case 'dither':
-        effectSettings = {};
+        effectSettings = { intensity: ditheringIntensity };
         break;
       case 'exposure':
         effectSettings = { level: exposureLevel };
@@ -780,7 +792,7 @@ export default function CleanImageEditor() {
     }
     
     console.log(`Applied ${currentEffect} effect`, newEffect);
-  }, [currentEffect, halftoneSettings, duotoneSettings, noiseLevel, exposureLevel, contrastLevel, addToHistory, currentImageDataUrl]);
+  }, [currentEffect, halftoneSettings, duotoneSettings, noiseLevel, exposureLevel, contrastLevel, addToHistory, currentImageDataUrl, ditheringIntensity]);
 
   // Handle undo action
   const handleUndo = () => {
@@ -1348,8 +1360,9 @@ export default function CleanImageEditor() {
     return imageData;
   };
 
-  const applyDitheringEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData): ImageData => {
-    console.log('Applying dithering effect');
+  const applyDitheringEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, settings?: DitheringSettings): ImageData => {
+    const intensity = settings?.intensity || ditheringIntensity;
+    console.log('Applying dithering effect with intensity:', intensity);
     
     // Create a copy of the image data to work with
     const outputData = new Uint8ClampedArray(imageData.data);
@@ -1367,6 +1380,9 @@ export default function CleanImageEditor() {
       outputData[i] = outputData[i + 1] = outputData[i + 2] = gray;
     }
     
+    // Scale for intensity (100% = standard dithering, lower values = less pronounced effect)
+    const intensityFactor = intensity / 100;
+    
     // Apply Floyd-Steinberg dithering algorithm
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
@@ -1381,8 +1397,8 @@ export default function CleanImageEditor() {
         // Set the new pixel value
         outputData[index] = outputData[index + 1] = outputData[index + 2] = newPixel;
         
-        // Calculate quantization error
-        const error = oldPixel - newPixel;
+        // Calculate quantization error - scaled by intensity
+        const error = (oldPixel - newPixel) * intensityFactor;
         
         // Distribute error to neighboring pixels using Floyd-Steinberg algorithm
         if (x + 1 < width) {
@@ -1455,6 +1471,111 @@ export default function CleanImageEditor() {
   
   // Now use handleResizeWidthChange and handleResizeHeightChange in the component
   // In appropriate UI element handlers
+  
+  // Add state variables for custom color hex inputs
+  const [customColor1Hex, setCustomColor1Hex] = useState<string>('#000000');
+  const [customColor2Hex, setCustomColor2Hex] = useState<string>('#ffffff');
+
+  // Add functions to handle hex input changes and validation
+  const handleHexInputChange = (value: string, setColor: (color: string) => void, setHex: (hex: string) => void) => {
+    // Remove any non-hex characters and ensure it starts with #
+    let sanitized = value.replace(/[^0-9A-Fa-f]/g, '');
+    
+    // Limit to 6 characters (not counting #)
+    if (sanitized.length > 6) {
+      sanitized = sanitized.substring(0, 6);
+    }
+    
+    // Add # prefix if missing
+    const hexValue = '#' + sanitized;
+    setHex(hexValue);
+    
+    // Only update the actual color if we have a valid hex (# + 6 chars)
+    if (sanitized.length === 6) {
+      setColor(hexValue);
+    }
+  };
+
+  // Add the useEffect hooks for color sync in the right place:
+  useEffect(() => {
+    setCustomColor1Hex(duotoneSettings.color1);
+  }, [duotoneSettings.color1]);
+
+  useEffect(() => {
+    setCustomColor2Hex(duotoneSettings.color2);
+  }, [duotoneSettings.color2]);
+
+  // Now find the UI section for duotone effect and modify the custom color inputs
+  // Look for the duotone effect UI section and add hex input fields
+
+  // Find the section that looks like:
+  {currentEffect === 'duotone' && (
+    <div className="space-y-5">
+      {/* Existing duotone UI */}
+    </div>
+  )}
+
+  // Add hex input fields to the duotone color selection UI:
+  // After the color selection UI, add:
+
+  // Replace or modify the color UI section with this:
+  <div className="space-y-2">
+    <Label className="text-sm font-medium">Colors</Label>
+    
+    {/* Color presets */}
+    <div className="mt-1">
+      <ColorSetSelector 
+        onSelectColor={handleColorSelect}
+        onSelectPair={handleDuotonePairSelect}
+        selectedColor={duotoneSettings.color1}
+      />
+    </div>
+    
+    {/* Custom color inputs with hex */}
+    <div className="grid grid-cols-2 gap-4 mt-4">
+      <div>
+        <Label className="text-sm font-medium">Custom Color 1</Label>
+        <div className="flex items-center mt-2">
+          <div 
+            className="w-8 h-8 rounded border"
+            style={{ backgroundColor: customColor1Hex }}
+          />
+          <input
+            type="text"
+            value={customColor1Hex}
+            onChange={(e) => handleHexInputChange(
+              e.target.value,
+              (color) => setDuotoneSettings({...duotoneSettings, color1: color}),
+              setCustomColor1Hex
+            )}
+            className="ml-2 px-2 py-1 border rounded text-sm w-24"
+            placeholder="#000000"
+          />
+        </div>
+      </div>
+      
+      <div>
+        <Label className="text-sm font-medium">Custom Color 2</Label>
+        <div className="flex items-center mt-2">
+          <div 
+            className="w-8 h-8 rounded border"
+            style={{ backgroundColor: customColor2Hex }}
+          />
+          <input
+            type="text"
+            value={customColor2Hex}
+            onChange={(e) => handleHexInputChange(
+              e.target.value,
+              (color) => setDuotoneSettings({...duotoneSettings, color2: color}),
+              setCustomColor2Hex
+            )}
+            className="ml-2 px-2 py-1 border rounded text-sm w-24"
+            placeholder="#ffffff"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
   
   // Component implementation will continue...
   return (
@@ -1802,12 +1923,59 @@ export default function CleanImageEditor() {
                     
                     <div className="space-y-2">
                       <Label className="text-sm font-medium">Colors</Label>
+                      
+                      {/* Color presets */}
                       <div className="mt-1">
                         <ColorSetSelector 
                           onSelectColor={handleColorSelect}
                           onSelectPair={handleDuotonePairSelect}
                           selectedColor={duotoneSettings.color1}
                         />
+                      </div>
+                      
+                      {/* Custom color inputs with hex */}
+                      <div className="grid grid-cols-2 gap-4 mt-4">
+                        <div>
+                          <Label className="text-sm font-medium">Custom Color 1</Label>
+                          <div className="flex items-center mt-2">
+                            <div 
+                              className="w-8 h-8 rounded border"
+                              style={{ backgroundColor: customColor1Hex }}
+                            />
+                            <input
+                              type="text"
+                              value={customColor1Hex}
+                              onChange={(e) => handleHexInputChange(
+                                e.target.value,
+                                (color) => setDuotoneSettings({...duotoneSettings, color1: color}),
+                                setCustomColor1Hex
+                              )}
+                              className="ml-2 px-2 py-1 border rounded text-sm w-24"
+                              placeholder="#000000"
+                            />
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <Label className="text-sm font-medium">Custom Color 2</Label>
+                          <div className="flex items-center mt-2">
+                            <div 
+                              className="w-8 h-8 rounded border"
+                              style={{ backgroundColor: customColor2Hex }}
+                            />
+                            <input
+                              type="text"
+                              value={customColor2Hex}
+                              onChange={(e) => handleHexInputChange(
+                                e.target.value,
+                                (color) => setDuotoneSettings({...duotoneSettings, color2: color}),
+                                setCustomColor2Hex
+                              )}
+                              className="ml-2 px-2 py-1 border rounded text-sm w-24"
+                              placeholder="#ffffff"
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1826,6 +1994,24 @@ export default function CleanImageEditor() {
                       step={1} 
                       value={[noiseLevel]} 
                       onValueChange={([value]) => setNoiseLevel(value)}
+                      className="mt-1"
+                    />
+                  </div>
+                )}
+                
+                {currentEffect === 'dither' && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label htmlFor="dithering-intensity" className="text-sm font-medium">Dithering Intensity</Label>
+                      <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">{ditheringIntensity}%</span>
+                    </div>
+                    <Slider 
+                      id="dithering-intensity"
+                      min={10} 
+                      max={100} 
+                      step={1} 
+                      value={[ditheringIntensity]} 
+                      onValueChange={([value]) => setDitheringIntensity(value)}
                       className="mt-1"
                     />
                   </div>
