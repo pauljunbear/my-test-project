@@ -42,7 +42,7 @@ export default function RootLayout({
                 <circle cx="12" cy="12" r="2"/>
               </svg>
               <div>
-                <h1 className="text-lg font-bold tracking-tight">Editing Playground</h1>
+                <h1 className="text-lg font-bold tracking-tight">Editing Playground  </h1>
               </div>
             </div>
             
