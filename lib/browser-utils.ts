@@ -29,39 +29,6 @@ export const getDocument = (): Document | null => {
   return isBrowser() ? document : null;
 };
 
-// Safely import a browser-only module
-export const safelyImportBrowserModule = async <T>(
-  importFn: () => Promise<T>,
-  fallback: T | null = null
-): Promise<T | null> => {
-  if (!isBrowser()) {
-    return fallback;
-  }
-  
-  try {
-    return await importFn();
-  } catch (error) {
-    console.error('Failed to import browser module:', error);
-    return fallback;
-  }
-};
-
-// Safely load GlslCanvas module
-export const loadGlslCanvas = async () => {
-  if (!isBrowser()) {
-    throw new Error('GlslCanvas can only be used in browser environments');
-  }
-  
-  try {
-    // Dynamic import to avoid SSR issues
-    const module = await import('glsl-canvas');
-    return module.default;
-  } catch (error) {
-    console.error('Error loading GlslCanvas:', error);
-    throw new Error('Failed to load shader library: glsl-canvas');
-  }
-};
-
 // Create a canvas element safely
 export const createCanvas = (width: number, height: number): HTMLCanvasElement => {
   if (!isBrowser()) {
@@ -72,21 +39,6 @@ export const createCanvas = (width: number, height: number): HTMLCanvasElement =
   canvas.width = width;
   canvas.height = height;
   return canvas;
-};
-
-// Check if WebGL is supported
-export const isWebGLSupported = (): boolean => {
-  if (!isBrowser()) {
-    return false;
-  }
-  
-  try {
-    const canvas = document.createElement('canvas');
-    return !!(window.WebGLRenderingContext && 
-      (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
-  } catch (e) {
-    return false;
-  }
 };
 
 // Create a download link for a blob or data URL
