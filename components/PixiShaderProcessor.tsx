@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import * as PIXI from 'pixi.js';
 import { Button } from './ui/button';
