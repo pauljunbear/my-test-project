@@ -22,7 +22,7 @@ import {
 } from './ui/select';
 
 // Define types
-type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'wavehalftone' | 'none';
+type Effect = 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'wavehalftone' | 'contrast' | 'exposure' | 'none';
 
 interface HalftoneSettings {
   dotSize: number;
@@ -851,6 +851,20 @@ export default function ImageEditorComponent() {
             className="rounded-lg"
           >
             Noise
+          </Button>
+          <Button
+            variant={currentEffect === 'contrast' ? 'default' : 'outline'}
+            onClick={() => setCurrentEffect('contrast')}
+            className="rounded-lg"
+          >
+            Contrast
+          </Button>
+          <Button
+            variant={currentEffect === 'exposure' ? 'default' : 'outline'}
+            onClick={() => setCurrentEffect('exposure')}
+            className="rounded-lg"
+          >
+            Exposure
           </Button>
           <Button
             variant={currentEffect === 'wavehalftone' ? 'default' : 'outline'}
