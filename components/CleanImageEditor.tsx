@@ -35,9 +35,6 @@ import type {
   DitheringSettings,
   ExposureSettings
 } from '@/components/image-editor/types';
-import { useDebounce } from 'use-debounce';
-// Import the EffectsPanel component
-// import EffectsPanel from './EffectsPanel';
 
 // UploadDropzone Component
 const UploadDropzone = ({ onUpload }: { onUpload: (file: File) => void }) => {
@@ -193,19 +190,19 @@ const CleanImageEditor = () => {
   });
 
   const [noiseSettings, setNoiseSettings] = useState<NoiseSettings>({
-    enabled: true,
+    enabled: false,
     level: 20
   });
 
   const [kaleidoscopeSettings, setKaleidoscopeSettings] = useState<KaleidoscopeSettings>({
-    enabled: true,
+    enabled: false,
     segments: 8,
     rotation: 0,
     zoom: 1.0
   });
 
   const [lightLeaksSettings, setLightLeaksSettings] = useState<LightLeaksSettings>({
-    enabled: true,
+    enabled: false,
     intensity: 50,
     color: '#FFA500',
     position: 45,
@@ -213,7 +210,7 @@ const CleanImageEditor = () => {
   });
 
   const [vignetteSettings, setVignetteSettings] = useState<VignetteSettings>({
-    enabled: true,
+    enabled: false,
     intensity: 50,
     color: '#000000',
     feather: 50,
@@ -221,7 +218,7 @@ const CleanImageEditor = () => {
   });
 
   const [textureSettings, setTextureSettings] = useState<TextureSettings>({
-    enabled: true,
+    enabled: false,
     texture: 'paper',
     opacity: 50,
     blend: 'overlay',
@@ -229,7 +226,7 @@ const CleanImageEditor = () => {
   });
 
   const [frameSettings, setFrameSettings] = useState<FrameSettings>({
-    enabled: true,
+    enabled: false,
     ratio: '1:1',
     width: 1000,
     height: 1000,
