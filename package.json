@@ -37,7 +37,13 @@
     "react-dropzone": "^14.3.8",
     "tailwind-merge": "^3.0.2",
     "tailwindcss-animate": "^1.0.7",
-    "use-debounce": "^10.0.4"
+    "use-debounce": "^10.0.4",
+    "@pixi/app": "^7.4.0",
+    "@pixi/core": "^7.4.0",
+    "@pixi/sprite": "^7.4.0",
+    "@pixi/assets": "^7.4.0",
+    "@pixi/filter-alpha": "^7.4.0",
+    "@pixi/filter-blur": "^7.4.0"
   },
   "devDependencies": {
     "@types/fabric": "^5.3.9",

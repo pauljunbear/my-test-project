@@ -29,6 +29,12 @@ const nextConfig = {
         'react-modal',
         'react-style-singleton', // Add this to prevent server-side rendering issues
         'react-remove-scroll', // Add this to prevent server-side rendering issues
+        '@pixi/core',
+        '@pixi/app',
+        '@pixi/sprite',
+        '@pixi/assets',
+        '@pixi/filter-alpha',
+        '@pixi/filter-blur',
       ];
     }
     
@@ -65,6 +71,14 @@ const nextConfig = {
     
     return config;
   },
+  transpilePackages: [
+    '@pixi/core',
+    '@pixi/app',
+    '@pixi/sprite',
+    '@pixi/assets',
+    '@pixi/filter-alpha',
+    '@pixi/filter-blur',
+  ],
 };
 
 module.exports = nextConfig; 

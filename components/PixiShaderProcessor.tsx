@@ -1,7 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Application, Sprite, Filter, Assets } from 'pixi.js';
+import * as PIXI from '@pixi/core';
+import { Application } from '@pixi/app';
+import { Sprite } from '@pixi/sprite';
+import { Assets } from '@pixi/assets';
+import { Filter } from '@pixi/core';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Label } from './ui/label';
@@ -13,14 +17,21 @@ import { debounce } from '@/lib/utils';
 // Define shader modes
 type ShaderMode = 'basic' | 'advanced';
 
-// Define shader effects with GLSL code
-const SHADER_EFFECTS = {
+// Define shader effects type
+type ShaderEffectName = 'none' | 'pixelate' | 'halftone' | 'duotone';
+
+interface ShaderEffect {
+  name: string;
+  fragment: string;
+  uniforms: Record<string, any>;
+}
+
+const SHADER_EFFECTS: Record<ShaderEffectName, ShaderEffect> = {
   none: {
-    name: 'Original',
+    name: 'None',
     fragment: `
       varying vec2 vTextureCoord;
       uniform sampler2D uSampler;
-      
       void main(void) {
         gl_FragColor = texture2D(uSampler, vTextureCoord);
       }
@@ -33,16 +44,16 @@ const SHADER_EFFECTS = {
       varying vec2 vTextureCoord;
       uniform sampler2D uSampler;
       uniform float pixelSize;
-      uniform vec2 resolution;
-      
       void main(void) {
-        vec2 uv = vTextureCoord;
-        vec2 pixelated = floor(uv * resolution / pixelSize) * pixelSize / resolution;
+        vec2 pixelated = vec2(
+          floor(vTextureCoord.x * 1.0/pixelSize) * pixelSize,
+          floor(vTextureCoord.y * 1.0/pixelSize) * pixelSize
+        );
         gl_FragColor = texture2D(uSampler, pixelated);
       }
     `,
     uniforms: {
-      pixelSize: { type: 'float', value: 4.0, min: 2.0, max: 32.0, step: 1.0 }
+      pixelSize: { type: 'float', value: 0.1, min: 0.01, max: 0.5, step: 0.01 }
     }
   },
   halftone: {
@@ -51,24 +62,25 @@ const SHADER_EFFECTS = {
       varying vec2 vTextureCoord;
       uniform sampler2D uSampler;
       uniform float dotSize;
-      uniform vec2 resolution;
-      
+      uniform float angle;
       void main(void) {
-        vec2 uv = vTextureCoord;
-        vec4 color = texture2D(uSampler, uv);
+        float s = sin(angle);
+        float c = cos(angle);
+        vec2 tex = vTextureCoord * vec2(1.0/dotSize);
+        vec2 point = vec2(
+          c * tex.x - s * tex.y,
+          s * tex.x + c * tex.y
+        );
+        float d = length(fract(point) - 0.5);
+        vec4 color = texture2D(uSampler, vTextureCoord);
         float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-        
-        vec2 st = uv * resolution / dotSize;
-        vec2 gridPos = fract(st) - 0.5;
-        float dist = length(gridPos);
-        float radius = 0.4 * sqrt(1.0 - gray);
-        float dot = 1.0 - smoothstep(radius - 0.01, radius, dist);
-        
-        gl_FragColor = vec4(vec3(dot), color.a);
+        float pattern = step(d, gray);
+        gl_FragColor = vec4(vec3(pattern), 1.0);
       }
     `,
     uniforms: {
-      dotSize: { type: 'float', value: 8.0, min: 4.0, max: 32.0, step: 1.0 }
+      dotSize: { type: 'float', value: 0.05, min: 0.01, max: 0.2, step: 0.01 },
+      angle: { type: 'float', value: 0.785, min: 0, max: 6.28, step: 0.1 }
     }
   },
   duotone: {
@@ -78,19 +90,16 @@ const SHADER_EFFECTS = {
       uniform sampler2D uSampler;
       uniform vec3 color1;
       uniform vec3 color2;
-      uniform float intensity;
-      
       void main(void) {
-        vec4 texColor = texture2D(uSampler, vTextureCoord);
-        float gray = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
-        vec3 duotone = mix(color1, color2, gray * intensity);
-        gl_FragColor = vec4(duotone, texColor.a);
+        vec4 color = texture2D(uSampler, vTextureCoord);
+        float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+        vec3 rgb = mix(color1, color2, gray);
+        gl_FragColor = vec4(rgb, color.a);
       }
     `,
     uniforms: {
-      color1: { type: 'vec3', value: [0.0, 0.0, 0.4] },
-      color2: { type: 'vec3', value: [1.0, 0.0, 0.0] },
-      intensity: { type: 'float', value: 1.0, min: 0.0, max: 1.0, step: 0.01 }
+      color1: { type: 'vec3', value: [0.0, 0.0, 0.0] },
+      color2: { type: 'vec3', value: [1.0, 1.0, 1.0] }
     }
   }
 };
