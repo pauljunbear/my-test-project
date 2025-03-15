@@ -186,7 +186,8 @@ const CleanImageEditor = () => {
   const [duotoneSettings, setDuotoneSettings] = useState<DuotoneSettings>({
     enabled: false,
     shadowColor: '#000000',
-    highlightColor: '#ffffff'
+    highlightColor: '#ffffff',
+    intensity: 100
   });
 
   const [noiseSettings, setNoiseSettings] = useState<NoiseSettings>({

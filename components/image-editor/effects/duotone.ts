@@ -1,7 +1,7 @@
 import { DuotoneSettings } from '../types';
 
 export const applyDuotoneEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, settings: DuotoneSettings): ImageData => {
-  const { shadowColor, highlightColor, enabled } = settings;
+  const { shadowColor, highlightColor, enabled, intensity } = settings;
   
   if (!enabled) return imageData;
 
@@ -14,14 +14,20 @@ export const applyDuotoneEffect = (ctx: CanvasRenderingContext2D, imageData: Ima
     return imageData;
   }
 
+  // Convert intensity from 0-100 to 0-1
+  const intensityFactor = intensity / 100;
+
   for (let i = 0; i < data.length; i += 4) {
     // Get grayscale value
     const gray = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) / 255;
     
+    // Apply intensity to the grayscale value
+    const adjustedGray = Math.pow(gray, (intensity / 50) * 0.8 + 0.6);
+    
     // Interpolate between shadow and highlight colors
-    data[i] = Math.round(lerp(shadow.r, highlight.r, gray));
-    data[i + 1] = Math.round(lerp(shadow.g, highlight.g, gray));
-    data[i + 2] = Math.round(lerp(shadow.b, highlight.b, gray));
+    data[i] = Math.round(lerp(data[i], lerp(shadow.r, highlight.r, adjustedGray), intensityFactor));
+    data[i + 1] = Math.round(lerp(data[i + 1], lerp(shadow.g, highlight.g, adjustedGray), intensityFactor));
+    data[i + 2] = Math.round(lerp(data[i + 2], lerp(shadow.b, highlight.b, adjustedGray), intensityFactor));
     // Keep original alpha
   }
 
