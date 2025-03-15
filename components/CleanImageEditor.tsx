@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Download, Undo, Crop, RefreshCw, Trash2 } from "lucide-react";
@@ -20,7 +20,6 @@ import {
 } from '@/components/image-editor/effects';
 import type {
   EffectType,
-  EffectSettings,
   HalftoneSettings,
   DuotoneSettings,
   NoiseSettings,
@@ -158,7 +157,16 @@ const CleanImageEditor = () => {
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
   const cropCanvasRef = useRef<HTMLCanvasElement>(null);
   
-  // Add state for cropping and resizing
+  // State for image and effects
+  const [image, setImage] = useState<HTMLImageElement | null>(null);
+  const [originalImageData, setOriginalImageData] = useState<ImageData | null>(null);
+  const [appliedEffects, setAppliedEffects] = useState<AppliedEffect[]>([]);
+  const [currentEffect, setCurrentEffect] = useState<EffectType>('none');
+  const [history, setHistory] = useState<ImageHistory[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const [currentImageDataUrl, setCurrentImageDataUrl] = useState<string | null>(null);
+
+  // State for cropping and resizing
   const [isCropping, setIsCropping] = useState<boolean>(false);
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const [cropState, setCropState] = useState<CropState>({
@@ -169,15 +177,7 @@ const CleanImageEditor = () => {
     isSelecting: false
   });
 
-  const [image, setImage] = useState<HTMLImageElement | null>(null);
-  const [originalImageData, setOriginalImageData] = useState<ImageData | null>(null);
-  const [appliedEffects, setAppliedEffects] = useState<AppliedEffect[]>([]);
-  const [currentEffect, setCurrentEffect] = useState<EffectType>('none');
-  const [history, setHistory] = useState<ImageHistory[]>([]);
-  const [historyIndex, setHistoryIndex] = useState<number>(-1);
-  const [currentImageDataUrl, setCurrentImageDataUrl] = useState<string | null>(null);
-
-  // State for all effects
+  // State for effects
   const [halftoneSettings, setHalftoneSettings] = useState<HalftoneSettings>({
     enabled: false,
     dotSize: 2,
@@ -197,14 +197,14 @@ const CleanImageEditor = () => {
     level: 20
   });
 
-  const [kaleidoscopeSettings] = useState<KaleidoscopeSettings>({
+  const [kaleidoscopeSettings, setKaleidoscopeSettings] = useState<KaleidoscopeSettings>({
     enabled: true,
     segments: 8,
     rotation: 0,
     zoom: 1.0
   });
 
-  const [lightLeaksSettings] = useState<LightLeaksSettings>({
+  const [lightLeaksSettings, setLightLeaksSettings] = useState<LightLeaksSettings>({
     enabled: true,
     intensity: 50,
     color: '#FFA500',
@@ -212,7 +212,7 @@ const CleanImageEditor = () => {
     blend: 'screen'
   });
 
-  const [vignetteSettings] = useState<VignetteSettings>({
+  const [vignetteSettings, setVignetteSettings] = useState<VignetteSettings>({
     enabled: true,
     intensity: 50,
     color: '#000000',
@@ -220,7 +220,7 @@ const CleanImageEditor = () => {
     shape: 'circular'
   });
 
-  const [textureSettings] = useState<TextureSettings>({
+  const [textureSettings, setTextureSettings] = useState<TextureSettings>({
     enabled: true,
     texture: 'paper',
     opacity: 50,
@@ -228,7 +228,7 @@ const CleanImageEditor = () => {
     scale: 1.0
   });
 
-  const [frameSettings] = useState<FrameSettings>({
+  const [frameSettings, setFrameSettings] = useState<FrameSettings>({
     enabled: true,
     ratio: '1:1',
     width: 1000,
@@ -237,7 +237,75 @@ const CleanImageEditor = () => {
     padding: 20
   });
 
-  // Add new effect buttons to the navigation bar
+  // Function to add current state to history
+  const addToHistory = useCallback((currentHistory: ImageHistory[], currentIndex: number, dataUrl: string, effects: AppliedEffect[]): { newHistory: ImageHistory[], newIndex: number } => {
+    try {
+      // Create new history entry
+      const newHistory: ImageHistory = {
+        dataUrl,
+        effects,
+        timestamp: Date.now()
+      };
+      
+      // Truncate future history if we're not at the latest point
+      const newHistoryList = currentHistory.slice(0, currentIndex + 1).concat([newHistory]);
+      return {
+        newHistory: newHistoryList,
+        newIndex: newHistoryList.length - 1
+      };
+    } catch (error) {
+      console.error("Error adding to history:", error);
+      return { newHistory: currentHistory, newIndex: currentIndex };
+    }
+  }, []);
+
+  // Function to apply a single effect to image data
+  const applyEffect = useCallback((imageData: ImageData, effect: AppliedEffect): ImageData => {
+    const { type, settings } = effect;
+    const ctx = canvasRef.current?.getContext('2d');
+    
+    if (!ctx) {
+      console.error('Could not get canvas context');
+      return imageData;
+    }
+    
+    switch (type) {
+      case 'halftone':
+        return applyHalftoneEffect(ctx, imageData, settings as HalftoneSettings);
+      case 'duotone':
+        return applyDuotoneEffect(ctx, imageData, settings as DuotoneSettings);
+      case 'blackwhite':
+        return applyBlackAndWhiteEffect(ctx, imageData);
+      case 'sepia':
+        return applySepiaEffect(ctx, imageData);
+      case 'noise':
+        return applyNoiseEffect(ctx, imageData, settings as NoiseSettings);
+      case 'kaleidoscope':
+        return applyKaleidoscopeEffect(ctx, imageData, settings as KaleidoscopeSettings);
+      case 'lightleaks':
+        return applyLightLeaksEffect(ctx, imageData, settings as LightLeaksSettings);
+      case 'vignette':
+        return applyVignetteEffect(ctx, imageData, settings as VignetteSettings);
+      case 'texture':
+        return applyTextureEffect(ctx, imageData, settings as TextureSettings);
+      case 'frame':
+        return applyFrameEffect(ctx, imageData, settings as FrameSettings);
+      default:
+        return imageData;
+    }
+  }, [canvasRef]);
+
+  // Base settings for effects
+  const baseSettings = {
+    blackwhite: { enabled: true, level: 100 } as ContrastSettings,
+    sepia: { enabled: true, level: 100 } as ContrastSettings,
+    dither: { enabled: true, intensity: 100 } as DitheringSettings,
+    exposure: { enabled: true, level: 0 } as ExposureSettings,
+    contrast: { enabled: true, level: 0 } as ContrastSettings,
+    noise: { enabled: true, level: 20 } as NoiseSettings
+  };
+
+  // Effect buttons configuration
   const effectButtons = [
     { id: 'none', label: 'Original' },
     { id: 'halftone', label: 'Halftone' },
@@ -250,7 +318,7 @@ const CleanImageEditor = () => {
     { id: 'vignette', label: 'Vignette' },
     { id: 'texture', label: 'Texture' },
     { id: 'frame', label: 'Frame' }
-  ];
+  ] as const;
 
   // Add state for resize dimensions
   const [resizeWidth] = useState<number>(0);
@@ -550,168 +618,6 @@ const CleanImageEditor = () => {
       setColor(hexValue);
     }
   };
-
-  // Function to apply a single effect to image data
-  const applyEffect = useCallback((imageData: ImageData, effect: AppliedEffect): ImageData => {
-    const { type, settings } = effect;
-    const ctx = canvasRef.current?.getContext('2d');
-    
-    if (!ctx) {
-      console.error('Could not get canvas context');
-      return imageData;
-    }
-    
-    switch (type) {
-      case 'halftone':
-        return applyHalftoneEffect(ctx, imageData, settings as HalftoneSettings);
-      case 'duotone':
-        return applyDuotoneEffect(ctx, imageData, settings as DuotoneSettings);
-      case 'blackwhite':
-        return applyBlackAndWhiteEffect(ctx, imageData);
-      case 'sepia':
-        return applySepiaEffect(ctx, imageData);
-      case 'noise':
-        return applyNoiseEffect(ctx, imageData, settings as NoiseSettings);
-      case 'kaleidoscope':
-        return applyKaleidoscopeEffect(ctx, imageData, settings as KaleidoscopeSettings);
-      case 'lightleaks':
-        return applyLightLeaksEffect(ctx, imageData, settings as LightLeaksSettings);
-      case 'vignette':
-        return applyVignetteEffect(ctx, imageData, settings as VignetteSettings);
-      case 'texture':
-        return applyTextureEffect(ctx, imageData, settings as TextureSettings);
-      case 'frame':
-        return applyFrameEffect(ctx, imageData, settings as FrameSettings);
-      default:
-        return imageData;
-    }
-  }, [canvasRef]);
-
-  // Base settings for effects
-  const baseSettings = {
-    blackwhite: { enabled: true, level: 100 } as ContrastSettings,
-    sepia: { enabled: true, level: 100 } as ContrastSettings,
-    dither: { enabled: true, intensity: 100 } as DitheringSettings,
-    exposure: { enabled: true, level: 0 } as ExposureSettings,
-    contrast: { enabled: true, level: 0 } as ContrastSettings,
-    noise: { enabled: true, level: 20 } as NoiseSettings
-  };
-
-  // Update the applyEffectWithReset function
-  const applyEffectWithReset = async (
-    image: HTMLImageElement | null,
-    canvasRef: React.RefObject<HTMLCanvasElement>,
-    currentEffect: EffectType,
-    settings: {
-      halftone: HalftoneSettings;
-      duotone: DuotoneSettings;
-      noise: NoiseSettings;
-      kaleidoscope: KaleidoscopeSettings;
-      lightleaks: LightLeaksSettings;
-      vignette: VignetteSettings;
-      texture: TextureSettings;
-      frame: FrameSettings;
-    },
-    resetToOriginal: () => boolean
-  ) => {
-    if (!image || !resetToOriginal()) return;
-    
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    let currentEffectObj: AppliedEffect | null = null;
-    
-    switch (currentEffect) {
-      case 'halftone':
-        currentEffectObj = { type: 'halftone', settings: { ...settings.halftone, enabled: true } };
-        break;
-      case 'duotone':
-        currentEffectObj = { type: 'duotone', settings: { ...settings.duotone, enabled: true } };
-        break;
-      case 'blackwhite':
-        currentEffectObj = { type: 'blackwhite', settings: baseSettings.blackwhite };
-        break;
-      case 'sepia':
-        effectSettings = baseSettings.sepia;
-        break;
-      default:
-        return;
-    }
-    
-    // Create a new effect
-    const newEffect: AppliedEffect = {
-      type: currentEffect,
-      settings: effectSettings
-    };
-    
-    // Add to applied effects
-    setAppliedEffects(prev => [...prev, newEffect]);
-    
-    // Add to history
-    if (currentImageDataUrl) {
-      addToHistory(history, historyIndex, currentImageDataUrl, [newEffect]);
-    }
-  }, [
-    currentEffect,
-    halftoneSettings,
-    duotoneSettings,
-    baseSettings,
-    kaleidoscopeSettings,
-    lightLeaksSettings,
-    vignetteSettings,
-    textureSettings,
-    frameSettings,
-    currentImageDataUrl,
-    addToHistory
-  ]);
-
-  // Reset to original image before applying new effect
-  const resetToOriginal = useCallback(() => {
-    if (canvasRef.current && originalImageData) {
-      const ctx = canvasRef.current.getContext('2d');
-      if (ctx) {
-        ctx.putImageData(originalImageData, 0, 0);
-        return true;
-      }
-    }
-    return false;
-  }, [originalImageData]);
-
-  // Effect to update canvas when effects change
-  useEffect(() => {
-    if (currentEffect === 'none' || !image) {
-      resetToOriginal();
-      return;
-    }
-    
-    applyEffectWithReset(image, canvasRef, currentEffect, {
-      halftone: halftoneSettings,
-      duotone: duotoneSettings,
-      noise: noiseSettings,
-      kaleidoscope: kaleidoscopeSettings,
-      lightleaks: lightLeaksSettings,
-      vignette: vignetteSettings,
-      texture: textureSettings,
-      frame: frameSettings
-    }, resetToOriginal);
-  }, [
-    currentEffect,
-    image,
-    resetToOriginal,
-    applyEffectWithReset,
-    halftoneSettings,
-    duotoneSettings,
-    noiseSettings,
-    kaleidoscopeSettings,
-    lightLeaksSettings,
-    vignetteSettings,
-    textureSettings,
-    frameSettings
-  ]);
 
   // Update noise level state handler
   const handleNoiseChange = (value: number) => {
