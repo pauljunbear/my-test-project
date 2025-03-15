@@ -1,284 +1,244 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import * as PIXI from '@pixi/core';
-import { Application } from '@pixi/app';
-import { Sprite } from '@pixi/sprite';
-import { Assets } from '@pixi/assets';
-import { Filter } from '@pixi/core';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Label } from './ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Slider } from './ui/slider';
-import { createImage, createCanvas, downloadFile } from '@/lib/browser-utils';
-import { debounce } from '@/lib/utils';
 
-// Define shader modes
-type ShaderMode = 'basic' | 'advanced';
+type ImageEffect = 'none' | 'grayscale' | 'duotone' | 'halftone' | 'dither';
 
-// Define shader effects type
-type ShaderEffectName = 'none' | 'pixelate' | 'halftone' | 'duotone';
-
-interface ShaderEffect {
+interface EffectConfig {
   name: string;
-  fragment: string;
-  uniforms: Record<string, any>;
+  settings?: {
+    [key: string]: {
+      min: number;
+      max: number;
+      step: number;
+      default: number;
+    };
+  };
 }
 
-const SHADER_EFFECTS: Record<ShaderEffectName, ShaderEffect> = {
+const IMAGE_EFFECTS: Record<ImageEffect, EffectConfig> = {
   none: {
-    name: 'None',
-    fragment: `
-      varying vec2 vTextureCoord;
-      uniform sampler2D uSampler;
-      void main(void) {
-        gl_FragColor = texture2D(uSampler, vTextureCoord);
-      }
-    `,
-    uniforms: {}
+    name: 'None'
   },
-  pixelate: {
-    name: 'Pixelate',
-    fragment: `
-      varying vec2 vTextureCoord;
-      uniform sampler2D uSampler;
-      uniform float pixelSize;
-      void main(void) {
-        vec2 pixelated = vec2(
-          floor(vTextureCoord.x * 1.0/pixelSize) * pixelSize,
-          floor(vTextureCoord.y * 1.0/pixelSize) * pixelSize
-        );
-        gl_FragColor = texture2D(uSampler, pixelated);
+  grayscale: {
+    name: 'Grayscale'
+  },
+  duotone: {
+    name: 'Duotone',
+    settings: {
+      threshold: {
+        min: 0,
+        max: 255,
+        step: 1,
+        default: 128
       }
-    `,
-    uniforms: {
-      pixelSize: { type: 'float', value: 0.1, min: 0.01, max: 0.5, step: 0.01 }
     }
   },
   halftone: {
     name: 'Halftone',
-    fragment: `
-      varying vec2 vTextureCoord;
-      uniform sampler2D uSampler;
-      uniform float dotSize;
-      uniform float angle;
-      void main(void) {
-        float s = sin(angle);
-        float c = cos(angle);
-        vec2 tex = vTextureCoord * vec2(1.0/dotSize);
-        vec2 point = vec2(
-          c * tex.x - s * tex.y,
-          s * tex.x + c * tex.y
-        );
-        float d = length(fract(point) - 0.5);
-        vec4 color = texture2D(uSampler, vTextureCoord);
-        float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-        float pattern = step(d, gray);
-        gl_FragColor = vec4(vec3(pattern), 1.0);
+    settings: {
+      size: {
+        min: 1,
+        max: 20,
+        step: 1,
+        default: 4
+      },
+      spacing: {
+        min: 1,
+        max: 20,
+        step: 1,
+        default: 4
       }
-    `,
-    uniforms: {
-      dotSize: { type: 'float', value: 0.05, min: 0.01, max: 0.2, step: 0.01 },
-      angle: { type: 'float', value: 0.785, min: 0, max: 6.28, step: 0.1 }
     }
   },
-  duotone: {
-    name: 'Duotone',
-    fragment: `
-      varying vec2 vTextureCoord;
-      uniform sampler2D uSampler;
-      uniform vec3 color1;
-      uniform vec3 color2;
-      void main(void) {
-        vec4 color = texture2D(uSampler, vTextureCoord);
-        float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-        vec3 rgb = mix(color1, color2, gray);
-        gl_FragColor = vec4(rgb, color.a);
+  dither: {
+    name: 'Dither',
+    settings: {
+      threshold: {
+        min: 0,
+        max: 255,
+        step: 1,
+        default: 128
       }
-    `,
-    uniforms: {
-      color1: { type: 'vec3', value: [0.0, 0.0, 0.0] },
-      color2: { type: 'vec3', value: [1.0, 1.0, 1.0] }
     }
   }
 };
 
-export default function PixiShaderProcessor() {
-  // State
+export default function ImageProcessor() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [selectedEffect, setSelectedEffect] = useState('none');
-  const [shaderMode, setShaderMode] = useState<ShaderMode>('basic');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [uniformValues, setUniformValues] = useState<Record<string, any>>({});
+  const [selectedEffect, setSelectedEffect] = useState<ImageEffect>('none');
+  const [settings, setSettings] = useState<Record<string, number>>({});
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
 
-  // Refs
-  const containerRef = useRef<HTMLDivElement>(null);
-  const appRef = useRef<Application | null>(null);
-  const spriteRef = useRef<Sprite | null>(null);
-  const filterRef = useRef<Filter | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const originalImageRef = useRef<HTMLImageElement | null>(null);
 
-  // Initialize Pixi.js application
-  useEffect(() => {
-    if (!containerRef.current || typeof window === 'undefined') return;
+  const applyEffect = (
+    ctx: CanvasRenderingContext2D,
+    imageData: ImageData,
+    effect: ImageEffect
+  ) => {
+    const { data } = imageData;
 
-    // Create Pixi application with proper settings
-    const app = new Application({
-      backgroundAlpha: 0,
-      antialias: true,
-      width: containerRef.current.clientWidth,
-      height: containerRef.current.clientHeight,
-      view: document.createElement('canvas') as HTMLCanvasElement
-    });
-
-    // Add to DOM
-    containerRef.current.appendChild(app.view as HTMLCanvasElement);
-    appRef.current = app;
-
-    return () => {
-      app.destroy(true);
-      appRef.current = null;
-    };
-  }, []);
-
-  // Handle file upload
-  const handleFileUpload = async (file: File) => {
-    try {
-      setIsProcessing(true);
-      
-      // Create object URL
-      const url = URL.createObjectURL(file);
-      setImageUrl(url);
-      
-      // Load image and create sprite
-      const texture = await Assets.load(url);
-      const sprite = new Sprite(texture);
-      
-      // Set dimensions
-      const { width, height } = texture;
-      setDimensions({ width, height });
-      
-      // Scale sprite to fit container while maintaining aspect ratio
-      const containerWidth = containerRef.current?.clientWidth ?? width;
-      const containerHeight = containerRef.current?.clientHeight ?? height;
-      const scale = Math.min(
-        containerWidth / width,
-        containerHeight / height
-      );
-      
-      sprite.scale.set(scale);
-      sprite.position.set(
-        (containerWidth - width * scale) / 2,
-        (containerHeight - height * scale) / 2
-      );
-      
-      // Clear previous sprite and add new one
-      if (appRef.current) {
-        appRef.current.stage.removeChildren();
-        appRef.current.stage.addChild(sprite);
-      }
-      
-      spriteRef.current = sprite;
-      setSelectedEffect('none');
-      
-    } catch (error) {
-      console.error('Error loading image:', error);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // Apply shader effect
-  const applyShaderEffect = useCallback((effectName: string) => {
-    if (!spriteRef.current || !appRef.current) return;
-    
-    // Remove existing filter
-    if (filterRef.current) {
-      spriteRef.current.filters = [];
-      filterRef.current = null;
-    }
-    
-    // If no effect selected, return
-    if (effectName === 'none') return;
-    
-    // Get effect configuration
-    const effect = SHADER_EFFECTS[effectName];
-    if (!effect) return;
-    
-    try {
-      // Create new filter with shader
-      const filter = new Filter(
-        undefined, // Use default vertex shader
-        effect.fragment,
-        { 
-          ...effect.uniforms,
-          resolution: [
-            appRef.current.screen.width,
-            appRef.current.screen.height
-          ]
+    switch (effect) {
+      case 'grayscale':
+        for (let i = 0; i < data.length; i += 4) {
+          const gray = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+          data[i] = data[i + 1] = data[i + 2] = gray;
         }
-      );
-      
-      // Apply filter
-      spriteRef.current.filters = [filter];
-      filterRef.current = filter;
-      
-      // Initialize uniform values
-      const initialUniforms = {};
-      Object.entries(effect.uniforms).forEach(([key, config]) => {
-        initialUniforms[key] = config.value;
-      });
-      setUniformValues(initialUniforms);
-      
-    } catch (error) {
-      console.error('Error applying shader effect:', error);
-    }
-  }, []);
+        break;
 
-  // Handle uniform value changes
-  const handleUniformChange = (name: string, value: number) => {
-    if (!filterRef.current) return;
-    
-    setUniformValues(prev => ({ ...prev, [name]: value }));
-    filterRef.current.uniforms[name] = value;
+      case 'duotone':
+        const threshold = settings.threshold ?? IMAGE_EFFECTS.duotone.settings!.threshold.default;
+        for (let i = 0; i < data.length; i += 4) {
+          const gray = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+          const value = gray < threshold ? 0 : 255;
+          data[i] = data[i + 1] = data[i + 2] = value;
+        }
+        break;
+
+      case 'halftone':
+        const size = settings.size ?? IMAGE_EFFECTS.halftone.settings!.size.default;
+        const spacing = settings.spacing ?? IMAGE_EFFECTS.halftone.settings!.spacing.default;
+        
+        // Create a temporary canvas for the halftone effect
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = ctx.canvas.width;
+        tempCanvas.height = ctx.canvas.height;
+        const tempCtx = tempCanvas.getContext('2d')!;
+        
+        // Draw original image
+        tempCtx.putImageData(imageData, 0, 0);
+        
+        // Clear main canvas
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        
+        // Draw halftone pattern
+        ctx.fillStyle = 'black';
+        for (let y = 0; y < ctx.canvas.height; y += spacing) {
+          for (let x = 0; x < ctx.canvas.width; x += spacing) {
+            const pixelData = tempCtx.getImageData(x, y, 1, 1).data;
+            const brightness = (pixelData[0] + pixelData[1] + pixelData[2]) / 3 / 255;
+            const radius = (size * brightness) / 2;
+            
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        return; // Skip putting image data back since we drew directly
+
+      case 'dither':
+        const ditherThreshold = settings.threshold ?? IMAGE_EFFECTS.dither.settings!.threshold.default;
+        const w = ctx.canvas.width;
+        const newData = new Uint8ClampedArray(data);
+        
+        for (let y = 0; y < ctx.canvas.height; y++) {
+          for (let x = 0; x < w; x++) {
+            const i = (y * w + x) * 4;
+            const gray = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+            const newValue = gray < ditherThreshold ? 0 : 255;
+            const error = gray - newValue;
+            
+            newData[i] = newData[i + 1] = newData[i + 2] = newValue;
+            
+            // Floyd-Steinberg dithering
+            if (x < w - 1) distributeError(newData, i + 4, error * 7/16, w);
+            if (y < ctx.canvas.height - 1) {
+              if (x > 0) distributeError(newData, i + w * 4 - 4, error * 3/16, w);
+              distributeError(newData, i + w * 4, error * 5/16, w);
+              if (x < w - 1) distributeError(newData, i + w * 4 + 4, error * 1/16, w);
+            }
+          }
+        }
+        
+        imageData.data.set(newData);
+        break;
+    }
+
+    ctx.putImageData(imageData, 0, 0);
   };
 
-  // Handle download
-  const handleDownload = async () => {
-    if (!appRef.current) return;
-    
-    try {
-      const dataUrl = appRef.current.view.toDataURL('image/png');
-      downloadFile(dataUrl, `processed-image-${selectedEffect}.png`);
-    } catch (error) {
-      console.error('Error downloading image:', error);
-    }
+  const distributeError = (data: Uint8ClampedArray, i: number, error: number, width: number) => {
+    data[i] = Math.max(0, Math.min(255, data[i] + error));
+    data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + error));
+    data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + error));
   };
 
-  // Effect cleanup
-  useEffect(() => {
-    return () => {
-      if (imageUrl) URL.revokeObjectURL(imageUrl);
+  const handleFileUpload = (file: File) => {
+    const url = URL.createObjectURL(file);
+    setImageUrl(url);
+    setSelectedFile(file);
+
+    const img = new Image();
+    img.onload = () => {
+      setDimensions({ width: img.width, height: img.height });
+      originalImageRef.current = img;
+      
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d')!;
+        canvasRef.current.width = img.width;
+        canvasRef.current.height = img.height;
+        ctx.drawImage(img, 0, 0);
+      }
     };
-  }, [imageUrl]);
+    img.src = url;
+  };
 
-  // Apply effect when selected effect changes
+  const handleEffectChange = (effect: ImageEffect) => {
+    setSelectedEffect(effect);
+    
+    // Reset settings to defaults
+    if (effect !== 'none' && IMAGE_EFFECTS[effect].settings) {
+      const defaultSettings: Record<string, number> = {};
+      Object.entries(IMAGE_EFFECTS[effect].settings!).forEach(([key, config]) => {
+        defaultSettings[key] = config.default;
+      });
+      setSettings(defaultSettings);
+    }
+  };
+
+  const handleSettingChange = (name: string, value: number) => {
+    setSettings(prev => ({ ...prev, [name]: value }));
+  };
+
   useEffect(() => {
-    applyShaderEffect(selectedEffect);
-  }, [selectedEffect, applyShaderEffect]);
+    if (!canvasRef.current || !originalImageRef.current) return;
+
+    const ctx = canvasRef.current.getContext('2d')!;
+    ctx.drawImage(originalImageRef.current, 0, 0);
+
+    if (selectedEffect !== 'none') {
+      const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+      applyEffect(ctx, imageData, selectedEffect);
+    }
+  }, [selectedEffect, settings]);
+
+  const handleDownload = () => {
+    if (!canvasRef.current) return;
+    
+    const link = document.createElement('a');
+    link.download = `processed-image-${selectedEffect}.png`;
+    link.href = canvasRef.current.toDataURL('image/png');
+    link.click();
+  };
 
   return (
     <div className="w-full h-full flex flex-col space-y-6 p-4">
       {/* Effect Navigation Bar */}
       <div className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-xl shadow-sm">
         <div className="flex space-x-2">
-          {Object.entries(SHADER_EFFECTS).map(([key, effect]) => (
+          {Object.entries(IMAGE_EFFECTS).map(([key, effect]) => (
             <Button
               key={key}
               variant={selectedEffect === key ? 'default' : 'outline'}
-              onClick={() => setSelectedEffect(key)}
+              onClick={() => handleEffectChange(key as ImageEffect)}
               className="rounded-lg"
             >
               {effect.name}
@@ -342,41 +302,41 @@ export default function PixiShaderProcessor() {
                   )}
                 </h2>
               </div>
-              <div 
-                ref={containerRef} 
-                className="flex-1 bg-[#f0f0f0] dark:bg-gray-900"
-              />
+              <div className="flex-1 bg-[#f0f0f0] dark:bg-gray-900 flex items-center justify-center">
+                <canvas
+                  ref={canvasRef}
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
             </div>
           )}
         </div>
 
         {/* Settings Panel */}
-        {selectedEffect !== 'none' && (
+        {selectedEffect !== 'none' && IMAGE_EFFECTS[selectedEffect].settings && (
           <Card className="w-80 rounded-xl shadow-sm">
             <CardContent className="p-4 space-y-4">
               <h3 className="font-medium">Effect Settings</h3>
-              {Object.entries(SHADER_EFFECTS[selectedEffect].uniforms)
-                .filter(([_, config]) => config.type === 'float')
-                .map(([name, config]) => (
-                  <div key={name} className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label htmlFor={name} className="capitalize">
-                        {name.replace(/([A-Z])/g, ' $1').trim()}
-                      </Label>
-                      <span className="text-sm text-muted-foreground">
-                        {uniformValues[name]?.toFixed(2)}
-                      </span>
-                    </div>
-                    <Slider
-                      id={name}
-                      min={config.min}
-                      max={config.max}
-                      step={config.step}
-                      value={[uniformValues[name] || config.value]}
-                      onValueChange={([value]) => handleUniformChange(name, value)}
-                    />
+              {Object.entries(IMAGE_EFFECTS[selectedEffect].settings!).map(([name, config]) => (
+                <div key={name} className="space-y-2">
+                  <div className="flex justify-between">
+                    <Label htmlFor={name} className="capitalize">
+                      {name.replace(/([A-Z])/g, ' $1').trim()}
+                    </Label>
+                    <span className="text-sm text-muted-foreground">
+                      {settings[name]?.toFixed(2)}
+                    </span>
                   </div>
-                ))}
+                  <Slider
+                    id={name}
+                    min={config.min}
+                    max={config.max}
+                    step={config.step}
+                    value={[settings[name] || config.default]}
+                    onValueChange={([value]) => handleSettingChange(name, value)}
+                  />
+                </div>
+              ))}
             </CardContent>
           </Card>
         )}
