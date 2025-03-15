@@ -106,11 +106,11 @@ export interface AppliedEffect {
 }
 
 export interface CropState {
-  active: boolean;
   startX: number;
   startY: number;
   endX: number;
   endY: number;
+  isSelecting: boolean;
 }
 
 export interface ColorSetSelectorProps {
