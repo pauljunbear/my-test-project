@@ -8,32 +8,18 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { ColorSetSelector } from '@/components/image-editor/ui/ColorSetSelector';
-import {
-  applyHalftoneEffect,
-  applyDuotoneEffect,
-  applyNoiseEffect,
-  applyKaleidoscopeEffect,
-  applyLightLeaksEffect,
-  applyVignetteEffect,
-  applyTextureEffect,
-  applyFrameEffect
-} from '@/components/image-editor/effects';
 import type {
   EffectType,
   HalftoneSettings,
   DuotoneSettings,
   NoiseSettings,
-  KaleidoscopeSettings,
-  LightLeaksSettings,
-  VignetteSettings,
-  TextureSettings,
-  FrameSettings,
   ImageHistory,
   AppliedEffect,
   CropState,
   ContrastSettings,
   DitheringSettings,
-  ExposureSettings
+  ExposureSettings,
+  EffectSettings
 } from '@/components/image-editor/types';
 
 // UploadDropzone Component
@@ -120,40 +106,12 @@ const UploadDropzone = ({ onUpload }: { onUpload: (file: File) => void }) => {
   );
 };
 
-// Helper functions
-const applyBlackAndWhiteEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData): ImageData => {
-  const outputData = new Uint8ClampedArray(imageData.data);
-  
-  for (let i = 0; i < outputData.length; i += 4) {
-    const avg = (imageData.data[i] + imageData.data[i + 1] + imageData.data[i + 2]) / 3;
-    outputData[i] = outputData[i + 1] = outputData[i + 2] = avg;
-  }
-  
-  return new ImageData(outputData, imageData.width, imageData.height);
-};
-
-const applySepiaEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData): ImageData => {
-  const outputData = new Uint8ClampedArray(imageData.data);
-  
-  for (let i = 0; i < outputData.length; i += 4) {
-    const r = imageData.data[i];
-    const g = imageData.data[i + 1];
-    const b = imageData.data[i + 2];
-    
-    outputData[i] = Math.min(255, (r * 0.393) + (g * 0.769) + (b * 0.189));
-    outputData[i + 1] = Math.min(255, (r * 0.349) + (g * 0.686) + (b * 0.168));
-    outputData[i + 2] = Math.min(255, (r * 0.272) + (g * 0.534) + (b * 0.131));
-  }
-  
-  return new ImageData(outputData, imageData.width, imageData.height);
-};
-
 const CleanImageEditor = () => {
-  // State for image and canvas
+  // Refs for canvas elements
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
   const cropCanvasRef = useRef<HTMLCanvasElement>(null);
-  
+
   // State for image and effects
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [originalImageData, setOriginalImageData] = useState<ImageData | null>(null);
@@ -161,7 +119,6 @@ const CleanImageEditor = () => {
   const [currentEffect, setCurrentEffect] = useState<EffectType>('none');
   const [history, setHistory] = useState<ImageHistory[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
-  const [currentImageDataUrl, setCurrentImageDataUrl] = useState<string | null>(null);
 
   // State for cropping and resizing
   const [isCropping, setIsCropping] = useState<boolean>(false);
@@ -195,45 +152,41 @@ const CleanImageEditor = () => {
     level: 20
   });
 
-  const [kaleidoscopeSettings, setKaleidoscopeSettings] = useState<KaleidoscopeSettings>({
-    enabled: false,
-    segments: 8,
-    rotation: 0,
-    zoom: 1.0
-  });
+  // Base settings for effects
+  const baseSettings = {
+    blackwhite: { enabled: true, level: 100 } as ContrastSettings,
+    sepia: { enabled: true, level: 100 } as ContrastSettings,
+    dither: { enabled: true, intensity: 100 } as DitheringSettings,
+    exposure: { enabled: true, level: 0 } as ExposureSettings,
+    contrast: { enabled: true, level: 0 } as ContrastSettings,
+    noise: { enabled: true, level: 20 } as NoiseSettings
+  };
 
-  const [lightLeaksSettings, setLightLeaksSettings] = useState<LightLeaksSettings>({
-    enabled: false,
-    intensity: 50,
-    color: '#FFA500',
-    position: 45,
-    blend: 'screen'
-  });
+  // Add state for custom colors
+  const [customColor1Hex, setCustomColor1Hex] = useState<string>('#000000');
+  const [customColor2Hex, setCustomColor2Hex] = useState<string>('#ffffff');
 
-  const [vignetteSettings, setVignetteSettings] = useState<VignetteSettings>({
-    enabled: false,
-    intensity: 50,
-    color: '#000000',
-    feather: 50,
-    shape: 'circular'
-  });
+  // Add state for effect settings
+  const [ditheringIntensity, setDitheringIntensity] = useState<number>(100);
+  const [exposureLevel, setExposureLevel] = useState<number>(0);
+  const [contrastLevel, setContrastLevel] = useState<number>(0);
 
-  const [textureSettings, setTextureSettings] = useState<TextureSettings>({
-    enabled: false,
-    texture: 'paper',
-    opacity: 50,
-    blend: 'overlay',
-    scale: 1.0
-  });
+  // Effect buttons configuration
+  const effectButtons = [
+    { id: 'none', label: 'Original' },
+    { id: 'halftone', label: 'Halftone' },
+    { id: 'duotone', label: 'Duotone' },
+    { id: 'blackwhite', label: 'B&W' },
+    { id: 'sepia', label: 'Sepia' },
+    { id: 'noise', label: 'Noise' },
+    { id: 'dither', label: 'Dither' },
+    { id: 'exposure', label: 'Exposure' },
+    { id: 'contrast', label: 'Contrast' }
+  ] as const;
 
-  const [frameSettings, setFrameSettings] = useState<FrameSettings>({
-    enabled: false,
-    ratio: '1:1',
-    width: 1000,
-    height: 1000,
-    color: '#FFFFFF',
-    padding: 20
-  });
+  // Add state for resize dimensions
+  const [resizeWidth] = useState<number>(0);
+  const [resizeHeight] = useState<number>(0);
 
   // Function to add current state to history
   const addToHistory = useCallback((currentHistory: ImageHistory[], currentIndex: number, dataUrl: string, effects: AppliedEffect[]): { newHistory: ImageHistory[], newIndex: number } => {
@@ -257,79 +210,71 @@ const CleanImageEditor = () => {
     }
   }, []);
 
-  // Function to apply a single effect to image data
-  const applyEffect = useCallback((imageData: ImageData, effect: AppliedEffect): ImageData => {
-    const { type, settings } = effect;
-    const ctx = canvasRef.current?.getContext('2d');
+  // Handle apply effect button click
+  const handleApplyEffect = useCallback(() => {
+    if (!currentEffect || currentEffect === 'none' || !canvasRef.current || !originalImageData) return;
     
-    if (!ctx) {
-      console.error('Could not get canvas context');
-      return imageData;
-    }
+    let effectSettings: EffectSettings;
     
-    switch (type) {
+    // Construct the appropriate settings based on the current effect
+    switch (currentEffect) {
       case 'halftone':
-        return applyHalftoneEffect(ctx, imageData, settings as HalftoneSettings);
+        effectSettings = { ...halftoneSettings, enabled: true };
+        break;
       case 'duotone':
-        return applyDuotoneEffect(ctx, imageData, settings as DuotoneSettings);
-      case 'blackwhite':
-        return applyBlackAndWhiteEffect(ctx, imageData);
-      case 'sepia':
-        return applySepiaEffect(ctx, imageData);
+        effectSettings = { ...duotoneSettings, enabled: true };
+        break;
       case 'noise':
-        return applyNoiseEffect(ctx, imageData, settings as NoiseSettings);
-      case 'kaleidoscope':
-        return applyKaleidoscopeEffect(ctx, imageData, settings as KaleidoscopeSettings);
-      case 'lightleaks':
-        return applyLightLeaksEffect(ctx, imageData, settings as LightLeaksSettings);
-      case 'vignette':
-        return applyVignetteEffect(ctx, imageData, settings as VignetteSettings);
-      case 'texture':
-        return applyTextureEffect(ctx, imageData, settings as TextureSettings);
-      case 'frame':
-        return applyFrameEffect(ctx, imageData, settings as FrameSettings);
+        effectSettings = { ...noiseSettings, enabled: true };
+        break;
+      case 'blackwhite':
+      case 'sepia':
+        effectSettings = baseSettings[currentEffect];
+        break;
+      case 'dither':
+        effectSettings = { ...baseSettings.dither, enabled: true };
+        break;
+      case 'exposure':
+        effectSettings = { ...baseSettings.exposure, enabled: true };
+        break;
+      case 'contrast':
+        effectSettings = { ...baseSettings.contrast, enabled: true };
+        break;
       default:
-        return imageData;
+        effectSettings = { enabled: true, level: 0 } as ContrastSettings;
     }
-  }, [canvasRef]);
-
-  // Base settings for effects
-  const baseSettings = {
-    blackwhite: { enabled: true, level: 100 } as ContrastSettings,
-    sepia: { enabled: true, level: 100 } as ContrastSettings,
-    dither: { enabled: true, intensity: 100 } as DitheringSettings,
-    exposure: { enabled: true, level: 0 } as ExposureSettings,
-    contrast: { enabled: true, level: 0 } as ContrastSettings,
-    noise: { enabled: true, level: 20 } as NoiseSettings
-  };
-
-  // Effect buttons configuration
-  const effectButtons = [
-    { id: 'none', label: 'Original' },
-    { id: 'halftone', label: 'Halftone' },
-    { id: 'duotone', label: 'Duotone' },
-    { id: 'blackwhite', label: 'B&W' },
-    { id: 'sepia', label: 'Sepia' },
-    { id: 'noise', label: 'Noise' },
-    { id: 'kaleidoscope', label: 'Kaleidoscope' },
-    { id: 'lightleaks', label: 'Light Leaks' },
-    { id: 'vignette', label: 'Vignette' },
-    { id: 'texture', label: 'Texture' },
-    { id: 'frame', label: 'Frame' }
-  ] as const;
-
-  // Add state for resize dimensions
-  const [resizeWidth] = useState<number>(0);
-  const [resizeHeight] = useState<number>(0);
-
-  // Add state for custom colors
-  const [customColor1Hex, setCustomColor1Hex] = useState<string>('#000000');
-  const [customColor2Hex, setCustomColor2Hex] = useState<string>('#ffffff');
-
-  // Add state for effect settings
-  const [ditheringIntensity, setDitheringIntensity] = useState<number>(100);
-  const [exposureLevel, setExposureLevel] = useState<number>(0);
-  const [contrastLevel, setContrastLevel] = useState<number>(0);
+    
+    // Create a new effect
+    const newEffect: AppliedEffect = {
+      type: currentEffect,
+      settings: effectSettings
+    };
+    
+    // Add to applied effects
+    setAppliedEffects(prev => [...prev, newEffect]);
+    
+    // Get current canvas state as data URL
+    const dataUrl = canvasRef.current.toDataURL('image/png');
+    
+    // Add to history
+    const { newHistory, newIndex } = addToHistory(history, historyIndex, dataUrl, [...appliedEffects, newEffect]);
+    setHistory(newHistory);
+    setHistoryIndex(newIndex);
+    
+    console.log(`Applied ${currentEffect} effect`, newEffect);
+  }, [
+    currentEffect,
+    halftoneSettings,
+    duotoneSettings,
+    noiseSettings,
+    baseSettings,
+    canvasRef,
+    originalImageData,
+    appliedEffects,
+    history,
+    historyIndex,
+    addToHistory
+  ]);
 
   // Function to handle undo action
   const handleUndo = () => {
@@ -376,7 +321,6 @@ const CleanImageEditor = () => {
     setCurrentEffect('none');
     setHistory([]);
     setHistoryIndex(-1);
-    setCurrentImageDataUrl(null);
     setIsCropping(false);
     setIsResizing(false);
   };
@@ -620,13 +564,6 @@ const CleanImageEditor = () => {
   // Update noise level state handler
   const handleNoiseChange = (value: number) => {
     setNoiseSettings(prev => ({ ...prev, level: value }));
-  };
-
-  const handleDuotoneIntensityChange = (value: number) => {
-    setDuotoneSettings({
-      ...duotoneSettings,
-      enabled: true
-    });
   };
 
   return (
