@@ -16,8 +16,8 @@ export const createOffscreenCanvas = (width: number, height: number): HTMLCanvas
   return canvas;
 };
 
-export const getOffscreenContext = (canvas: HTMLCanvasElement): SafeCanvasRenderingContext2D | null => {
-  return canvas.getContext('2d', { willReadFrequently: true }) as SafeCanvasRenderingContext2D | null;
+export const getOffscreenContext = (canvas: HTMLCanvasElement): CanvasRenderingContext2D | null => {
+  return canvas.getContext('2d');
 };
 
 // Re-export all effects

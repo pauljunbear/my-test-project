@@ -3,104 +3,40 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Download, Undo, Crop, RefreshCw, Trash2, Image as ImageIcon, Contrast, Droplet, Wind, Feather } from "lucide-react";
+import { Download, Undo, Crop, RefreshCw, Trash2 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { ColorSetSelector } from '@/components/ColorSetSelector';
+import { ColorSetSelector } from '@/components/image-editor/ui/ColorSetSelector';
+import {
+  applyDuotoneEffect,
+  applyNoiseEffect,
+  applyKaleidoscopeEffect,
+  applyLightLeaksEffect,
+  applyVignetteEffect,
+  applyTextureEffect,
+  applyFrameEffect
+} from '@/components/image-editor/effects';
+import type {
+  EffectType,
+  EffectSettings,
+  HalftoneSettings,
+  DuotoneSettings,
+  NoiseSettings,
+  KaleidoscopeSettings,
+  LightLeaksSettings,
+  VignetteSettings,
+  TextureSettings,
+  FrameSettings,
+  ImageHistory,
+  AppliedEffect,
+  CropState,
+  DitheringSettings,
+  ContrastSettings,
+  ExposureSettings
+} from '@/components/image-editor/types';
 // Import the EffectsPanel component
 // import EffectsPanel from './EffectsPanel';
-
-// Type definitions
-type EffectType = 'none' | 'halftone' | 'duotone' | 'blackwhite' | 'sepia' | 'noise' | 'dither' | 'exposure' | 'contrast' | 'kaleidoscope' | 'lightleaks' | 'vignette' | 'texture' | 'frame';
-
-interface HalftoneSettings {
-  dotSize: number;
-  spacing: number;
-  angle: number;
-  shape: 'circle' | 'square' | 'line';
-}
-
-interface DuotoneSettings {
-  color1: string;
-  color2: string;
-  intensity: number;
-}
-
-interface NoiseSettings {
-  level: number;
-}
-
-interface ExposureSettings {
-  level: number; // -100 to 100
-}
-
-interface ContrastSettings {
-  level: number; // -100 to 100
-}
-
-interface EmptySettings {}
-
-interface DitheringSettings {
-  intensity: number;
-}
-
-interface KaleidoscopeSettings {
-  segments: number;  // Number of segments in the kaleidoscope (4-16)
-  rotation: number;  // Rotation angle of the pattern (0-360)
-  zoom: number;      // Zoom level (0.5-2.0)
-}
-
-interface LightLeaksSettings {
-  intensity: number;    // Overall intensity of the effect (0-100)
-  color: string;        // Color of the light leak (hex)
-  position: number;     // Position of the leak (0-360 degrees)
-  blend: 'screen' | 'overlay' | 'soft-light';  // Blend mode
-}
-
-interface VignetteSettings {
-  intensity: number;    // Strength of the vignette (0-100)
-  color: string;        // Color of the vignette (hex)
-  feather: number;      // Softness of the edge (0-100)
-  shape: 'circular' | 'rectangular';  // Shape of the vignette
-}
-
-interface TextureSettings {
-  texture: string;      // Texture identifier from library
-  opacity: number;      // Opacity of the texture (0-100)
-  blend: 'multiply' | 'overlay' | 'soft-light' | 'screen';
-  scale: number;        // Scale of the texture (0.5-2.0)
-}
-
-interface FrameSettings {
-  ratio: '16:9' | '1:1' | '4:5' | '5:4' | 'custom';
-  width: number;        // Frame width in pixels
-  height: number;       // Frame height in pixels
-  color: string;        // Frame color (hex)
-  padding: number;      // Padding between image and frame (px)
-}
-
-type EffectSettings = HalftoneSettings | DuotoneSettings | NoiseSettings | EmptySettings | ExposureSettings | ContrastSettings | DitheringSettings | KaleidoscopeSettings | LightLeaksSettings | VignetteSettings | TextureSettings | FrameSettings;
-
-interface ImageHistory {
-  dataUrl: string;
-  effects: AppliedEffect[];
-  timestamp: number;
-}
-
-interface AppliedEffect {
-  type: EffectType;
-  settings: EffectSettings;
-}
-
-// Add new interface for crop state
-interface CropState {
-  active: boolean;
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-}
 
 // UploadDropzone Component
 const UploadDropzone = ({ onUpload }: { onUpload: (file: File) => void }) => {
@@ -186,31 +122,186 @@ const UploadDropzone = ({ onUpload }: { onUpload: (file: File) => void }) => {
   );
 };
 
-// ColorSetSelector Component
-const ColorSetSelector: React.FC<{
-  onSelectColor: (color: string, index: 1 | 2) => void;
-  onSelectPair: (color1: string, color2: string) => void;
-  selectedColor: string;
-}> = ({ onSelectColor, onSelectPair, selectedColor }) => {
-  // Simple implementation - you can expand this
-  return (
-    <div className="flex gap-2">
-      <button
-        onClick={() => onSelectPair('#000000', '#ffffff')}
-        className="p-2 border rounded"
-      >
-        B&W
-      </button>
-      <button
-        onClick={() => onSelectPair('#2563eb', '#ef4444')}
-        className="p-2 border rounded"
-      >
-        Blue/Red
-      </button>
-    </div>
-  );
+// Function declarations moved to the top
+const applyBlackAndWhiteEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData): ImageData => {
+  const outputData = new Uint8ClampedArray(imageData.data);
+  
+  for (let i = 0; i < outputData.length; i += 4) {
+    const avg = (imageData.data[i] + imageData.data[i + 1] + imageData.data[i + 2]) / 3;
+    outputData[i] = outputData[i + 1] = outputData[i + 2] = avg;
+  }
+  
+  return new ImageData(outputData, imageData.width, imageData.height);
 };
 
+const applySepiaEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData): ImageData => {
+  const outputData = new Uint8ClampedArray(imageData.data);
+  
+  for (let i = 0; i < outputData.length; i += 4) {
+    const r = imageData.data[i];
+    const g = imageData.data[i + 1];
+    const b = imageData.data[i + 2];
+    
+    outputData[i] = Math.min(255, (r * 0.393) + (g * 0.769) + (b * 0.189));
+    outputData[i + 1] = Math.min(255, (r * 0.349) + (g * 0.686) + (b * 0.168));
+    outputData[i + 2] = Math.min(255, (r * 0.272) + (g * 0.534) + (b * 0.131));
+  }
+  
+  return new ImageData(outputData, imageData.width, imageData.height);
+};
+
+// Function to add current state to history
+const addToHistory = (history: ImageHistory[], historyIndex: number, dataUrl: string, effects: AppliedEffect[]): { newHistory: ImageHistory[], newIndex: number } => {
+  try {
+    // Create new history entry
+    const newHistory: ImageHistory = {
+      dataUrl,
+      effects,
+      timestamp: Date.now()
+    };
+    
+    // Truncate future history if we're not at the latest point
+    const newHistoryList = history.slice(0, historyIndex + 1).concat([newHistory]);
+    return {
+      newHistory: newHistoryList,
+      newIndex: newHistoryList.length - 1
+    };
+  } catch (error) {
+    console.error("Error adding to history:", error);
+    return { newHistory: history, newIndex: historyIndex };
+  }
+};
+
+// Function to apply a single effect to image data
+const applyEffect = async (imageData: ImageData, effect: AppliedEffect): Promise<ImageData> => {
+  const { type, settings } = effect;
+  
+  const canvas = document.createElement('canvas');
+  canvas.width = imageData.width;
+  canvas.height = imageData.height;
+  const ctx = canvas.getContext('2d');
+  
+  if (!ctx) return imageData;
+  
+  ctx.putImageData(imageData, 0, 0);
+  
+  console.log(`Applying effect: ${type} with settings:`, settings);
+  
+  try {
+    switch (type) {
+      case 'halftone':
+        return applyHalftoneEffect(ctx, imageData, settings as HalftoneSettings);
+      case 'duotone':
+        return applyDuotoneEffect(ctx, imageData, settings as DuotoneSettings);
+      case 'blackwhite':
+        return applyBlackAndWhiteEffect(ctx, imageData);
+      case 'sepia':
+        return applySepiaEffect(ctx, imageData);
+      case 'noise':
+        return applyNoiseEffect(ctx, imageData, settings as NoiseSettings);
+      case 'kaleidoscope':
+        return applyKaleidoscopeEffect(ctx, imageData, settings as KaleidoscopeSettings);
+      case 'lightleaks':
+        return applyLightLeaksEffect(ctx, imageData, settings as LightLeaksSettings);
+      case 'vignette':
+        return applyVignetteEffect(ctx, imageData, settings as VignetteSettings);
+      case 'texture':
+        return await applyTextureEffect(ctx, imageData, settings as TextureSettings);
+      case 'frame':
+        return applyFrameEffect(ctx, imageData, settings as FrameSettings);
+      default:
+        return imageData;
+    }
+  } catch (error) {
+    console.error(`Error applying ${type} effect:`, error);
+    return imageData;
+  }
+};
+
+// Remove unused empty settings and dithering settings
+const baseSettings = {
+  blackwhite: { enabled: true, level: 100 } as ContrastSettings,
+  sepia: { enabled: true, level: 100 } as ContrastSettings,
+  dither: { enabled: true, intensity: 100 } as DitheringSettings,
+  exposure: { enabled: true, level: 0 } as ExposureSettings,
+  contrast: { enabled: true, level: 0 } as ContrastSettings,
+  noise: { enabled: true, level: 20 } as NoiseSettings
+};
+
+// Update the applyEffectWithReset function
+const applyEffectWithReset = async (
+  image: HTMLImageElement | null,
+  canvasRef: React.RefObject<HTMLCanvasElement>,
+  currentEffect: EffectType,
+  settings: {
+    halftone: HalftoneSettings;
+    duotone: DuotoneSettings;
+    noise: NoiseSettings;
+    kaleidoscope: KaleidoscopeSettings;
+    lightleaks: LightLeaksSettings;
+    vignette: VignetteSettings;
+    texture: TextureSettings;
+    frame: FrameSettings;
+  },
+  resetToOriginal: () => boolean
+) => {
+  if (!image || !resetToOriginal()) return;
+  
+  const canvas = canvasRef.current;
+  if (!canvas) return;
+  
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  
+  let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  let currentEffectObj: AppliedEffect | null = null;
+  
+  switch (currentEffect) {
+    case 'halftone':
+      currentEffectObj = { type: 'halftone', settings: { ...settings.halftone, enabled: true } };
+      break;
+    case 'duotone':
+      currentEffectObj = { type: 'duotone', settings: { ...settings.duotone, enabled: true } };
+      break;
+    case 'blackwhite':
+      currentEffectObj = { type: 'blackwhite', settings: baseSettings.blackwhite };
+      break;
+    case 'sepia':
+      currentEffectObj = { type: 'sepia', settings: baseSettings.sepia };
+      break;
+    case 'noise':
+      currentEffectObj = { type: 'noise', settings: baseSettings.noise };
+      break;
+    case 'kaleidoscope':
+      currentEffectObj = { type: 'kaleidoscope', settings: { ...settings.kaleidoscope, enabled: true } };
+      break;
+    case 'lightleaks':
+      currentEffectObj = { type: 'lightleaks', settings: { ...settings.lightleaks, enabled: true } };
+      break;
+    case 'vignette':
+      currentEffectObj = { type: 'vignette', settings: { ...settings.vignette, enabled: true } };
+      break;
+    case 'texture':
+      currentEffectObj = { type: 'texture', settings: { ...settings.texture, enabled: true } };
+      break;
+    case 'frame':
+      currentEffectObj = { type: 'frame', settings: { ...settings.frame, enabled: true } };
+      break;
+    default:
+      return;
+  }
+  
+  if (currentEffectObj) {
+    try {
+      imageData = await applyEffect(imageData, currentEffectObj);
+      ctx.putImageData(imageData, 0, 0);
+    } catch (error) {
+      console.error('Error applying effect:', error);
+    }
+  }
+};
+
+// Remove unused state variables
 export default function CleanImageEditor() {
   // State for image and canvas
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -238,6 +329,7 @@ export default function CleanImageEditor() {
 
   // State for all effects
   const [halftoneSettings, setHalftoneSettings] = useState<HalftoneSettings>({
+    enabled: true,
     dotSize: 2,
     spacing: 5,
     angle: 45,
@@ -245,41 +337,50 @@ export default function CleanImageEditor() {
   });
 
   const [duotoneSettings, setDuotoneSettings] = useState<DuotoneSettings>({
+    enabled: true,
     color1: '#000000',
     color2: '#ffffff',
     intensity: 100
   });
 
-  const [noiseLevel, setNoiseLevel] = useState<number>(20);
+  const [noiseSettings, setNoiseSettings] = useState<NoiseSettings>({
+    enabled: true,
+    level: 20
+  });
 
-  const [kaleidoscopeSettings, setKaleidoscopeSettings] = useState<KaleidoscopeSettings>({
+  const [kaleidoscopeSettings] = useState<KaleidoscopeSettings>({
+    enabled: true,
     segments: 8,
     rotation: 0,
     zoom: 1.0
   });
 
-  const [lightLeaksSettings, setLightLeaksSettings] = useState<LightLeaksSettings>({
+  const [lightLeaksSettings] = useState<LightLeaksSettings>({
+    enabled: true,
     intensity: 50,
     color: '#FFA500',
     position: 45,
     blend: 'screen'
   });
 
-  const [vignetteSettings, setVignetteSettings] = useState<VignetteSettings>({
+  const [vignetteSettings] = useState<VignetteSettings>({
+    enabled: true,
     intensity: 50,
     color: '#000000',
     feather: 50,
     shape: 'circular'
   });
 
-  const [textureSettings, setTextureSettings] = useState<TextureSettings>({
+  const [textureSettings] = useState<TextureSettings>({
+    enabled: true,
     texture: 'paper',
     opacity: 50,
     blend: 'overlay',
     scale: 1.0
   });
 
-  const [frameSettings, setFrameSettings] = useState<FrameSettings>({
+  const [frameSettings] = useState<FrameSettings>({
+    enabled: true,
     ratio: '1:1',
     width: 1000,
     height: 1000,
@@ -303,10 +404,8 @@ export default function CleanImageEditor() {
   ];
 
   // Add state for resize dimensions
-  const [resizeWidth, setResizeWidth] = useState<number>(0);
-  const [resizeHeight, setResizeHeight] = useState<number>(0);
-  const [aspectRatio, setAspectRatio] = useState<number>(1);
-  const [maintainAspectRatio, setMaintainAspectRatio] = useState<boolean>(true);
+  const [resizeWidth] = useState<number>(0);
+  const [resizeHeight] = useState<number>(0);
 
   // Add state for custom colors
   const [customColor1Hex, setCustomColor1Hex] = useState<string>('#000000');
@@ -618,7 +717,7 @@ export default function CleanImageEditor() {
         effectSettings = duotoneSettings;
         break;
       case 'noise':
-        effectSettings = { level: noiseLevel };
+        effectSettings = baseSettings.noise;
         break;
       case 'kaleidoscope':
         effectSettings = kaleidoscopeSettings;
@@ -635,8 +734,14 @@ export default function CleanImageEditor() {
       case 'frame':
         effectSettings = frameSettings;
         break;
+      case 'blackwhite':
+        effectSettings = baseSettings.blackwhite;
+        break;
+      case 'sepia':
+        effectSettings = baseSettings.sepia;
+        break;
       default:
-        effectSettings = {};
+        return;
     }
     
     // Create a new effect
@@ -650,13 +755,13 @@ export default function CleanImageEditor() {
     
     // Add to history
     if (currentImageDataUrl) {
-      addToHistory(currentImageDataUrl, [newEffect]);
+      addToHistory(history, historyIndex, currentImageDataUrl, [newEffect]);
     }
   }, [
     currentEffect,
     halftoneSettings,
     duotoneSettings,
-    noiseLevel,
+    baseSettings,
     kaleidoscopeSettings,
     lightLeaksSettings,
     vignetteSettings,
@@ -678,98 +783,6 @@ export default function CleanImageEditor() {
     return false;
   }, [originalImageData]);
 
-  // Function to add current state to history
-  const addToHistory = useCallback((dataUrl: string, effects: AppliedEffect[]) => {
-    if (!canvasRef.current) return;
-    
-    try {
-      // Create new history entry
-      const newHistory: ImageHistory = {
-        dataUrl,
-        effects,
-        timestamp: Date.now()
-      };
-      
-      // Truncate future history if we're not at the latest point
-      const newHistoryList = history.slice(0, historyIndex + 1).concat([newHistory]);
-      setHistory(newHistoryList);
-      setHistoryIndex(newHistoryList.length - 1);
-    } catch (error) {
-      console.error("Error adding to history:", error);
-    }
-  }, [history, historyIndex]);
-
-  // Update the applyEffectWithReset function to handle async operations
-  const applyEffectWithReset = useCallback(async () => {
-    if (!image || !resetToOriginal()) return;
-    
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    let currentEffectObj: AppliedEffect | null = null;
-    
-    switch (currentEffect) {
-      case 'halftone':
-        currentEffectObj = { type: 'halftone', settings: halftoneSettings };
-        break;
-      case 'duotone':
-        currentEffectObj = { type: 'duotone', settings: duotoneSettings };
-        break;
-      case 'blackwhite':
-        currentEffectObj = { type: 'blackwhite', settings: {} };
-        break;
-      case 'sepia':
-        currentEffectObj = { type: 'sepia', settings: {} };
-        break;
-      case 'noise':
-        currentEffectObj = { type: 'noise', settings: { level: noiseLevel } };
-        break;
-      case 'kaleidoscope':
-        currentEffectObj = { type: 'kaleidoscope', settings: kaleidoscopeSettings };
-        break;
-      case 'lightleaks':
-        currentEffectObj = { type: 'lightleaks', settings: lightLeaksSettings };
-        break;
-      case 'vignette':
-        currentEffectObj = { type: 'vignette', settings: vignetteSettings };
-        break;
-      case 'texture':
-        currentEffectObj = { type: 'texture', settings: textureSettings };
-        break;
-      case 'frame':
-        currentEffectObj = { type: 'frame', settings: frameSettings };
-        break;
-      default:
-        return;
-    }
-    
-    if (currentEffectObj) {
-      try {
-        imageData = await applyEffect(imageData, currentEffectObj);
-        ctx.putImageData(imageData, 0, 0);
-      } catch (error) {
-        console.error('Error applying effect:', error);
-      }
-    }
-  }, [
-    image,
-    currentEffect,
-    halftoneSettings,
-    duotoneSettings,
-    noiseLevel,
-    kaleidoscopeSettings,
-    lightLeaksSettings,
-    vignetteSettings,
-    textureSettings,
-    frameSettings,
-    resetToOriginal,
-    applyEffect
-  ]);
-
   // Effect to update canvas when effects change
   useEffect(() => {
     if (currentEffect === 'none' || !image) {
@@ -777,58 +790,34 @@ export default function CleanImageEditor() {
       return;
     }
     
-    applyEffectWithReset();
+    applyEffectWithReset(image, canvasRef, currentEffect, {
+      halftone: halftoneSettings,
+      duotone: duotoneSettings,
+      noise: noiseSettings,
+      kaleidoscope: kaleidoscopeSettings,
+      lightleaks: lightLeaksSettings,
+      vignette: vignetteSettings,
+      texture: textureSettings,
+      frame: frameSettings
+    }, resetToOriginal);
   }, [
     currentEffect,
     image,
     resetToOriginal,
-    applyEffectWithReset
+    applyEffectWithReset,
+    halftoneSettings,
+    duotoneSettings,
+    noiseSettings,
+    kaleidoscopeSettings,
+    lightLeaksSettings,
+    vignetteSettings,
+    textureSettings,
+    frameSettings
   ]);
 
-  // Function to apply a single effect to image data
-  const applyEffect = async (imageData: ImageData, effect: AppliedEffect): Promise<ImageData> => {
-    const { type, settings } = effect;
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = imageData.width;
-    canvas.height = imageData.height;
-    const ctx = canvas.getContext('2d');
-    
-    if (!ctx) return imageData;
-    
-    ctx.putImageData(imageData, 0, 0);
-    
-    console.log(`Applying effect: ${type} with settings:`, settings);
-    
-    try {
-      switch (type) {
-        case 'halftone':
-          return applyHalftoneEffect(ctx, imageData, settings as HalftoneSettings);
-        case 'duotone':
-          return applyDuotoneEffect(ctx, imageData, settings as DuotoneSettings);
-        case 'blackwhite':
-          return applyBlackAndWhiteEffect(ctx, imageData);
-        case 'sepia':
-          return applySepiaEffect(ctx, imageData);
-        case 'noise':
-          return applyNoiseEffect(ctx, imageData, (settings as NoiseSettings).level);
-        case 'kaleidoscope':
-          return applyKaleidoscopeEffect(ctx, imageData, kaleidoscopeSettings);
-        case 'lightleaks':
-          return applyLightLeaksEffect(ctx, imageData, lightLeaksSettings);
-        case 'vignette':
-          return applyVignetteEffect(ctx, imageData, vignetteSettings);
-        case 'texture':
-          return await applyTextureEffect(ctx, imageData, textureSettings);
-        case 'frame':
-          return applyFrameEffect(ctx, imageData, frameSettings);
-        default:
-          return imageData;
-      }
-    } catch (error) {
-      console.error(`Error applying ${type} effect:`, error);
-      return imageData;
-    }
+  // Update noise level state handler
+  const handleNoiseChange = (value: number) => {
+    setNoiseSettings(prev => ({ ...prev, level: value }));
   };
 
   return (
@@ -1167,15 +1156,15 @@ export default function CleanImageEditor() {
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <Label htmlFor="noise-level" className="text-sm font-medium">Noise Level</Label>
-                      <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">{noiseLevel}%</span>
+                      <span className="text-xs font-medium bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded-md">{noiseSettings.level}%</span>
                     </div>
                     <Slider 
                       id="noise-level"
                       min={1} 
                       max={100} 
                       step={1} 
-                      value={[noiseLevel]} 
-                      onValueChange={([value]) => setNoiseLevel(value)}
+                      value={[noiseSettings.level]} 
+                      onValueChange={([value]) => handleNoiseChange(value)}
                       className="mt-1"
                     />
                   </div>
