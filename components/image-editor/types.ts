@@ -56,7 +56,8 @@ export interface KaleidoscopeSettings extends BaseSettings {
 export interface LightLeaksSettings extends BaseSettings {
   intensity: number;    // Overall intensity of the effect (0-100)
   color: string;        // Color of the light leak (hex)
-  position: number;     // Position of the leak (0-360 degrees)
+  position: number;     // Position of the leak (0-100)
+  angle: number;        // Angle of the light leak (0-360 degrees)
   blend: 'screen' | 'overlay' | 'soft-light';  // Blend mode
 }
 

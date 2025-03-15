@@ -55,7 +55,7 @@ export const applyTextureEffect = (
   imageData: ImageData,
   settings: TextureSettings
 ): ImageData => {
-  const { type, amount, scale, roughness, enabled } = settings;
+  const { texture, opacity, blend, scale, enabled } = settings;
 
   if (!enabled) return imageData;
 
@@ -68,56 +68,51 @@ export const applyTextureEffect = (
     // Put the original image data on the offscreen canvas
     offscreenCtx.putImageData(imageData, 0, 0);
 
-    // Generate texture based on type
-    let textureData: ImageData;
-    
-    switch (type) {
-      case 'noise':
-        textureData = generateNoiseTexture(
-          imageData.width,
-          imageData.height,
-          scale,
-          roughness / 100
-        );
-        break;
-      case 'paper':
-        // Generate paper-like texture with more organic patterns
-        textureData = generateNoiseTexture(
-          imageData.width,
-          imageData.height,
-          scale * 0.5,
-          (roughness + 20) / 100
-        );
-        break;
-      case 'canvas':
-        // Generate canvas-like texture with regular patterns
-        textureData = generateNoiseTexture(
-          imageData.width,
-          imageData.height,
-          scale * 2,
-          (roughness - 20) / 100
-        );
-        break;
-      default:
-        return imageData;
+    // Generate or load texture
+    let textureImageData;
+    if (texture === 'noise') {
+      // Generate procedural noise texture
+      textureImageData = generateNoiseTexture(imageData.width, imageData.height, scale, 0.5);
+    } else {
+      // For other texture types, we would load pre-defined textures here
+      textureImageData = generateNoiseTexture(imageData.width, imageData.height, scale, 0.5);
     }
 
     // Create texture canvas
     const textureCanvas = createOffscreenCanvas(imageData.width, imageData.height);
     const textureCtx = getOffscreenContext(textureCanvas);
     if (!textureCtx) throw new Error('Failed to get texture context');
+    
+    // Put texture image data
+    textureCtx.putImageData(textureImageData, 0, 0);
 
-    // Apply texture
-    textureCtx.putImageData(textureData, 0, 0);
+    // Apply the texture with chosen blend mode
+    switch (blend) {
+      case 'multiply':
+        offscreenCtx.globalCompositeOperation = 'multiply';
+        break;
+      case 'overlay':
+        offscreenCtx.globalCompositeOperation = 'overlay';
+        break;
+      case 'soft-light':
+        offscreenCtx.globalCompositeOperation = 'soft-light';
+        break;
+      case 'screen':
+        offscreenCtx.globalCompositeOperation = 'screen';
+        break;
+      default:
+        offscreenCtx.globalCompositeOperation = 'overlay';
+    }
 
-    // Blend texture with original image
-    offscreenCtx.globalCompositeOperation = 'overlay';
-    offscreenCtx.globalAlpha = amount / 100;
+    // Set opacity
+    offscreenCtx.globalAlpha = opacity / 100;
+    
+    // Draw the texture
     offscreenCtx.drawImage(textureCanvas, 0, 0);
-
+    
     // Reset blend mode and alpha
     offscreenCtx.globalCompositeOperation = 'source-over';
-    offscreenCtx.globalAlpha = 1;
+    offscreenCtx.globalAlpha = 1.0;
 
     // Get the final image data
     return offscreenCtx.getImageData(0, 0, imageData.width, imageData.height);

@@ -1,6 +1,28 @@
 import { FrameSettings, SafeCanvasRenderingContext2D } from '../types';
 import { createOffscreenCanvas, getOffscreenContext } from './index';
 
+// Helper function to adjust color brightness
+const adjustColorBrightness = (color: string, percent: number): string => {
+  // Remove # if present
+  let hex = color.replace('#', '');
+  
+  // Convert to RGB
+  let r = parseInt(hex.substr(0, 2), 16);
+  let g = parseInt(hex.substr(2, 2), 16);
+  let b = parseInt(hex.substr(4, 2), 16);
+  
+  // Adjust brightness
+  r = Math.max(0, Math.min(255, r + (r * percent / 100)));
+  g = Math.max(0, Math.min(255, g + (g * percent / 100)));
+  b = Math.max(0, Math.min(255, b + (b * percent / 100)));
+  
+  // Convert back to hex
+  return '#' + 
+    Math.round(r).toString(16).padStart(2, '0') + 
+    Math.round(g).toString(16).padStart(2, '0') + 
+    Math.round(b).toString(16).padStart(2, '0');
+};
+
 interface FrameStyle {
   innerWidth: number;
   outerWidth: number;
@@ -106,52 +128,80 @@ export const applyFrameEffect = (
   imageData: ImageData,
   settings: FrameSettings
 ): ImageData => {
-  const { style, color, width, enabled } = settings;
+  const { style, color, width, height, padding, ratio, enabled } = settings;
 
   if (!enabled) return imageData;
 
   try {
-    // Create offscreen canvas for manipulation
-    const offscreenCanvas = createOffscreenCanvas(imageData.width, imageData.height);
+    // Create offscreen canvas for manipulation with frame dimensions
+    const frameWidth = width;
+    const frameHeight = height;
+    
+    // Calculate new dimensions based on ratio if specified
+    let newWidth = imageData.width;
+    let newHeight = imageData.height;
+    
+    if (ratio !== 'custom') {
+      const [widthRatio, heightRatio] = ratio.split(':').map(Number);
+      if (widthRatio && heightRatio) {
+        // Determine which dimension to keep based on the aspect ratio
+        const currentRatio = imageData.width / imageData.height;
+        const targetRatio = widthRatio / heightRatio;
+        
+        if (currentRatio > targetRatio) {
+          // Width is larger than the target ratio, so base on height
+          newWidth = Math.round(imageData.height * targetRatio);
+          newHeight = imageData.height;
+        } else {
+          // Height is larger than the target ratio, so base on width
+          newWidth = imageData.width;
+          newHeight = Math.round(imageData.width / targetRatio);
+        }
+      }
+    } else {
+      newWidth = frameWidth;
+      newHeight = frameHeight;
+    }
+    
+    // Calculate total canvas size including padding
+    const paddingSize = padding;
+    const canvasWidth = newWidth + (paddingSize * 2);
+    const canvasHeight = newHeight + (paddingSize * 2);
+
+    // Create offscreen canvas for the result
+    const offscreenCanvas = createOffscreenCanvas(canvasWidth, canvasHeight);
     const offscreenCtx = getOffscreenContext(offscreenCanvas);
     if (!offscreenCtx) throw new Error('Failed to get offscreen context');
 
-    // Put the original image data on the offscreen canvas
-    offscreenCtx.putImageData(imageData, 0, 0);
+    // Clear canvas with frame color
+    offscreenCtx.fillStyle = color;
+    offscreenCtx.fillRect(0, 0, canvasWidth, canvasHeight);
 
     // Get frame style
     const frameStyle = frameStyles[style] || frameStyles.simple;
-    const scaledWidth = (width / 100) * Math.min(imageData.width, imageData.height) * 0.1;
-    const frameWidth = Math.max(frameStyle.outerWidth, Math.floor(scaledWidth));
-
-    // Set frame style
-    offscreenCtx.strokeStyle = color;
-    offscreenCtx.lineWidth = frameStyle.innerWidth;
-    offscreenCtx.lineJoin = 'miter';
-    offscreenCtx.lineCap = 'square';
-
-    // Draw frame
+    
+    // Draw the original image in the center with padding
+    const tempCanvas = createOffscreenCanvas(imageData.width, imageData.height);
+    const tempCtx = getOffscreenContext(tempCanvas);
+    if (!tempCtx) throw new Error('Failed to get temp context');
+    tempCtx.putImageData(imageData, 0, 0);
+    
+    // Center the image in the frame
+    const offsetX = Math.floor((canvasWidth - newWidth) / 2);
+    const offsetY = Math.floor((canvasHeight - newHeight) / 2);
+    offscreenCtx.drawImage(tempCanvas, 0, 0, imageData.width, imageData.height, 
+                           offsetX, offsetY, newWidth, newHeight);
+    
+    // Apply frame styling if a pattern is available
     if (frameStyle.pattern) {
-      offscreenCtx.lineWidth = frameStyle.outerWidth;
-      frameStyle.pattern(
-        offscreenCtx,
-        frameWidth / 2,
-        frameWidth / 2,
-        imageData.width - frameWidth,
-        imageData.height - frameWidth
-      );
-    } else {
-      // Draw simple frame
-      offscreenCtx.strokeRect(
-        frameWidth / 2,
-        frameWidth / 2,
-        imageData.width - frameWidth,
-        imageData.height - frameWidth
-      );
+      offscreenCtx.strokeStyle = adjustColorBrightness(color, -20);
+      offscreenCtx.lineWidth = frameStyle.innerWidth;
+      frameStyle.pattern(offscreenCtx, paddingSize / 2, paddingSize / 2, 
+                        canvasWidth - paddingSize, canvasHeight - paddingSize);
     }
 
     // Get the final image data
-    return offscreenCtx.getImageData(0, 0, imageData.width, imageData.height);
+    return offscreenCtx.getImageData(0, 0, canvasWidth, canvasHeight);
   } catch (error) {
     console.error('Error applying frame effect:', error);
     return imageData;
