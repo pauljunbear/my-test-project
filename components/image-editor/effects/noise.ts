@@ -67,7 +67,7 @@ export const applyNoiseEffect = (
   imageData: ImageData,
   settings: NoiseSettings
 ): ImageData => {
-  const { amount, type, enabled } = settings;
+  const { level, enabled } = settings;
 
   if (!enabled) return imageData;
 
@@ -83,22 +83,15 @@ export const applyNoiseEffect = (
     const scale = 0.1;
     
     for (let i = 0; i < data.length; i += 4) {
-      let noise: number;
-      
-      if (type === 'perlin') {
-        // Generate smooth noise using Perlin noise
-        const x = (i / 4) % imageData.width;
-        const y = Math.floor((i / 4) / imageData.width);
-        noise = perlin.noise(x * scale, y * scale);
-        // Normalize to [0, 1]
-        noise = (noise + 1) / 2;
-      } else {
-        // Generate random noise
-        noise = Math.random();
-      }
+      // Generate smooth noise using Perlin noise
+      const x = (i / 4) % imageData.width;
+      const y = Math.floor((i / 4) / imageData.width);
+      let noise = perlin.noise(x * scale, y * scale);
+      // Normalize to [0, 1]
+      noise = (noise + 1) / 2;
 
-      // Apply noise based on amount (0-100)
-      const noiseAmount = (amount / 100) * 255;
+      // Apply noise based on level (0-100)
+      const noiseAmount = (level / 100) * 255;
       const noiseValue = noise * noiseAmount;
 
       // Add noise to each channel

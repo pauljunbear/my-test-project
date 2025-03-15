@@ -49,8 +49,8 @@ const defaultSettings: EffectSettingsState = {
   },
   duotone: {
     enabled: true,
-    color1: '#000000',
-    color2: '#ffffff',
+    shadowColor: '#000000',
+    highlightColor: '#ffffff',
     intensity: 100,
   },
   noise: {
@@ -68,6 +68,7 @@ const defaultSettings: EffectSettingsState = {
     intensity: 50,
     color: '#FFA500',
     position: 45,
+    angle: 45,
     blend: 'screen',
   },
   vignette: {
@@ -91,6 +92,7 @@ const defaultSettings: EffectSettingsState = {
     height: 1000,
     color: '#FFFFFF',
     padding: 20,
+    style: 'simple',
   },
   dither: {
     enabled: true,
