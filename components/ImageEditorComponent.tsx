@@ -287,6 +287,10 @@ export default function ImageEditorComponent() {
         return applySepiaEffect(ctx, imageData);
       case 'noise':
         return applyNoiseEffect(ctx, imageData, (settings as NoiseSettings).level);
+      case 'contrast':
+        return applyContrastEffect(ctx, imageData);
+      case 'exposure':
+        return applyExposureEffect(ctx, imageData);
       default:
         return imageData;
     }
@@ -341,6 +345,12 @@ export default function ImageEditorComponent() {
           type: 'noise', 
           settings: { level: debouncedNoiseLevel } 
         };
+        break;
+      case 'contrast':
+        currentEffectObj = { type: 'contrast', settings: {} };
+        break;
+      case 'exposure':
+        currentEffectObj = { type: 'exposure', settings: {} };
         break;
       default:
         return;
@@ -479,6 +489,12 @@ export default function ImageEditorComponent() {
         // They're handled by the HalftoneWaveEffect component's onProcessedImage callback
         console.log('Wavehalftone effect is applied directly via HalftoneWaveEffect component');
         return;
+      case 'contrast':
+        effectSettings = { type: 'contrast', settings: {} };
+        break;
+      case 'exposure':
+        effectSettings = { type: 'exposure', settings: {} };
+        break;
       default:
         effectSettings = {};
     }
@@ -797,6 +813,50 @@ export default function ImageEditorComponent() {
       outputData[i] = Math.min(255, Math.max(0, imageData.data[i] + noise));
       outputData[i + 1] = Math.min(255, Math.max(0, imageData.data[i + 1] + noise));
       outputData[i + 2] = Math.min(255, Math.max(0, imageData.data[i + 2] + noise));
+    }
+    
+    return new ImageData(outputData, imageData.width, imageData.height);
+  };
+  
+  const applyContrastEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData): ImageData => {
+    const outputData = new Uint8ClampedArray(imageData.data);
+    
+    const avg = (imageData.data[0] + imageData.data[1] + imageData.data[2]) / 3;
+    
+    for (let i = 0; i < outputData.length; i += 4) {
+      const r = imageData.data[i];
+      const g = imageData.data[i + 1];
+      const b = imageData.data[i + 2];
+      
+      const adjustedR = Math.min(255, Math.max(0, (r - avg) * 1.5 + avg));
+      const adjustedG = Math.min(255, Math.max(0, (g - avg) * 1.5 + avg));
+      const adjustedB = Math.min(255, Math.max(0, (b - avg) * 1.5 + avg));
+      
+      outputData[i] = adjustedR;
+      outputData[i + 1] = adjustedG;
+      outputData[i + 2] = adjustedB;
+      outputData[i + 3] = imageData.data[i + 3];
+    }
+    
+    return new ImageData(outputData, imageData.width, imageData.height);
+  };
+  
+  const applyExposureEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData): ImageData => {
+    const outputData = new Uint8ClampedArray(imageData.data);
+    
+    for (let i = 0; i < outputData.length; i += 4) {
+      const r = imageData.data[i];
+      const g = imageData.data[i + 1];
+      const b = imageData.data[i + 2];
+      
+      const adjustedR = Math.min(255, Math.max(0, r + 50 - 128));
+      const adjustedG = Math.min(255, Math.max(0, g + 50 - 128));
+      const adjustedB = Math.min(255, Math.max(0, b + 50 - 128));
+      
+      outputData[i] = adjustedR;
+      outputData[i + 1] = adjustedG;
+      outputData[i + 2] = adjustedB;
+      outputData[i + 3] = imageData.data[i + 3];
     }
     
     return new ImageData(outputData, imageData.width, imageData.height);
