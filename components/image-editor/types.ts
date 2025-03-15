@@ -80,6 +80,7 @@ export interface FrameSettings extends BaseSettings {
   height: number;       // Frame height in pixels
   color: string;        // Frame color (hex)
   padding: number;      // Padding between image and frame (px)
+  style: 'simple' | 'double' | 'ornate' | 'vintage';  // Frame style
 }
 
 export type EffectSettings = 
