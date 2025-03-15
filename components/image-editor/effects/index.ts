@@ -1,6 +1,6 @@
 import { SafeCanvasRenderingContext2D } from '../types';
 
-// Common utility functions for effects
+// Utility functions for effects
 export const getImageData = (ctx: SafeCanvasRenderingContext2D): ImageData => {
   return ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
 };
@@ -20,12 +20,12 @@ export const getOffscreenContext = (canvas: HTMLCanvasElement): CanvasRenderingC
   return canvas.getContext('2d');
 };
 
-// Re-export all effects
-export * from './halftone';
-export * from './duotone';
-export * from './noise';
-export * from './kaleidoscope';
-export * from './light-leaks';
-export * from './vignette';
-export * from './texture';
-export * from './frame'; 
+// Export all effects
+export { applyHalftoneEffect } from './halftone';
+export { applyDuotoneEffect } from './duotone';
+export { applyNoiseEffect } from './noise';
+export { applyKaleidoscopeEffect } from './kaleidoscope';
+export { applyLightLeaksEffect } from './light-leaks';
+export { applyVignetteEffect } from './vignette';
+export { applyTextureEffect } from './texture';
+export { applyFrameEffect } from './frame'; 

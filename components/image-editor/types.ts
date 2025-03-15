@@ -26,9 +26,8 @@ export interface HalftoneSettings extends BaseSettings {
 }
 
 export interface DuotoneSettings extends BaseSettings {
-  color1: string;
-  color2: string;
-  intensity: number;
+  shadowColor: string;
+  highlightColor: string;
 }
 
 export interface NoiseSettings extends BaseSettings {

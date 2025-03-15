@@ -35,6 +35,7 @@ import type {
   ContrastSettings,
   ExposureSettings
 } from '@/components/image-editor/types';
+import { useDebounce } from 'use-debounce';
 // Import the EffectsPanel component
 // import EffectsPanel from './EffectsPanel';
 
@@ -172,8 +173,134 @@ const addToHistory = (history: ImageHistory[], historyIndex: number, dataUrl: st
   }
 };
 
+const [noiseLevel, setNoiseLevel] = useState<number>(20);
+
+// Use debounce for better performance
+const debouncedHalftoneSettings = useDebounce(halftoneSettings, 200);
+const debouncedDuotoneSettings = useDebounce(duotoneSettings, 200);
+const debouncedNoiseLevel = useDebounce(noiseLevel, 200);
+
+const applyHalftoneEffect = (ctx: CanvasRenderingContext2D, imageData: ImageData, settings: HalftoneSettings): ImageData => {
+  const { dotSize, spacing, angle, shape } = settings;
+  
+  // Create a Bayer matrix for ordered dithering (4x4)
+  const bayerMatrix4x4 = [
+    [ 1,  9,  3, 11],
+    [13,  5, 15,  7],
+    [ 4, 12,  2, 10],
+    [16,  8, 14,  6]
+  ].map(row => row.map(val => val / 17)); // Normalize to [0, 1] range
+  
+  // Convert to grayscale first
+  const grayscaleData = new Uint8ClampedArray(imageData.data);
+  for (let i = 0; i < grayscaleData.length; i += 4) {
+    // Apply grayscale formula: gray = 0.299 × r + 0.587 × g + 0.114 × b
+    const r = grayscaleData[i] / 255;
+    const g = grayscaleData[i + 1] / 255;
+    const b = grayscaleData[i + 2] / 255;
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    
+    const grayValue = Math.round(gray * 255);
+    grayscaleData[i] = grayscaleData[i + 1] = grayscaleData[i + 2] = grayValue;
+  }
+  
+  // Clear canvas
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  
+  // Create a new ImageData with grayscale values
+  const tempData = new ImageData(grayscaleData, imageData.width, imageData.height);
+  
+  // First draw the grayscale version as a base
+  ctx.putImageData(tempData, 0, 0);
+  
+  // Create an offscreen canvas for the halftone pattern
+  const offscreenCanvas = document.createElement('canvas');
+  offscreenCanvas.width = ctx.canvas.width;
+  offscreenCanvas.height = ctx.canvas.height;
+  const offCtx = offscreenCanvas.getContext('2d');
+  
+  if (!offCtx) {
+    console.error('Could not get offscreen canvas context');
+    return imageData;
+  }
+  
+  // Clear offscreen canvas
+  offCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+  
+  // Fill with white background
+  offCtx.fillStyle = 'white';
+  offCtx.fillRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+  
+  // Set drawing style
+  offCtx.fillStyle = 'black';
+  offCtx.strokeStyle = 'black';
+  
+  // Angle in radians
+  const radians = angle * Math.PI / 180;
+  
+  // Loop through the image with spacing intervals (using original coordinates)
+  for (let y = 0; y < ctx.canvas.height; y += spacing) {
+    for (let x = 0; x < ctx.canvas.width; x += spacing) {
+      // Sample the grayscale value at this point
+      const pixelIndex = (Math.floor(y) * imageData.width + Math.floor(x)) * 4;
+      
+      // Apply Bayer dithering
+      const i = Math.floor(y) % 4;
+      const j = Math.floor(x) % 4;
+      const threshold = bayerMatrix4x4[i][j];
+      
+      const grayValue = grayscaleData[pixelIndex] / 255;
+      
+      // Calculate size based on gray value (invert for proper effect)
+      // Use dithering threshold to create a more detailed pattern
+      const size = dotSize * (grayValue > threshold ? (1 - grayValue) * 0.8 + 0.2 : 0);
+      
+      if (size > 0) {
+        offCtx.save();
+        
+        // First translate to where the dot should be
+        offCtx.translate(x, y);
+        
+        // Only apply rotation if needed
+        if (angle !== 0) {
+          // For individual elements, rotate around their center
+          offCtx.rotate(radians);
+        }
+        
+        offCtx.beginPath();
+        
+        switch (shape) {
+          case 'circle':
+            offCtx.arc(0, 0, size, 0, Math.PI * 2);
+            offCtx.fill();
+            break;
+          case 'square':
+            offCtx.fillRect(-size, -size, size * 2, size * 2);
+            break;
+          case 'line':
+            offCtx.lineWidth = size;
+            offCtx.beginPath();
+            offCtx.moveTo(-spacing / 2, 0);
+            offCtx.lineTo(spacing / 2, 0);
+            offCtx.stroke();
+            break;
+        }
+        
+        offCtx.restore();
+      }
+    }
+  }
+  
+  // Draw the halftone pattern from the offscreen canvas onto the main canvas
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.drawImage(offscreenCanvas, 0, 0);
+  
+  // Return the new image data
+  return ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+};
+
 // Function to apply a single effect to image data
-const applyEffect = async (imageData: ImageData, effect: AppliedEffect): Promise<ImageData> => {
+const applyEffect = useCallback((imageData: ImageData, effect: AppliedEffect): ImageData => {
   const { type, settings } = effect;
   
   const canvas = document.createElement('canvas');
@@ -206,7 +333,7 @@ const applyEffect = async (imageData: ImageData, effect: AppliedEffect): Promise
       case 'vignette':
         return applyVignetteEffect(ctx, imageData, settings as VignetteSettings);
       case 'texture':
-        return await applyTextureEffect(ctx, imageData, settings as TextureSettings);
+        return applyTextureEffect(ctx, imageData, settings as TextureSettings);
       case 'frame':
         return applyFrameEffect(ctx, imageData, settings as FrameSettings);
       default:
@@ -216,7 +343,7 @@ const applyEffect = async (imageData: ImageData, effect: AppliedEffect): Promise
     console.error(`Error applying ${type} effect:`, error);
     return imageData;
   }
-};
+}, []);
 
 // Remove unused empty settings and dithering settings
 const baseSettings = {
@@ -293,7 +420,7 @@ const applyEffectWithReset = async (
   
   if (currentEffectObj) {
     try {
-      imageData = await applyEffect(imageData, currentEffectObj);
+      imageData = applyEffect(imageData, currentEffectObj);
       ctx.putImageData(imageData, 0, 0);
     } catch (error) {
       console.error('Error applying effect:', error);
@@ -329,18 +456,17 @@ export default function CleanImageEditor() {
 
   // State for all effects
   const [halftoneSettings, setHalftoneSettings] = useState<HalftoneSettings>({
-    enabled: true,
+    enabled: false,
     dotSize: 2,
-    spacing: 5,
+    spacing: 4,
     angle: 45,
     shape: 'circle'
   });
 
   const [duotoneSettings, setDuotoneSettings] = useState<DuotoneSettings>({
-    enabled: true,
-    color1: '#000000',
-    color2: '#ffffff',
-    intensity: 100
+    enabled: false,
+    shadowColor: '#000000',
+    highlightColor: '#ffffff'
   });
 
   const [noiseSettings, setNoiseSettings] = useState<NoiseSettings>({
@@ -660,12 +786,12 @@ export default function CleanImageEditor() {
     if (index === 1) {
       setDuotoneSettings({
         ...duotoneSettings,
-        color1: color
+        shadowColor: color
       });
     } else {
       setDuotoneSettings({
         ...duotoneSettings,
-        color2: color
+        highlightColor: color
       });
     }
   };
@@ -673,8 +799,8 @@ export default function CleanImageEditor() {
   const handleDuotonePairSelect = (color1: string, color2: string) => {
     setDuotoneSettings({
       ...duotoneSettings,
-      color1,
-      color2
+      shadowColor: color1,
+      highlightColor: color2
     });
   };
 
@@ -1100,7 +1226,7 @@ export default function CleanImageEditor() {
                         <ColorSetSelector 
                           onSelectColor={handleColorSelect}
                           onSelectPair={handleDuotonePairSelect}
-                          selectedColor={duotoneSettings.color1}
+                          selectedColor={duotoneSettings.shadowColor}
                         />
                       </div>
                       
@@ -1118,7 +1244,7 @@ export default function CleanImageEditor() {
                               value={customColor1Hex}
                               onChange={(e) => handleHexInputChange(
                                 e.target.value,
-                                (color) => setDuotoneSettings({...duotoneSettings, color1: color}),
+                                (color) => setDuotoneSettings({...duotoneSettings, shadowColor: color}),
                                 setCustomColor1Hex
                               )}
                               className="ml-2 px-2 py-1 border rounded text-sm w-24"
@@ -1139,7 +1265,7 @@ export default function CleanImageEditor() {
                               value={customColor2Hex}
                               onChange={(e) => handleHexInputChange(
                                 e.target.value,
-                                (color) => setDuotoneSettings({...duotoneSettings, color2: color}),
+                                (color) => setDuotoneSettings({...duotoneSettings, highlightColor: color}),
                                 setCustomColor2Hex
                               )}
                               className="ml-2 px-2 py-1 border rounded text-sm w-24"
