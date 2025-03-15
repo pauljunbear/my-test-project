@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import * as PIXI from 'pixi.js';
+import { Application, Sprite, Filter, Assets } from 'pixi.js';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Label } from './ui/label';
@@ -107,19 +107,21 @@ export default function PixiShaderProcessor() {
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
-  const appRef = useRef<PIXI.Application | null>(null);
-  const spriteRef = useRef<PIXI.Sprite | null>(null);
-  const filterRef = useRef<PIXI.Filter | null>(null);
+  const appRef = useRef<Application | null>(null);
+  const spriteRef = useRef<Sprite | null>(null);
+  const filterRef = useRef<Filter | null>(null);
 
   // Initialize Pixi.js application
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || typeof window === 'undefined') return;
 
-    // Create Pixi application
-    const app = new PIXI.Application({
+    // Create Pixi application with proper settings
+    const app = new Application({
       backgroundAlpha: 0,
       antialias: true,
-      resizeTo: containerRef.current
+      width: containerRef.current.clientWidth,
+      height: containerRef.current.clientHeight,
+      view: document.createElement('canvas') as HTMLCanvasElement
     });
 
     // Add to DOM
@@ -142,8 +144,8 @@ export default function PixiShaderProcessor() {
       setImageUrl(url);
       
       // Load image and create sprite
-      const texture = await PIXI.Texture.fromURL(url);
-      const sprite = new PIXI.Sprite(texture);
+      const texture = await Assets.load(url);
+      const sprite = new Sprite(texture);
       
       // Set dimensions
       const { width, height } = texture;
@@ -198,7 +200,7 @@ export default function PixiShaderProcessor() {
     
     try {
       // Create new filter with shader
-      const filter = new PIXI.Filter(
+      const filter = new Filter(
         undefined, // Use default vertex shader
         effect.fragment,
         { 
